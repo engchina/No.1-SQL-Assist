@@ -499,49 +499,50 @@ def execute_create_view(pool, create_sql):
 
 
 def get_table_list_for_data(pool):
-    """Get list of table names for data management dropdown.
+    """Get list of table and view names for data management dropdown.
     
     Args:
         pool: Oracle database connection pool
         
     Returns:
-        list: List of table names
+        list: List of table and view names
     """
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
+                # Query to get both tables and views
                 sql = """
-                SELECT table_name
-                FROM all_tables
-                WHERE owner = 'ADMIN'
-                ORDER BY table_name
+                SELECT table_name FROM all_tables WHERE owner = 'ADMIN'
+                UNION
+                SELECT view_name FROM all_views WHERE owner = 'ADMIN'
+                ORDER BY 1
                 """
                 cursor.execute(sql)
                 rows = cursor.fetchall()
-                table_names = [row[0] for row in rows] if rows else []
-                logger.info(f"Retrieved {len(table_names)} tables for data management")
-                return table_names
+                names = [row[0] for row in rows] if rows else []
+                logger.info(f"Retrieved {len(names)} tables and views for data management")
+                return names
     except Exception as e:
-        logger.error(f"Error getting table list for data: {e}")
+        logger.error(f"Error getting table/view list for data: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"テーブル一覧の取得に失敗しました: {str(e)}")
+        gr.Error(f"テーブル・ビュー一覧の取得に失敗しました: {str(e)}")
         return []
 
 
 def display_table_data(pool, table_name, limit, where_clause=""):
-    """Display data from selected table.
+    """Display data from selected table or view.
     
     Args:
         pool: Oracle database connection pool
-        table_name: Name of the table
+        table_name: Name of the table or view
         limit: Maximum number of rows to fetch
         where_clause: Optional WHERE clause for filtering
         
     Returns:
-        pd.DataFrame: DataFrame containing table data
+        pd.DataFrame: DataFrame containing table/view data
     """
     if not table_name:
-        gr.Warning("テーブルを選択してください")
+        gr.Warning("テーブルまたはビューを選択してください")
         return pd.DataFrame()
     
     try:
@@ -567,7 +568,7 @@ def display_table_data(pool, table_name, limit, where_clause=""):
                     return pd.DataFrame()
                     
     except Exception as e:
-        logger.error(f"Error displaying table data: {e}")
+        logger.error(f"Error displaying table/view data: {e}")
         logger.error(traceback.format_exc())
         gr.Error(f"データの取得に失敗しました: {str(e)}")
         return pd.DataFrame()
@@ -688,6 +689,7 @@ def execute_data_sql(pool, sql_statements):
     
     Supports executing multiple SQL statements separated by semicolons,
     including INSERT, UPDATE, DELETE, MERGE, etc.
+    SELECT statements are prohibited for security reasons.
     
     Args:
         pool: Oracle database connection pool
@@ -709,6 +711,17 @@ def execute_data_sql(pool, sql_statements):
                 if not statements:
                     gr.Warning("SQL文が空です")
                     return "エラー: SQL文が空です"
+                
+                # Check for SELECT statements (prohibited)
+                for idx, sql_stmt in enumerate(statements, 1):
+                    # Remove leading/trailing whitespace and convert to uppercase for checking
+                    stmt_upper = sql_stmt.strip().upper()
+                    # Check if statement starts with SELECT (including WITH clauses)
+                    if stmt_upper.startswith('SELECT') or (stmt_upper.startswith('WITH') and 'SELECT' in stmt_upper):
+                        error_msg = f"禁止された操作: SELECT文は実行できません。\n文{idx}: {sql_stmt[:100]}..."
+                        logger.warning(f"SELECT statement prohibited: {sql_stmt[:100]}...")
+                        gr.Error(error_msg)
+                        return f"エラー: {error_msg}"
                 
                 executed_count = 0
                 error_messages = []
@@ -826,50 +839,51 @@ def build_management_tab(pool):
                 )
             
             # Event handlers
-            def on_table_select(evt: gr.SelectData):
+            def on_table_select(evt: gr.SelectData, current_df):
                 """Handle table row selection.
                 
                 Always extracts the table name from the first column (Table Name),
                 regardless of which column in the row was clicked.
+                
+                Args:
+                    evt: Gradio SelectData event
+                    current_df: Current dataframe value
                 """
                 try:
                     row_index = evt.index[0]
                     logger.info(f"Row clicked: {row_index}, Value clicked: {evt.value}")
                     
-                    if row_index >= 0:
-                        # Get the current dataframe value
-                        current_df = table_list_df.value
+                    if row_index >= 0 and current_df is not None:
                         logger.info(f"Dataframe type: {type(current_df)}")
                         
-                        if current_df is not None:
-                            # Convert to DataFrame if it's a dict (Gradio format)
-                            if isinstance(current_df, dict):
-                                logger.info(f"Dict keys: {current_df.keys()}")
-                                # Gradio returns dict with 'data' and 'headers' keys
-                                if 'data' in current_df:
-                                    data = current_df['data']
-                                    headers = current_df.get('headers', [])
-                                    logger.info(f"Data length: {len(data)}, Headers: {headers}")
-                                    current_df = pd.DataFrame(data, columns=headers)
-                                else:
-                                    # Try direct conversion with orientation
-                                    try:
-                                        current_df = pd.DataFrame.from_dict(current_df, orient='tight')
-                                    except Exception as e:
-                                        logger.warning(f"Failed to convert with orient='tight': {e}")
-                                        current_df = pd.DataFrame(current_df)
-                            
-                            logger.info(f"DataFrame shape: {current_df.shape}")
-                            logger.info(f"DataFrame columns: {list(current_df.columns)}")
-                            
-                            if len(current_df) > row_index:
-                                # Always get the table name from the first column (index 0)
-                                table_name = str(current_df.iloc[row_index, 0])
-                                logger.info(f"Table selected from row {row_index}: {table_name}")
-                                col_df, ddl = get_table_details(pool, table_name)
-                                return table_name, col_df, ddl
+                        # Convert to DataFrame if it's a dict (Gradio format)
+                        if isinstance(current_df, dict):
+                            logger.info(f"Dict keys: {current_df.keys()}")
+                            # Gradio returns dict with 'data' and 'headers' keys
+                            if 'data' in current_df:
+                                data = current_df['data']
+                                headers = current_df.get('headers', [])
+                                logger.info(f"Data length: {len(data)}, Headers: {headers}")
+                                current_df = pd.DataFrame(data, columns=headers)
                             else:
-                                logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
+                                # Try direct conversion with orientation
+                                try:
+                                    current_df = pd.DataFrame.from_dict(current_df, orient='tight')
+                                except Exception as e:
+                                    logger.warning(f"Failed to convert with orient='tight': {e}")
+                                    current_df = pd.DataFrame(current_df)
+                        
+                        logger.info(f"DataFrame shape: {current_df.shape}")
+                        logger.info(f"DataFrame columns: {list(current_df.columns)}")
+                        
+                        if len(current_df) > row_index:
+                            # Always get the table name from the first column (index 0)
+                            table_name = str(current_df.iloc[row_index, 0])
+                            logger.info(f"Table selected from row {row_index}: {table_name}")
+                            col_df, ddl = get_table_details(pool, table_name)
+                            return table_name, col_df, ddl
+                        else:
+                            logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
                     logger.error(f"Error in on_table_select: {e}")
                     logger.error(traceback.format_exc())
@@ -905,6 +919,7 @@ def build_management_tab(pool):
             
             table_list_df.select(
                 fn=on_table_select,
+                inputs=[table_list_df],
                 outputs=[selected_table_name, table_columns_df, table_ddl_text]
             )
             
@@ -992,50 +1007,51 @@ def build_management_tab(pool):
                 )
             
             # Event handlers
-            def on_view_select(evt: gr.SelectData):
+            def on_view_select(evt: gr.SelectData, current_df):
                 """Handle view row selection.
                 
                 Always extracts the view name from the first column (View Name),
                 regardless of which column in the row was clicked.
+                
+                Args:
+                    evt: Gradio SelectData event
+                    current_df: Current dataframe value
                 """
                 try:
                     row_index = evt.index[0]
                     logger.info(f"Row clicked: {row_index}, Value clicked: {evt.value}")
                     
-                    if row_index >= 0:
-                        # Get the current dataframe value
-                        current_df = view_list_df.value
+                    if row_index >= 0 and current_df is not None:
                         logger.info(f"Dataframe type: {type(current_df)}")
                         
-                        if current_df is not None:
-                            # Convert to DataFrame if it's a dict (Gradio format)
-                            if isinstance(current_df, dict):
-                                logger.info(f"Dict keys: {current_df.keys()}")
-                                # Gradio returns dict with 'data' and 'headers' keys
-                                if 'data' in current_df:
-                                    data = current_df['data']
-                                    headers = current_df.get('headers', [])
-                                    logger.info(f"Data length: {len(data)}, Headers: {headers}")
-                                    current_df = pd.DataFrame(data, columns=headers)
-                                else:
-                                    # Try direct conversion with orientation
-                                    try:
-                                        current_df = pd.DataFrame.from_dict(current_df, orient='tight')
-                                    except Exception as e:
-                                        logger.warning(f"Failed to convert with orient='tight': {e}")
-                                        current_df = pd.DataFrame(current_df)
-                            
-                            logger.info(f"DataFrame shape: {current_df.shape}")
-                            logger.info(f"DataFrame columns: {list(current_df.columns)}")
-                            
-                            if len(current_df) > row_index:
-                                # Always get the view name from the first column (index 0)
-                                view_name = str(current_df.iloc[row_index, 0])
-                                logger.info(f"View selected from row {row_index}: {view_name}")
-                                col_df, ddl = get_view_details(pool, view_name)
-                                return view_name, col_df, ddl
+                        # Convert to DataFrame if it's a dict (Gradio format)
+                        if isinstance(current_df, dict):
+                            logger.info(f"Dict keys: {current_df.keys()}")
+                            # Gradio returns dict with 'data' and 'headers' keys
+                            if 'data' in current_df:
+                                data = current_df['data']
+                                headers = current_df.get('headers', [])
+                                logger.info(f"Data length: {len(data)}, Headers: {headers}")
+                                current_df = pd.DataFrame(data, columns=headers)
                             else:
-                                logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
+                                # Try direct conversion with orientation
+                                try:
+                                    current_df = pd.DataFrame.from_dict(current_df, orient='tight')
+                                except Exception as e:
+                                    logger.warning(f"Failed to convert with orient='tight': {e}")
+                                    current_df = pd.DataFrame(current_df)
+                        
+                        logger.info(f"DataFrame shape: {current_df.shape}")
+                        logger.info(f"DataFrame columns: {list(current_df.columns)}")
+                        
+                        if len(current_df) > row_index:
+                            # Always get the view name from the first column (index 0)
+                            view_name = str(current_df.iloc[row_index, 0])
+                            logger.info(f"View selected from row {row_index}: {view_name}")
+                            col_df, ddl = get_view_details(pool, view_name)
+                            return view_name, col_df, ddl
+                        else:
+                            logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
                     logger.error(f"Error in on_view_select: {e}")
                     logger.error(traceback.format_exc())
@@ -1071,6 +1087,7 @@ def build_management_tab(pool):
             
             view_list_df.select(
                 fn=on_view_select,
+                inputs=[view_list_df],
                 outputs=[selected_view_name, view_columns_df, view_ddl_text]
             )
             
@@ -1095,10 +1112,12 @@ def build_management_tab(pool):
         # Data Management Tab
         with gr.TabItem(label="Dataの管理"):
             # Feature 1: Table Data Display
-            with gr.Accordion(label="1. テーブルデータの表示", open=True):
+            with gr.Accordion(label="1. テーブル・ビューデータの表示", open=True):
+                data_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                
                 with gr.Row():
                     data_table_select = gr.Dropdown(
-                        label="テーブル選択",
+                        label="テーブル・ビュー選択",
                         choices=get_table_list_for_data(pool),
                         interactive=True,
                     )
@@ -1118,7 +1137,7 @@ def build_management_tab(pool):
                 data_display_btn = gr.Button("データを表示", variant="primary")
                 
                 data_display_info = gr.Markdown(
-                    value="ℹ️ テーブルを選択して「データを表示」ボタンをクリックしてください",
+                    value="ℹ️ テーブルまたはビューを選択して「データを表示」ボタンをクリックしてください",
                     visible=True,
                 )
                 data_display = gr.Dataframe(
@@ -1184,7 +1203,7 @@ def build_management_tab(pool):
                 
                 data_sql_input = gr.Textbox(
                     label="SQL文（複数の文をセミコロンで区切って入力可能）",
-                    placeholder="INSERT/UPDATE/DELETE/MERGE文を入力してください\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';",
+                    placeholder="INSERT/UPDATE/DELETE/MERGE文を入力してください（注: SELECT文は禁止されています）\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';",
                     lines=10,
                     max_lines=30,
                     show_copy_button=True,
@@ -1202,8 +1221,8 @@ def build_management_tab(pool):
 
             
             # Event Handlers
-            def refresh_table_dropdown():
-                """Refresh table dropdown choices."""
+            def refresh_data_table_list():
+                """Refresh table and view list for data management."""
                 tables = get_table_list_for_data(pool)
                 return gr.Dropdown(choices=tables), gr.Dropdown(choices=tables)
             
@@ -1243,6 +1262,11 @@ def build_management_tab(pool):
                 return templates.get(template, "")
             
             # Wire up events
+            data_refresh_btn.click(
+                fn=refresh_data_table_list,
+                outputs=[data_table_select, csv_table_select]
+            )
+            
             data_display_btn.click(
                 fn=display_data,
                 inputs=[data_table_select, data_limit_input, data_where_input],
