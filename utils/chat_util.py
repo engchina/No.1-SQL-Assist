@@ -59,13 +59,13 @@ def get_compartment_id():
 
 async def send_chat_message_async(
     message: str,
-    history: List[Tuple[str, str]],
+    history: List[dict],
 ):
     """OCI Chat Modelにメッセージを送信してストリーミング応答を取得する（非同期）.
 
     Args:
         message: ユーザーメッセージ
-        history: 会話履歴
+        history: 会話履歴 (messages形式)
 
     Yields:
         tuple: (更新された会話履歴, 空文字列（入力クリア用）)
@@ -103,15 +103,10 @@ async def send_chat_message_async(
         logger.info(f"Using region: {region}")
         logger.info(f"Using compartment: {compartment_id[:20]}...")
 
-        # Build messages for the API
+        # Build messages for the API from history
         messages = []
-        
-        # Add conversation history
-        for user_msg, assistant_msg in history:
-            if user_msg:
-                messages.append({"role": "user", "content": user_msg})
-            if assistant_msg:
-                messages.append({"role": "assistant", "content": assistant_msg})
+        for msg in history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
         
         # Add current message
         messages.append({"role": "user", "content": message})
@@ -132,9 +127,13 @@ async def send_chat_message_async(
             stream=True,
         )
 
+        # Add user message to history first
+        history.append({"role": "user", "content": message})
+        # Then add empty assistant message for streaming
+        history.append({"role": "assistant", "content": ""})
+        
         # Collect streaming response
         response_text = ""
-        history.append((message, ""))
         
         async for chunk in stream:
             if chunk.choices and len(chunk.choices) > 0:
@@ -142,13 +141,13 @@ async def send_chat_message_async(
                 if delta.content:
                     response_text += delta.content
                     # Update the last message in history with accumulated response
-                    history[-1] = (message, response_text)
+                    history[-1] = {"role": "assistant", "content": response_text}
                     yield history, ""
         
         if not response_text:
             logger.warning("Empty response from API")
             response_text = "応答を取得できませんでした。"
-            history[-1] = (message, response_text)
+            history[-1] = {"role": "assistant", "content": response_text}
             yield history, ""
 
         logger.info(f"Response length: {len(response_text)} characters")
@@ -165,13 +164,13 @@ async def send_chat_message_async(
 
 def send_chat_message(
     message: str,
-    history: List[Tuple[str, str]],
+    history: List[dict],
 ):
     """OCI Chat Modelにメッセージを送信して応答を取得する（同期ラッパー）.
 
     Args:
         message: ユーザーメッセージ
-        history: 会話履歴
+        history: 会話履歴 (messages形式)
 
     Yields:
         tuple: (更新された会話履歴, 空文字列（入力クリア用）)
@@ -220,6 +219,7 @@ def build_oci_chat_test_tab(pool):
                     height=500,
                     show_copy_button=True,
                     avatar_images=(None, None),
+                    type='messages',
                 )
 
                 with gr.Row():
@@ -232,8 +232,8 @@ def build_oci_chat_test_tab(pool):
                     )
 
                 with gr.Row():
+                    clear_btn = gr.Button("クリア", scale=1)
                     send_btn = gr.Button("送信", variant="primary", scale=1)
-                    clear_btn = gr.Button("会話をクリア", scale=1)
 
         # Event handlers
         send_btn.click(

@@ -450,6 +450,18 @@ def build_oci_embedding_test_tab(pool):
     
     # UIコンポーネントの構築
     with gr.TabItem(label="OCI GenAI Embeddingモデルのテスト") as tab_test_oci_cred:      
+
+        with gr.Row():
+            with gr.Column():
+                tab_test_oci_cred_vector_text = gr.Textbox(
+                    label="ベクトル結果",
+                    lines=15,
+                    max_lines=20,
+                    autoscroll=False,
+                    interactive=False,
+                    show_copy_button=True,
+                )
+
         with gr.Row():
             with gr.Column():
                 tab_test_oci_cred_query_text = gr.Textbox(
@@ -462,23 +474,12 @@ def build_oci_embedding_test_tab(pool):
 
         with gr.Row():
             with gr.Column():
-                tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
-            with gr.Column():
                 tab_test_clear_button = gr.ClearButton(
                     value="クリア",
                     components=[]
                 )
-
-        with gr.Row():
             with gr.Column():
-                tab_test_oci_cred_vector_text = gr.Textbox(
-                    label="ベクトル結果",
-                    lines=15,
-                    max_lines=20,
-                    autoscroll=False,
-                    interactive=False,
-                    show_copy_button=True,
-                )
+                tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
 
         # イベントハンドラーの設定
         tab_test_clear_button.add(
