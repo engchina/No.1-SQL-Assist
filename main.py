@@ -19,7 +19,8 @@ from dotenv import find_dotenv, load_dotenv  # noqa: E402
 from gradio.themes import Default, GoogleFont  # noqa: E402
 
 from utils.css_util import custom_css
-from utils.oci_util import build_oci_genai_tab
+from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab
+from utils.chat_util import build_oci_chat_test_tab
 
 # Load environment variables
 load_dotenv(find_dotenv())
@@ -62,6 +63,12 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
         with gr.TabItem(label="環境設定"):
             # OCI GenAI設定タブを構築
             build_oci_genai_tab(pool)
+            
+            # OCI GenAI Embeddingテストタブを構築
+            build_oci_embedding_test_tab(pool)
+            
+            # OCI Chat Modelテストタブを構築
+            build_oci_chat_test_tab(pool)
 
     gr.Markdown(
         value="### 本ソフトウェアは検証評価用です。日常利用のための基本機能は備えていない点につきましてご理解をよろしくお願い申し上げます。",

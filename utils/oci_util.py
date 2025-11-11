@@ -338,17 +338,13 @@ def build_oci_genai_tab(pool):
         pool: データベース接続プール
 
     Returns:
-        tuple: UIコンポーネントとイベントハンドラーのタプル
+        gr.TabItem: OCI GenAI設定タブ
     """
     
     # ラッパー関数の定義
     def create_oci_cred_wrapper(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
         """OCI認証情報を設定するためのラッパー関数."""
         return create_oci_cred(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool)
-    
-    def test_oci_cred_wrapper(test_query_text):
-        """OCI認証情報をテストするためのラッパー関数."""
-        return test_oci_cred(test_query_text, pool)
     
     # UIコンポーネントの構築
     with gr.TabItem(label="OCI GenAIの設定*") as tab_create_oci_cred:
@@ -411,29 +407,6 @@ def build_oci_genai_tab(pool):
             with gr.Column():
                 tab_create_oci_cred_button = gr.Button(value="設定/再設定", variant="primary")
 
-        with gr.Accordion(label="OCI GenAIのテスト", open=False) as tab_create_oci_cred_test_accordion:
-            with gr.Row():
-                with gr.Column():
-                    tab_create_oci_cred_test_query_text = gr.Textbox(
-                        label="テキスト",
-                        lines=1,
-                        max_lines=1,
-                        value="こんにちわ",
-                    )
-
-            with gr.Row():
-                with gr.Column():
-                    tab_create_oci_cred_test_vector_text = gr.Textbox(
-                        label="ベクトル",
-                        lines=10,
-                        max_lines=10,
-                        autoscroll=False,
-                    )
-
-            with gr.Row():
-                with gr.Column():
-                    tab_create_oci_cred_test_button = gr.Button(value="テスト", variant="primary")
-
     # イベントハンドラーの設定
     tab_create_oci_clear_button.add(
         components=[
@@ -457,10 +430,65 @@ def build_oci_genai_tab(pool):
         outputs=[tab_create_oci_cred_sql_accordion, tab_create_oci_cred_sql_text],
     )
 
-    tab_create_oci_cred_test_button.click(
-        test_oci_cred_wrapper,
-        inputs=[tab_create_oci_cred_test_query_text],
-        outputs=[tab_create_oci_cred_test_vector_text],
-    )
-
     return tab_create_oci_cred
+
+
+def build_oci_embedding_test_tab(pool):
+    """OCI GenAI EmbeddingテストタブのUIを構築する.
+
+    Args:
+        pool: データベース接続プール
+
+    Returns:
+        gr.TabItem: OCI GenAI Embeddingテストタブ
+    """
+    
+    # ラッパー関数の定義
+    def test_oci_cred_wrapper(test_query_text):
+        """OCI認証情報をテストするためのラッパー関数."""
+        return test_oci_cred(test_query_text, pool)
+    
+    # UIコンポーネントの構築
+    with gr.TabItem(label="OCI GenAI Embeddingモデルのテスト") as tab_test_oci_cred:      
+        with gr.Row():
+            with gr.Column():
+                tab_test_oci_cred_query_text = gr.Textbox(
+                    label="テキスト",
+                    placeholder="埋め込みベクトルに変換するテキストを入力してください...",
+                    lines=2,
+                    max_lines=5,
+                    value="こんにちわ",
+                )
+
+        with gr.Row():
+            with gr.Column():
+                tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
+            with gr.Column():
+                tab_test_clear_button = gr.ClearButton(
+                    value="クリア",
+                    components=[]
+                )
+
+        with gr.Row():
+            with gr.Column():
+                tab_test_oci_cred_vector_text = gr.Textbox(
+                    label="ベクトル結果",
+                    lines=15,
+                    max_lines=20,
+                    autoscroll=False,
+                    interactive=False,
+                    show_copy_button=True,
+                )
+
+        # イベントハンドラーの設定
+        tab_test_clear_button.add(
+            components=[tab_test_oci_cred_query_text, tab_test_oci_cred_vector_text]
+        )
+        
+        tab_test_oci_cred_button.click(
+            test_oci_cred_wrapper,
+            inputs=[tab_test_oci_cred_query_text],
+            outputs=[tab_test_oci_cred_vector_text],
+        )
+
+    return tab_test_oci_cred
