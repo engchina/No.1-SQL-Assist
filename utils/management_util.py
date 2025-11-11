@@ -498,6 +498,261 @@ def execute_create_view(pool, create_sql):
         return f"エラー: {str(e)}"
 
 
+def get_table_list_for_data(pool):
+    """Get list of table names for data management dropdown.
+    
+    Args:
+        pool: Oracle database connection pool
+        
+    Returns:
+        list: List of table names
+    """
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                sql = """
+                SELECT table_name
+                FROM all_tables
+                WHERE owner = 'ADMIN'
+                ORDER BY table_name
+                """
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                table_names = [row[0] for row in rows] if rows else []
+                logger.info(f"Retrieved {len(table_names)} tables for data management")
+                return table_names
+    except Exception as e:
+        logger.error(f"Error getting table list for data: {e}")
+        logger.error(traceback.format_exc())
+        gr.Error(f"テーブル一覧の取得に失敗しました: {str(e)}")
+        return []
+
+
+def display_table_data(pool, table_name, limit, where_clause=""):
+    """Display data from selected table.
+    
+    Args:
+        pool: Oracle database connection pool
+        table_name: Name of the table
+        limit: Maximum number of rows to fetch
+        where_clause: Optional WHERE clause for filtering
+        
+    Returns:
+        pd.DataFrame: DataFrame containing table data
+    """
+    if not table_name:
+        gr.Warning("テーブルを選択してください")
+        return pd.DataFrame()
+    
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                # Build SQL query
+                where_part = f" WHERE {where_clause}" if where_clause and where_clause.strip() else ""
+                sql = f"SELECT * FROM ADMIN.{table_name.upper()}{where_part} FETCH FIRST {int(limit)} ROWS ONLY"
+                
+                logger.info(f"Executing query: {sql}")
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    df = pd.DataFrame(rows, columns=columns)
+                    logger.info(f"Retrieved {len(df)} rows from {table_name}")
+                    gr.Info(f"{len(df)}件のデータを取得しました")
+                    return df
+                else:
+                    logger.info(f"No data found in {table_name}")
+                    gr.Info("データが見つかりませんでした")
+                    return pd.DataFrame()
+                    
+    except Exception as e:
+        logger.error(f"Error displaying table data: {e}")
+        logger.error(traceback.format_exc())
+        gr.Error(f"データの取得に失敗しました: {str(e)}")
+        return pd.DataFrame()
+
+
+def upload_csv_data(pool, file, table_name, upload_mode):
+    """Upload CSV data to selected table.
+    
+    Args:
+        pool: Oracle database connection pool
+        file: Uploaded CSV file
+        table_name: Target table name
+        upload_mode: Upload mode (INSERT, TRUNCATE, UPDATE)
+        
+    Returns:
+        tuple: (preview_df, result_message)
+    """
+    if not file:
+        gr.Warning("CSVファイルを選択してください")
+        return pd.DataFrame(), "エラー: ファイルが選択されていません"
+    
+    if not table_name:
+        gr.Warning("テーブルを選択してください")
+        return pd.DataFrame(), "エラー: テーブルが選択されていません"
+    
+    try:
+        # Read CSV file
+        import csv
+        df = pd.read_csv(file.name)
+        logger.info(f"CSV file loaded: {len(df)} rows, {len(df.columns)} columns")
+        
+        if df.empty:
+            gr.Warning("CSVファイルが空です")
+            return df, "エラー: CSVファイルにデータがありません"
+        
+        # Get preview (first 10 rows)
+        preview_df = df.head(10)
+        
+        # Execute upload based on mode
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                # Get table columns
+                cursor.execute(
+                    "SELECT column_name FROM all_tab_columns WHERE owner = 'ADMIN' AND table_name = :table_name ORDER BY column_id",
+                    table_name=table_name.upper()
+                )
+                table_columns = [row[0] for row in cursor.fetchall()]
+                
+                if not table_columns:
+                    gr.Error(f"テーブル '{table_name}' が見つかりません")
+                    return preview_df, f"エラー: テーブル '{table_name}' が見つかりません"
+                
+                # Match CSV columns to table columns (case-insensitive)
+                csv_columns = df.columns.tolist()
+                column_mapping = {}
+                for csv_col in csv_columns:
+                    for tbl_col in table_columns:
+                        if csv_col.upper() == tbl_col.upper():
+                            column_mapping[csv_col] = tbl_col
+                            break
+                
+                if not column_mapping:
+                    gr.Error("CSVの列名がテーブルの列名と一致しません")
+                    return preview_df, "エラー: CSVの列名がテーブルの列名と一致しません"
+                
+                # Truncate if mode is TRUNCATE
+                if upload_mode == "TRUNCATE & INSERT":
+                    cursor.execute(f"TRUNCATE TABLE ADMIN.{table_name.upper()}")
+                    logger.info(f"Table {table_name} truncated")
+                
+                # Prepare INSERT statement
+                mapped_columns = list(column_mapping.values())
+                placeholders = ", ".join([f":{i+1}" for i in range(len(mapped_columns))])
+                insert_sql = f"INSERT INTO ADMIN.{table_name.upper()} ({', '.join(mapped_columns)}) VALUES ({placeholders})"
+                
+                # Insert data
+                success_count = 0
+                error_count = 0
+                error_messages = []
+                
+                for idx, row in df.iterrows():
+                    try:
+                        values = [row[csv_col] if csv_col in column_mapping else None for csv_col in column_mapping.keys()]
+                        # Convert NaN to None
+                        values = [None if pd.isna(v) else v for v in values]
+                        cursor.execute(insert_sql, values)
+                        success_count += 1
+                    except Exception as row_error:
+                        error_count += 1
+                        if error_count <= 5:  # Show first 5 errors
+                            error_messages.append(f"行{idx+1}: {str(row_error)[:100]}")
+                
+                # Commit transaction
+                conn.commit()
+                
+                # Prepare result message
+                result = f"成功: {success_count}件のデータを挿入しました"
+                if error_count > 0:
+                    result += f"\n\n警告: {error_count}件のエラーが発生しました\n" + "\n".join(error_messages)
+                    if error_count > 5:
+                        result += f"\n... 他 {error_count - 5} 件のエラー"
+                    gr.Warning(result)
+                else:
+                    gr.Info(result)
+                
+                logger.info(f"CSV upload completed: {success_count} success, {error_count} errors")
+                return preview_df, result
+                
+    except Exception as e:
+        logger.error(f"Error uploading CSV: {e}")
+        logger.error(traceback.format_exc())
+        gr.Error(f"CSVアップロードに失敗しました: {str(e)}")
+        return pd.DataFrame(), f"エラー: {str(e)}"
+
+
+def execute_data_sql(pool, sql_statements):
+    """Execute multiple DML/DDL SQL statements.
+    
+    Supports executing multiple SQL statements separated by semicolons,
+    including INSERT, UPDATE, DELETE, MERGE, etc.
+    
+    Args:
+        pool: Oracle database connection pool
+        sql_statements: Single or multiple SQL statements
+        
+    Returns:
+        str: Result message
+    """
+    if not sql_statements or not sql_statements.strip():
+        gr.Warning("SQL文を入力してください")
+        return "エラー: SQL文が入力されていません"
+    
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                # Split SQL statements by semicolon
+                statements = [stmt.strip() for stmt in sql_statements.split(';') if stmt.strip()]
+                
+                if not statements:
+                    gr.Warning("SQL文が空です")
+                    return "エラー: SQL文が空です"
+                
+                executed_count = 0
+                error_messages = []
+                affected_rows = []
+                
+                # Execute each statement
+                for idx, sql_stmt in enumerate(statements, 1):
+                    try:
+                        cursor.execute(sql_stmt)
+                        rows_affected = cursor.rowcount
+                        affected_rows.append(rows_affected)
+                        executed_count += 1
+                        logger.info(f"Statement {idx}/{len(statements)} executed successfully, {rows_affected} rows affected")
+                    except Exception as stmt_error:
+                        error_msg = f"文{idx}: {str(stmt_error)}"
+                        error_messages.append(error_msg)
+                        logger.error(f"Error executing statement {idx}: {stmt_error}")
+                        logger.error(f"Failed SQL: {sql_stmt[:100]}...")
+                
+                # Commit if at least one statement succeeded
+                if executed_count > 0:
+                    conn.commit()
+                    
+                # Prepare result message
+                if error_messages:
+                    total_rows = sum(affected_rows)
+                    result = f"部分的に成功: {executed_count}/{len(statements)}件の文を実行しました（{total_rows}行に影響）\n\nエラー:\n" + "\n".join(error_messages)
+                    gr.Warning(result)
+                    logger.warning(f"Partial success: {executed_count}/{len(statements)} statements executed")
+                    return result
+                else:
+                    total_rows = sum(affected_rows)
+                    result = f"成功: {executed_count}件の文をすべて実行しました（{total_rows}行に影響）"
+                    gr.Info(result)
+                    logger.info(f"All {executed_count} statements executed successfully")
+                    return result
+                    
+    except Exception as e:
+        logger.error(f"Error executing data SQL: {e}")
+        logger.error(traceback.format_exc())
+        gr.Error(f"SQL実行に失敗しました: {str(e)}")
+        return f"エラー: {str(e)}"
+
+
 def build_management_tab(pool):
     """Build the Management Function tab with three sub-functions.
     
@@ -506,7 +761,7 @@ def build_management_tab(pool):
     """
     with gr.Tabs():
         # Table Management Tab
-        with gr.TabItem(label="Table管理"):
+        with gr.TabItem(label="Tableの管理"):
             # Feature 1: Table List
             with gr.Accordion(label="1. テーブル一覧", open=True):
                 table_refresh_btn = gr.Button("テーブル一覧を更新", variant="primary")
@@ -672,7 +927,7 @@ def build_management_tab(pool):
             )
         
         # View Management Tab
-        with gr.TabItem(label="View管理"):
+        with gr.TabItem(label="Viewの管理"):
             # Feature 1: View List
             with gr.Accordion(label="1. ビュー一覧", open=True):
                 view_refresh_btn = gr.Button("ビュー一覧を更新", variant="primary")
@@ -838,15 +1093,13 @@ def build_management_tab(pool):
             )
         
         # Data Management Tab
-        with gr.TabItem(label="Data管理"):
-            gr.Markdown("## Data管理")
-            gr.Markdown("データ管理機能（実装予定）")
-            
-            with gr.Accordion(label="データ操作", open=True):
+        with gr.TabItem(label="Dataの管理"):
+            # Feature 1: Table Data Display
+            with gr.Accordion(label="1. テーブルデータの表示", open=True):
                 with gr.Row():
                     data_table_select = gr.Dropdown(
                         label="テーブル選択",
-                        choices=[],
+                        choices=get_table_list_for_data(pool),
                         interactive=True,
                     )
                     data_limit_input = gr.Number(
@@ -856,24 +1109,184 @@ def build_management_tab(pool):
                         maximum=10000,
                     )
                 
+                data_where_input = gr.Textbox(
+                    label="WHERE条件（オプション）",
+                    placeholder="例: status = 'A' AND created_at > SYSDATE - 7",
+                    lines=2,
+                )
+                
+                data_display_btn = gr.Button("データを表示", variant="primary")
+                
+                data_display_info = gr.Markdown(
+                    value="ℹ️ テーブルを選択して「データを表示」ボタンをクリックしてください",
+                    visible=True,
+                )
                 data_display = gr.Dataframe(
                     label="データ表示",
                     interactive=False,
+                    wrap=True,
+                    visible=False,
+                    value=pd.DataFrame(),
                 )
             
-            with gr.Accordion(label="データ編集", open=False):
-                data_sql_input = gr.Textbox(
-                    label="SQL文",
-                    placeholder="INSERT/UPDATE/DELETE文を入力してください",
-                    lines=5,
+            # Feature 2: CSV Upload
+            with gr.Accordion(label="2. CSVアップロード", open=False):
+                csv_file_input = gr.File(
+                    label="CSVファイル",
+                    file_types=[".csv"],
+                    type="filepath",
                 )
                 
                 with gr.Row():
-                    data_execute_btn = gr.Button("実行", variant="primary")
-                    data_clear_btn = gr.Button("クリア", variant="secondary")
+                    csv_table_select = gr.Dropdown(
+                        label="アップロード先テーブル",
+                        choices=get_table_list_for_data(pool),
+                        interactive=True,
+                    )
+                    csv_upload_mode = gr.Radio(
+                        label="アップロードモード",
+                        choices=["INSERT", "TRUNCATE & INSERT"],
+                        value="INSERT",
+                    )
                 
-                data_output = gr.Textbox(
+                csv_preview_info = gr.Markdown(
+                    value="ℹ️ CSVファイルを選択するとプレビューが表示されます",
+                    visible=True,
+                )
+                csv_preview = gr.Dataframe(
+                    label="プレビュー（最初の10行）",
+                    interactive=False,
+                    wrap=True,
+                    visible=False,
+                    value=pd.DataFrame(),
+                )
+                
+                csv_upload_btn = gr.Button("アップロード", variant="primary")
+                csv_upload_result = gr.Textbox(
+                    label="アップロード結果",
+                    lines=5,
+                    interactive=False,
+                )
+            
+            # Feature 3: SQL Bulk Execution
+            with gr.Accordion(label="3. SQL一括実行", open=False):
+                sql_template_select = gr.Dropdown(
+                    label="SQLテンプレート（オプション）",
+                    choices=[
+                        "INSERT - 単一行",
+                        "INSERT - 複数行",
+                        "UPDATE",
+                        "DELETE",
+                        "MERGE",
+                    ],
+                    interactive=True,
+                )
+                
+                data_sql_input = gr.Textbox(
+                    label="SQL文（複数の文をセミコロンで区切って入力可能）",
+                    placeholder="INSERT/UPDATE/DELETE/MERGE文を入力してください\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';",
+                    lines=10,
+                    max_lines=30,
+                    show_copy_button=True,
+                )
+                
+                with gr.Row():
+                    data_clear_btn = gr.Button("クリア", variant="secondary")
+                    data_execute_btn = gr.Button("実行", variant="primary")
+                
+                data_sql_result = gr.Textbox(
                     label="実行結果",
                     lines=5,
                     interactive=False,
                 )
+
+            
+            # Event Handlers
+            def refresh_table_dropdown():
+                """Refresh table dropdown choices."""
+                tables = get_table_list_for_data(pool)
+                return gr.Dropdown(choices=tables), gr.Dropdown(choices=tables)
+            
+            def display_data(table_name, limit, where_clause):
+                """Display table data."""
+                df = display_table_data(pool, table_name, limit, where_clause)
+                if df.empty:
+                    return gr.Markdown(visible=True), gr.Dataframe(visible=False, value=pd.DataFrame())
+                else:
+                    return gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df)
+            
+            def upload_csv(file, table_name, mode):
+                """Upload CSV file."""
+                preview, result = upload_csv_data(pool, file, table_name, mode)
+                return preview, result
+            
+            def execute_sql(sql):
+                """Execute SQL statements."""
+                return execute_data_sql(pool, sql)
+            
+            def clear_sql():
+                """Clear SQL input."""
+                return ""
+            
+            def apply_sql_template(template):
+                """Apply SQL template to input."""
+                if not template:
+                    return ""
+                
+                templates = {
+                    "INSERT - 単一行": "INSERT INTO table_name (column1, column2, column3) VALUES (value1, value2, value3);",
+                    "INSERT - 複数行": "INSERT INTO table_name (column1, column2) VALUES (value1, value2);\nINSERT INTO table_name (column1, column2) VALUES (value3, value4);\nINSERT INTO table_name (column1, column2) VALUES (value5, value6);",
+                    "UPDATE": "UPDATE table_name SET column1 = value1, column2 = value2 WHERE condition;",
+                    "DELETE": "DELETE FROM table_name WHERE condition;",
+                    "MERGE": "MERGE INTO target_table t\nUSING source_table s\nON (t.id = s.id)\nWHEN MATCHED THEN\n  UPDATE SET t.column1 = s.column1\nWHEN NOT MATCHED THEN\n  INSERT (id, column1) VALUES (s.id, s.column1);",
+                }
+                return templates.get(template, "")
+            
+            # Wire up events
+            data_display_btn.click(
+                fn=display_data,
+                inputs=[data_table_select, data_limit_input, data_where_input],
+                outputs=[data_display_info, data_display]
+            )
+            
+            def preview_csv(file):
+                """Preview CSV file."""
+                if file:
+                    try:
+                        preview_df = pd.read_csv(file.name).head(10)
+                        if preview_df.empty:
+                            return gr.Markdown(visible=True, value="⚠️ CSVファイルにデータがありません"), gr.Dataframe(visible=False, value=pd.DataFrame())
+                        return gr.Markdown(visible=False), gr.Dataframe(visible=True, value=preview_df)
+                    except Exception as e:
+                        return gr.Markdown(visible=True, value=f"❌ CSV読み込みエラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame())
+                else:
+                    return gr.Markdown(visible=True, value="ℹ️ CSVファイルを選択するとプレビューが表示されます"), gr.Dataframe(visible=False, value=pd.DataFrame())
+            
+            csv_file_input.change(
+                fn=preview_csv,
+                inputs=[csv_file_input],
+                outputs=[csv_preview_info, csv_preview]
+            )
+            
+            csv_upload_btn.click(
+                fn=upload_csv,
+                inputs=[csv_file_input, csv_table_select, csv_upload_mode],
+                outputs=[csv_preview, csv_upload_result]
+            )
+            
+            data_execute_btn.click(
+                fn=execute_sql,
+                inputs=[data_sql_input],
+                outputs=[data_sql_result]
+            )
+            
+            data_clear_btn.click(
+                fn=clear_sql,
+                outputs=[data_sql_input]
+            )
+            
+            sql_template_select.change(
+                fn=apply_sql_template,
+                inputs=[sql_template_select],
+                outputs=[data_sql_input]
+            )
