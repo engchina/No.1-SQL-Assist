@@ -31,11 +31,9 @@ def get_table_list(pool):
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
-                # Query to get table list with comments
                 sql = """
                 SELECT 
                     t.table_name AS "Table Name",
-                    NVL(t.num_rows, 0) AS "Rows",
                     NVL(c.comments, ' ') AS "Comments"
                 FROM all_tables t
                 LEFT JOIN all_tab_comments c ON t.table_name = c.table_name AND t.owner = c.owner
@@ -44,10 +42,16 @@ def get_table_list(pool):
                 """
                 cursor.execute(sql)
                 rows = cursor.fetchall()
-                
                 if rows:
-                    columns = [desc[0] for desc in cursor.description]
-                    df = pd.DataFrame(rows, columns=columns)
+                    data = []
+                    for tn, comment in rows:
+                        try:
+                            cursor.execute(f"SELECT COUNT(*) FROM ADMIN.{tn.upper()}")
+                            cnt = cursor.fetchone()[0]
+                        except Exception:
+                            cnt = 0
+                        data.append((tn, cnt, comment))
+                    df = pd.DataFrame(data, columns=["Table Name", "Rows", "Comments"])
                     logger.info(f"Retrieved {len(df)} tables for ADMIN user")
                     return df
                 else:
