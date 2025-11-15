@@ -236,7 +236,14 @@ def build_oci_chat_test_tab(pool):
                 with gr.Row():
                     chat_model_input = gr.Dropdown(
                         label="モデル",
-                        choices=["xai.grok-code-fast-1"],
+                        choices=[
+                            "xai.grok-code-fast-1",
+                            "xai.grok-3",
+                            "xai.grok-3-fast",
+                            "xai.grok-4",
+                            "xai.grok-4-fast-non-reasoning",
+                            "meta.llama-4-scout-17b-16e-instruct",
+                        ],
                         value="xai.grok-code-fast-1",
                         interactive=True,
                         scale=2,
