@@ -216,7 +216,7 @@ END;
         return gr.Accordion(), gr.Textbox()
 
 
-def test_oci_cred(test_query_text, pool):
+def test_oci_cred(test_query_text, embed_model, pool):
     """OCI認証情報をテストする.
 
     Args:
@@ -239,7 +239,7 @@ def test_oci_cred(test_query_text, pool):
             "provider": "ocigenai",
             "credential_name": "OCI_CRED",
             "url": f"https://inference.generativeai.{region}.oci.oraclecloud.com/20231130/actions/embedText",
-            "model": "cohere.embed-v4.0",
+            "model": embed_model,
         }
 
         logger.info("Executing database query...")
@@ -444,9 +444,8 @@ def build_oci_embedding_test_tab(pool):
     """
     
     # ラッパー関数の定義
-    def test_oci_cred_wrapper(test_query_text):
-        """OCI認証情報をテストするためのラッパー関数."""
-        return test_oci_cred(test_query_text, pool)
+    def test_oci_cred_wrapper(test_query_text, embed_model):
+        return test_oci_cred(test_query_text, embed_model, pool)
     
     # UIコンポーネントの構築
     with gr.TabItem(label="OCI GenAI Embeddingモデルのテスト") as tab_test_oci_cred:      
@@ -471,6 +470,15 @@ def build_oci_embedding_test_tab(pool):
                     max_lines=5,
                     value="こんにちわ",
                 )
+        
+        with gr.Row():
+            with gr.Column():
+                tab_test_oci_cred_model_input = gr.Dropdown(
+                    label="モデル",
+                    choices=["cohere.embed-v4.0"],
+                    value="cohere.embed-v4.0",
+                    interactive=True,
+                )
 
         with gr.Row():
             with gr.Column():
@@ -488,7 +496,7 @@ def build_oci_embedding_test_tab(pool):
         
         tab_test_oci_cred_button.click(
             test_oci_cred_wrapper,
-            inputs=[tab_test_oci_cred_query_text],
+            inputs=[tab_test_oci_cred_query_text, tab_test_oci_cred_model_input],
             outputs=[tab_test_oci_cred_vector_text],
         )
 

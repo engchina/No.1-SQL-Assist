@@ -61,7 +61,10 @@ def execute_select_sql(pool, sql: str, limit: int):
                 rows = cursor.fetchmany(size=int(limit) if limit and int(limit) > 0 else 100)
                 cols = [d[0] for d in cursor.description] if cursor.description else []
                 if rows:
-                    df = pd.DataFrame(rows, columns=cols)
+                    cleaned_rows = []
+                    for r in rows:
+                        cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
+                    df = pd.DataFrame(cleaned_rows, columns=cols)
                     gr.Info(f"{len(df)}件のデータを取得しました")
                     widths = []
                     if len(df) > 0:
@@ -69,9 +72,9 @@ def execute_select_sql(pool, sql: str, limit: int):
                         for i, col in enumerate(df.columns):
                             cell = str(first_row[col])
                             length = max(len(str(col)), len(cell))
-                            widths.append(length)
+                            widths.append(min(100, length))
                     else:
-                        widths = [len(c) for c in df.columns]
+                        widths = [min(100, len(c)) for c in df.columns]
 
                     total = sum(widths) if widths else 0
                     if total <= 0:
@@ -113,7 +116,18 @@ def execute_select_sql(pool, sql: str, limit: int):
     except DatabaseError as e:
         logger.error(f"Oracleエラー: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"クエリ実行エラー: {str(e)}")
+        s = str(e)
+        m = re.search(r"ORA-(\d{5})", s)
+        code = m.group(0) if m else None
+        hint = "SQLと権限、スキーマを確認してください"
+        if code == "ORA-00942":
+            hint = "対象の表またはビューが存在しません。スキーマやオブジェクト名を確認してください"
+        ui_msg = f"❌ エラー: {s}\n\n👉 ヒント: {hint}"
+        return (
+            gr.Markdown(visible=True, value=ui_msg),
+            gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
+            gr.HTML(visible=False, value=""),
+        )
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         logger.error(traceback.format_exc())
@@ -131,7 +145,7 @@ def build_query_tab(pool):
     with gr.TabItem(label="クエリ実行") as tab_query:
         with gr.Accordion(label="1. SQLの入力", open=True):
             sql_input = gr.Textbox(
-                label="SQL文（SELECTのみ）",
+                label="SQL文（SELECTのみ）\n注意: 重いSQLを実行すると、処理が遅くなり画面が一時的に固まる場合があります",
                 placeholder="SELECT 文を入力してください（INSERT/UPDATE等は禁止）",
                 lines=8,
                 max_lines=30,

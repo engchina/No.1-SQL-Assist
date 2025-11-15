@@ -60,6 +60,7 @@ def get_compartment_id():
 async def send_chat_message_async(
     message: str,
     history: List[dict],
+    chat_model: str,
 ):
     """OCI Chat Modelにメッセージを送信してストリーミング応答を取得する（非同期）.
 
@@ -71,7 +72,7 @@ async def send_chat_message_async(
         tuple: (更新された会話履歴, 空文字列（入力クリア用）)
     """
     logger.info("=" * 50)
-    logger.info(f"Sending chat message to model: xai.grok-code-fast-1")
+    logger.info(f"Sending chat message to model: {chat_model}")
     logger.info(f"Message: {message[:100]}..." if len(message) > 100 else f"Message: {message}")
 
     if not message.strip():
@@ -122,7 +123,7 @@ async def send_chat_message_async(
         
         # Call the API with streaming
         stream = await client.chat.completions.create(
-            model="xai.grok-code-fast-1",
+            model=chat_model,
             messages=messages,
             stream=True,
         )
@@ -165,6 +166,7 @@ async def send_chat_message_async(
 def send_chat_message(
     message: str,
     history: List[dict],
+    chat_model: str,
 ):
     """OCI Chat Modelにメッセージを送信して応答を取得する（同期ラッパー）.
 
@@ -180,7 +182,7 @@ def send_chat_message(
     asyncio.set_event_loop(loop)
     
     try:
-        async_gen = send_chat_message_async(message, history)
+        async_gen = send_chat_message_async(message, history, chat_model)
         while True:
             try:
                 result = loop.run_until_complete(async_gen.__anext__())
@@ -232,19 +234,28 @@ def build_oci_chat_test_tab(pool):
                     )
 
                 with gr.Row():
+                    chat_model_input = gr.Dropdown(
+                        label="モデル",
+                        choices=["xai.grok-code-fast-1"],
+                        value="xai.grok-code-fast-1",
+                        interactive=True,
+                        scale=2,
+                    )
+
+                with gr.Row():
                     clear_btn = gr.Button("クリア", scale=1)
                     send_btn = gr.Button("送信", variant="primary", scale=1)
 
         # Event handlers
         send_btn.click(
             send_chat_message,
-            inputs=[msg_input, chatbot],
+            inputs=[msg_input, chatbot, chat_model_input],
             outputs=[chatbot, msg_input],
         )
 
         msg_input.submit(
             send_chat_message,
-            inputs=[msg_input, chatbot],
+            inputs=[msg_input, chatbot, chat_model_input],
             outputs=[chatbot, msg_input],
         )
 

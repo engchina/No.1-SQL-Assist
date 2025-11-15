@@ -9,7 +9,6 @@ import traceback
 
 import gradio as gr
 import pandas as pd
-from oracledb import DatabaseError
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -37,7 +36,7 @@ def get_table_list(pool):
                     NVL(c.comments, ' ') AS "Comments"
                 FROM all_tables t
                 LEFT JOIN all_tab_comments c ON t.table_name = c.table_name AND t.owner = c.owner
-                WHERE t.owner = 'ADMIN'
+                WHERE t.owner = 'ADMIN' AND t.table_name NOT LIKE '%$%'
                 ORDER BY t.table_name
                 """
                 cursor.execute(sql)
@@ -105,8 +104,11 @@ def get_table_details(pool, table_name):
                 col_rows = cursor.fetchall()
                 
                 if col_rows:
+                    cleaned_rows = []
+                    for r in col_rows:
+                        cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
                     columns = [desc[0] for desc in cursor.description]
-                    col_df = pd.DataFrame(col_rows, columns=columns)
+                    col_df = pd.DataFrame(cleaned_rows, columns=columns)
                 else:
                     col_df = pd.DataFrame(columns=["Column Name", "Data Type", "Nullable", "Comments"])
                 
@@ -128,7 +130,8 @@ def get_table_details(pool, table_name):
                     table_name=table_name.upper()
                 )
                 table_comment_result = cursor.fetchone()
-                table_comment = table_comment_result[0] if table_comment_result and table_comment_result[0] else None
+                table_comment_val = table_comment_result[0] if table_comment_result and table_comment_result[0] else None
+                table_comment = table_comment_val.read() if hasattr(table_comment_val, "read") else table_comment_val
                 
                 # Get column comments
                 cursor.execute(
@@ -141,6 +144,12 @@ def get_table_details(pool, table_name):
                     table_name=table_name.upper()
                 )
                 col_comments = cursor.fetchall()
+                if col_comments:
+                    cleaned_comments = []
+                    for cn, cm in col_comments:
+                        cm_val = cm.read() if hasattr(cm, "read") else cm
+                        cleaned_comments.append((cn, cm_val))
+                    col_comments = cleaned_comments
                 
                 # Append COMMENT statements to the DDL
                 if create_sql:
@@ -344,8 +353,11 @@ def get_view_details(pool, view_name):
                 col_rows = cursor.fetchall()
                 
                 if col_rows:
+                    cleaned_rows = []
+                    for r in col_rows:
+                        cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
                     columns = [desc[0] for desc in cursor.description]
-                    col_df = pd.DataFrame(col_rows, columns=columns)
+                    col_df = pd.DataFrame(cleaned_rows, columns=columns)
                 else:
                     col_df = pd.DataFrame(columns=["Column Name", "Data Type", "Nullable", "Comments"])
                 
@@ -367,7 +379,8 @@ def get_view_details(pool, view_name):
                     view_name=view_name.upper()
                 )
                 view_comment_result = cursor.fetchone()
-                view_comment = view_comment_result[0] if view_comment_result and view_comment_result[0] else None
+                view_comment_val = view_comment_result[0] if view_comment_result and view_comment_result[0] else None
+                view_comment = view_comment_val.read() if hasattr(view_comment_val, "read") else view_comment_val
                 
                 # Get column comments
                 cursor.execute(
@@ -380,6 +393,12 @@ def get_view_details(pool, view_name):
                     view_name=view_name.upper()
                 )
                 col_comments = cursor.fetchall()
+                if col_comments:
+                    cleaned_comments = []
+                    for cn, cm in col_comments:
+                        cm_val = cm.read() if hasattr(cm, "read") else cm
+                        cleaned_comments.append((cn, cm_val))
+                    col_comments = cleaned_comments
                 
                 # Append COMMENT statements to the DDL
                 if create_sql:
@@ -533,6 +552,35 @@ def get_table_list_for_data(pool):
         return []
 
 
+def get_table_list_for_upload(pool):
+    """Get list of table names for CSV upload dropdown, excluding views and names containing '$'.
+    
+    Args:
+        pool: Oracle database connection pool
+        
+    Returns:
+        list: List of table names eligible for upload
+    """
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                sql = """
+                SELECT table_name FROM all_tables 
+                WHERE owner = 'ADMIN' AND table_name NOT LIKE '%$%'
+                ORDER BY 1
+                """
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                names = [row[0] for row in rows] if rows else []
+                logger.info(f"Retrieved {len(names)} uploadable tables for ADMIN user")
+                return names
+    except Exception as e:
+        logger.error(f"Error getting uploadable table list: {e}")
+        logger.error(traceback.format_exc())
+        gr.Error(f"アップロード可能なテーブル一覧の取得に失敗しました: {str(e)}")
+        return []
+
+
 def display_table_data(pool, table_name, limit, where_clause=""):
     """Display data from selected table or view.
     
@@ -600,7 +648,6 @@ def upload_csv_data(pool, file, table_name, upload_mode):
     
     try:
         # Read CSV file
-        import csv
         df = pd.read_csv(file.name)
         logger.info(f"CSV file loaded: {len(df)} rows, {len(df.columns)} columns")
         
@@ -1122,7 +1169,7 @@ def build_management_tab(pool):
                 with gr.Row():
                     data_table_select = gr.Dropdown(
                         label="テーブル・ビュー選択",
-                        choices=get_table_list_for_data(pool),
+                        choices=get_table_list_for_upload(pool),
                         interactive=True,
                     )
                     data_limit_input = gr.Number(
@@ -1141,7 +1188,7 @@ def build_management_tab(pool):
                 data_display_btn = gr.Button("データを表示", variant="primary")
                 
                 data_display_info = gr.Markdown(
-                    value="ℹ️ テーブルまたはビューを選択して「データを表示」ボタンをクリックしてください",
+                    value="ℹ️ テーブルまたはビューを選択して「データを表示」ボタンをクリックしてください ℹ️ 注意: 重いSQLを実行すると、処理が遅くなり画面が一時的に固まる場合があります",
                     visible=True,
                 )
                 data_display = gr.Dataframe(
@@ -1150,7 +1197,9 @@ def build_management_tab(pool):
                     wrap=True,
                     visible=False,
                     value=pd.DataFrame(),
+                    elem_id="data_result_df",
                 )
+                data_result_style = gr.HTML(visible=False)
             
             # Feature 2: CSV Upload
             with gr.Accordion(label="2. CSVアップロード", open=False):
@@ -1163,7 +1212,7 @@ def build_management_tab(pool):
                 with gr.Row():
                     csv_table_select = gr.Dropdown(
                         label="アップロード先テーブル",
-                        choices=get_table_list_for_data(pool),
+                        choices=get_table_list_for_upload(pool),
                         interactive=True,
                     )
                     csv_upload_mode = gr.Radio(
@@ -1227,16 +1276,46 @@ def build_management_tab(pool):
             # Event Handlers
             def refresh_data_table_list():
                 """Refresh table and view list for data management."""
-                tables = get_table_list_for_data(pool)
-                return gr.Dropdown(choices=tables), gr.Dropdown(choices=tables)
+                upload_tables = get_table_list_for_upload(pool)
+                return gr.Dropdown(choices=upload_tables), gr.Dropdown(choices=upload_tables)
             
             def display_data(table_name, limit, where_clause):
-                """Display table data."""
                 df = display_table_data(pool, table_name, limit, where_clause)
                 if df.empty:
-                    return gr.Markdown(visible=True), gr.Dataframe(visible=False, value=pd.DataFrame())
+                    return gr.Markdown(visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                widths = []
+                if len(df) > 0:
+                    first_row = df.iloc[0]
+                    for col in df.columns:
+                        cell = str(first_row[col])
+                        length = max(len(str(col)), len(cell))
+                        widths.append(min(100, length))
                 else:
-                    return gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df)
+                    widths = [min(100, len(c)) for c in df.columns]
+
+                total = sum(widths) if widths else 0
+                if total <= 0:
+                    style_value = ""
+                else:
+                    col_widths = [max(5, int(100 * w / total)) for w in widths]
+                    diff = 100 - sum(col_widths)
+                    if diff != 0 and len(col_widths) > 0:
+                        col_widths[0] = max(5, col_widths[0] + diff)
+                    rules = ["#data_result_df table { table-layout: fixed; width: 100%; }"]
+                    for idx, pct in enumerate(col_widths, start=1):
+                        rules.append(f"#data_result_df table th:nth-child({idx}), #data_result_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                    style_value = "<style>" + "\n".join(rules) + "</style>"
+
+                df_component = gr.Dataframe(
+                    label=f"データ表示（件数: {len(df)}）",
+                    interactive=False,
+                    wrap=True,
+                    visible=True,
+                    value=df,
+                    elem_id="data_result_df",
+                )
+                style_component = gr.HTML(visible=bool(style_value), value=style_value)
+                return gr.Markdown(visible=False), df_component, style_component
             
             def upload_csv(file, table_name, mode):
                 """Upload CSV file."""
@@ -1274,7 +1353,7 @@ def build_management_tab(pool):
             data_display_btn.click(
                 fn=display_data,
                 inputs=[data_table_select, data_limit_input, data_where_input],
-                outputs=[data_display_info, data_display]
+                outputs=[data_display_info, data_display, data_result_style]
             )
             
             def preview_csv(file):
