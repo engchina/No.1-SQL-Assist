@@ -75,9 +75,34 @@ def get_db_profiles(pool) -> pd.DataFrame:
                     "SELECT PROFILE_NAME, STATUS FROM USER_CLOUD_AI_PROFILES ORDER BY PROFILE_NAME"
                 )
                 rows = cursor.fetchall() or []
-                return pd.DataFrame(rows, columns=["Profile Name", "Status"]).sort_values("Profile Name")
+                df = pd.DataFrame(rows, columns=["Profile Name", "Status"]).sort_values("Profile Name")
+
+        table_names = set(_get_table_names(pool))
+        view_names = set(_get_view_names(pool))
+        tables_col = []
+        views_col = []
+        regions_col = []
+        models_col = []
+        for _, r in df.iterrows():
+            name = str(r["Profile Name"]) if "Profile Name" in df.columns else str(r.iloc[0])
+            attrs = _get_profile_attributes(pool, name) or {}
+            obj_list = attrs.get("object_list") or []
+            t_list = sorted([o.get("name") for o in obj_list if o.get("name") in table_names])
+            v_list = sorted([o.get("name") for o in obj_list if o.get("name") in view_names])
+            tables_col.append(", ".join(t_list))
+            views_col.append(", ".join(v_list))
+            regions_col.append(str(attrs.get("region") or ""))
+            models_col.append(str(attrs.get("model") or ""))
+        if len(df) > 0:
+            df.insert(1, "Tables", tables_col)
+            df.insert(2, "Views", views_col)
+            df.insert(3, "Region", regions_col)
+            df.insert(4, "Model", models_col)
+        else:
+            df = pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])  
+        return df
     except Exception:
-        return pd.DataFrame(columns=["Profile Name", "Status"]) 
+        return pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"]) 
 
 
 def _get_profile_attributes(pool, name: str) -> dict:
@@ -207,7 +232,7 @@ def create_db_profile(pool, name: str, compartment_id: str, region: str, model: 
 
 def build_selectai_tab(pool):
     with gr.Tabs():
-        with gr.TabItem(label="管理者むけ機能"):
+        with gr.TabItem(label="管理者向け機能"):
             with gr.Tabs():
                 with gr.TabItem(label="Profileの管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
@@ -216,8 +241,12 @@ def build_selectai_tab(pool):
                             label="プロファイル一覧(行をクリックして詳細を表示)",
                             interactive=False,
                             wrap=True,
-                            value=get_db_profiles(pool),
+                            value=pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"]),
+                            headers=["Profile Name", "Tables", "Views", "Region", "Model", "Status"],
+                            visible=False,
+                            elem_id="profile_list_df",
                         )
+                        profile_list_style = gr.HTML(visible=False)
 
                 with gr.Accordion(label="2. プロファイル詳細と変更", open=True):
                     selected_profile_name = gr.Textbox(label="選択されたProfile名", interactive=False)
@@ -278,7 +307,29 @@ def build_selectai_tab(pool):
                     create_info = gr.Markdown(visible=False)
 
                 def refresh_profiles():
-                    return gr.Dataframe(value=get_db_profiles(pool))
+                    df = get_db_profiles(pool)
+                    if df is None or df.empty:
+                        empty_df = pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])
+                        return gr.Dataframe(value=empty_df, visible=True), gr.HTML(visible=False)
+                    sample = df.head(5)
+                    widths = []
+                    for col in sample.columns:
+                        series = sample[col].astype(str)
+                        row_max = series.map(len).max() if len(series) > 0 else 0
+                        length = max(len(str(col)), row_max)
+                        widths.append(min(20, length))
+                    total = sum(widths) if widths else 0
+                    style_value = ""
+                    if total > 0:
+                        col_widths = [max(5, int(100 * w / total)) for w in widths]
+                        diff = 100 - sum(col_widths)
+                        if diff != 0 and len(col_widths) > 0:
+                            col_widths[0] = max(5, col_widths[0] + diff)
+                        rules = ["#profile_list_df table { table-layout: fixed; width: 100%; }"]
+                        for idx, pct in enumerate(col_widths, start=1):
+                            rules.append(f"#profile_list_df table th:nth-child({idx}), #profile_list_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                        style_value = "<style>" + "\n".join(rules) + "</style>"
+                    return gr.Dataframe(value=df, visible=True), gr.HTML(visible=bool(style_value), value=style_value)
 
                 def _generate_create_sql(name: str, compartment_id: str, tables: list, views: list) -> str:
                     attrs = {
@@ -347,7 +398,7 @@ def build_selectai_tab(pool):
 
                 profile_refresh_btn.click(
                     fn=refresh_profiles,
-                    outputs=[profile_list_df],
+                    outputs=[profile_list_df, profile_list_style],
                 )
 
                 profile_list_df.select(
@@ -376,7 +427,172 @@ def build_selectai_tab(pool):
                 )
 
         with gr.TabItem(label="開発者向け機能"):
-            gr.Markdown(value="準備中")
+            with gr.Accordion(label="1. チャット", open=True):
+                def _dev_profile_names():
+                    try:
+                        df = get_db_profiles(pool)
+                        if isinstance(df, pd.DataFrame) and not df.empty and df.columns.tolist():
+                            c0 = df.columns[0]
+                            return [str(x) for x in df[c0].tolist()]
+                    except Exception:
+                        pass
+                    return []
+
+                with gr.Row():
+                    dev_profile_refresh_btn = gr.Button("一覧を更新", variant="primary")
+
+                dev_profile_select = gr.Dropdown(
+                    label="Profile",
+                    choices=[],
+                    interactive=True,
+                )
+
+                dev_prompt_input = gr.Textbox(
+                    label="自然言語の質問",
+                    placeholder="例: 大阪の顧客数を教えて",
+                    lines=3,
+                    max_lines=10,
+                    show_copy_button=True,
+                )
+
+                with gr.Row():
+                    dev_chat_clear_btn = gr.Button("クリア", variant="secondary")
+                    dev_chat_execute_btn = gr.Button("実行", variant="primary")
+
+            with gr.Accordion(label="2. 実行結果の表示", open=True):
+                dev_chat_result_info = gr.Markdown(
+                    value="ℹ️ Profile を選択し、自然言語の質問を入力して「実行」をクリックしてください",
+                    visible=True,
+                )
+
+                dev_chat_result_df = gr.Dataframe(
+                    label="実行結果",
+                    interactive=False,
+                    wrap=True,
+                    visible=False,
+                    value=pd.DataFrame(),
+                    elem_id="selectai_dev_chat_result_df",
+                )
+                dev_chat_result_style = gr.HTML(visible=False)
+
+            def _execute_select_ai_dev(selected_profile: str, prompt: str):
+                if not selected_profile or not str(selected_profile).strip():
+                    gr.Warning("Profileを選択してください")
+                    return (
+                        gr.Markdown(visible=True, value="⚠️ Profileを選択してください"),
+                        gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"),
+                        gr.HTML(visible=False, value=""),
+                    )
+                if not prompt or not str(prompt).strip():
+                    gr.Warning("質問を入力してください")
+                    return (
+                        gr.Markdown(visible=True, value="ℹ️ 質問を入力してください"),
+                        gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"),
+                        gr.HTML(visible=False, value=""),
+                    )
+
+                q = str(prompt).strip()
+                if q.endswith(";"):
+                    q = q[:-1]
+
+                try:
+                    with pool.acquire() as conn:
+                        with conn.cursor() as cursor:
+                            try:
+                                cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=selected_profile)
+                            except Exception:
+                                pass
+
+                            stmt = f"SELECT AI {q}"
+                            cursor.execute(stmt)
+                            rows = cursor.fetchmany(size=100)
+                            cols = [d[0] for d in cursor.description] if cursor.description else []
+                            if rows:
+                                cleaned_rows = []
+                                for r in rows:
+                                    cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
+                                df = pd.DataFrame(cleaned_rows, columns=cols)
+                                gr.Info(f"{len(df)}件のデータを取得しました")
+
+                                widths = []
+                                if len(df) > 0:
+                                    sample = df.head(5)
+                                    for col in df.columns:
+                                        series = sample[col].astype(str)
+                                        row_max = series.map(len).max() if len(series) > 0 else 0
+                                        length = max(len(str(col)), row_max)
+                                        widths.append(min(20, length))
+                                else:
+                                    widths = [min(20, len(c)) for c in df.columns]
+
+                                total = sum(widths) if widths else 0
+                                if total <= 0:
+                                    col_widths = None
+                                else:
+                                    col_widths = [max(5, int(100 * w / total)) for w in widths]
+                                    diff = 100 - sum(col_widths)
+                                    if diff != 0 and len(col_widths) > 0:
+                                        col_widths[0] = max(5, col_widths[0] + diff)
+
+                                df_component = gr.Dataframe(
+                                    visible=True,
+                                    value=df,
+                                    label=f"実行結果（件数: {len(df)}）",
+                                    elem_id="selectai_dev_chat_result_df",
+                                )
+                                style_value = ""
+                                if col_widths:
+                                    rules = []
+                                    rules.append("#selectai_dev_chat_result_df table { table-layout: fixed; width: 100%; }")
+                                    for idx, pct in enumerate(col_widths, start=1):
+                                        rules.append(
+                                            f"#selectai_dev_chat_result_df table th:nth-child({idx}), #selectai_dev_chat_result_df table td:nth-child({idx}) {{ width: {pct}%; }}"
+                                        )
+                                    style_value = "<style>" + "\n".join(rules) + "</style>"
+                                style_component = gr.HTML(visible=bool(style_value), value=style_value)
+                                return (
+                                    gr.Markdown(visible=False),
+                                    df_component,
+                                    style_component,
+                                )
+                            else:
+                                return (
+                                    gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"),
+                                    gr.Dataframe(visible=True, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"),
+                                    gr.HTML(visible=False, value=""),
+                                )
+                except Exception as e:
+                    ui_msg = f"❌ エラー: {str(e)}"
+                    return (
+                        gr.Markdown(visible=True, value=ui_msg),
+                        gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"),
+                        gr.HTML(visible=False, value=""),
+                    )
+
+            def _on_dev_chat_execute(profile, prompt):
+                return _execute_select_ai_dev(profile, prompt)
+
+            def _on_dev_chat_clear():
+                return "", gr.Dropdown(choices=_dev_profile_names())
+
+            def _on_dev_profile_refresh():
+                return gr.Dropdown(choices=_dev_profile_names())
+
+            dev_chat_execute_btn.click(
+                fn=_on_dev_chat_execute,
+                inputs=[dev_profile_select, dev_prompt_input],
+                outputs=[dev_chat_result_info, dev_chat_result_df, dev_chat_result_style],
+            )
+
+            dev_chat_clear_btn.click(
+                fn=_on_dev_chat_clear,
+                outputs=[dev_prompt_input, dev_profile_select],
+            )
+
+            dev_profile_refresh_btn.click(
+                fn=_on_dev_profile_refresh,
+                outputs=[dev_profile_select],
+            )
 
         with gr.TabItem(label="ユーザー向け機能"):
             with gr.Accordion(label="1. チャット", open=True):
@@ -395,7 +611,7 @@ def build_selectai_tab(pool):
 
                 profile_select = gr.Dropdown(
                     label="Profile",
-                    choices=_profile_names(),
+                    choices=[],
                     interactive=True,
                 )
 

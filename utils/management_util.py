@@ -833,7 +833,9 @@ def build_management_tab(pool):
                     label="テーブル一覧(行をクリックして詳細を表示)",
                     interactive=False,
                     wrap=True,
-                    value=get_table_list(pool),
+                    value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]),
+                    headers=["Table Name", "Rows", "Comments"],
+                    visible=False,
                 )
             
             # Feature 2: Table Details and Drop
@@ -944,19 +946,20 @@ def build_management_tab(pool):
             
             def refresh_table_list():
                 """Refresh the table list."""
-                return get_table_list(pool)
+                df = get_table_list(pool)
+                return gr.Dataframe(value=df, visible=True)
             
             def drop_selected_table(table_name):
                 """Drop the selected table and refresh list."""
                 result = drop_table(pool, table_name)
                 new_list = get_table_list(pool)
-                return result, new_list, "", pd.DataFrame(), ""
+                return result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), ""
             
             def execute_create(sql):
                 """Execute CREATE TABLE and refresh list."""
                 result = execute_create_table(pool, sql)
                 new_list = get_table_list(pool)
-                return result, new_list
+                return result, gr.Dataframe(value=new_list, visible=True)
             
             def clear_sql():
                 """Clear the SQL input."""
@@ -1001,7 +1004,9 @@ def build_management_tab(pool):
                     label="ビュー一覧(行をクリックして詳細を表示)",
                     interactive=False,
                     wrap=True,
-                    value=get_view_list(pool),
+                    value=pd.DataFrame(columns=["View Name", "Comments"]),
+                    headers=["View Name", "Comments"],
+                    visible=False,
                 )
             
             # Feature 2: View Details and Drop
@@ -1112,19 +1117,20 @@ def build_management_tab(pool):
             
             def refresh_view_list():
                 """Refresh the view list."""
-                return get_view_list(pool)
+                df = get_view_list(pool)
+                return gr.Dataframe(value=df, visible=True)
             
             def drop_selected_view(view_name):
                 """Drop the selected view and refresh list."""
                 result = drop_view(pool, view_name)
                 new_list = get_view_list(pool)
-                return result, new_list, "", pd.DataFrame(), ""
+                return result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), ""
             
             def execute_create_view_handler(sql):
                 """Execute CREATE VIEW and refresh list."""
                 result = execute_create_view(pool, sql)
                 new_list = get_view_list(pool)
-                return result, new_list
+                return result, gr.Dataframe(value=new_list, visible=True)
             
             def clear_view_sql():
                 """Clear the SQL input."""
@@ -1169,7 +1175,7 @@ def build_management_tab(pool):
                 with gr.Row():
                     data_table_select = gr.Dropdown(
                         label="テーブル・ビュー選択",
-                        choices=get_table_list_for_upload(pool),
+                        choices=[],
                         interactive=True,
                     )
                     data_limit_input = gr.Number(
@@ -1212,7 +1218,7 @@ def build_management_tab(pool):
                 with gr.Row():
                     csv_table_select = gr.Dropdown(
                         label="アップロード先テーブル",
-                        choices=get_table_list_for_upload(pool),
+                        choices=[],
                         interactive=True,
                     )
                     csv_upload_mode = gr.Radio(
