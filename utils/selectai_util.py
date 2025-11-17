@@ -207,7 +207,7 @@ def create_db_profile(pool, name: str, compartment_id: str, region: str, model: 
 
 def build_selectai_tab(pool):
     with gr.Tabs():
-        with gr.TabItem(label="管理機能"):
+        with gr.TabItem(label="管理者むけ機能"):
             with gr.Tabs():
                 with gr.TabItem(label="Profileの管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
@@ -468,13 +468,14 @@ def build_selectai_tab(pool):
 
                                 widths = []
                                 if len(df) > 0:
-                                    first_row = df.iloc[0]
+                                    sample = df.head(5)
                                     for col in df.columns:
-                                        cell = str(first_row[col])
-                                        length = max(len(str(col)), len(cell))
-                                        widths.append(min(100, length))
+                                        series = sample[col].astype(str)
+                                        row_max = series.map(len).max() if len(series) > 0 else 0
+                                        length = max(len(str(col)), row_max)
+                                        widths.append(min(20, length))
                                 else:
-                                    widths = [min(100, len(c)) for c in df.columns]
+                                    widths = [min(20, len(c)) for c in df.columns]
 
                                 total = sum(widths) if widths else 0
                                 if total <= 0:

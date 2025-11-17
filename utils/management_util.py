@@ -1285,13 +1285,14 @@ def build_management_tab(pool):
                     return gr.Markdown(visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                 widths = []
                 if len(df) > 0:
-                    first_row = df.iloc[0]
+                    sample = df.head(5)
                     for col in df.columns:
-                        cell = str(first_row[col])
-                        length = max(len(str(col)), len(cell))
-                        widths.append(min(100, length))
+                        series = sample[col].astype(str)
+                        row_max = series.map(len).max() if len(series) > 0 else 0
+                        length = max(len(str(col)), row_max)
+                        widths.append(min(20, length))
                 else:
-                    widths = [min(100, len(c)) for c in df.columns]
+                    widths = [min(20, len(c)) for c in df.columns]
 
                 total = sum(widths) if widths else 0
                 if total <= 0:
