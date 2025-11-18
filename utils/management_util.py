@@ -829,6 +829,7 @@ def build_management_tab(pool):
             # Feature 1: Table List
             with gr.Accordion(label="1. テーブル一覧", open=True):
                 table_refresh_btn = gr.Button("テーブル一覧を更新", variant="primary")
+                table_refresh_status = gr.Markdown(visible=False)
                 table_list_df = gr.Dataframe(
                     label="テーブル一覧(行をクリックして詳細を表示)",
                     interactive=False,
@@ -945,9 +946,12 @@ def build_management_tab(pool):
                 return "", pd.DataFrame(), ""
             
             def refresh_table_list():
-                """Refresh the table list."""
-                df = get_table_list(pool)
-                return gr.Dataframe(value=df, visible=True)
+                try:
+                    yield gr.Markdown(value="⏳ テーブル一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
+                    df = get_table_list(pool)
+                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dataframe(value=df, visible=True)
+                except Exception as e:
+                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
             
             def drop_selected_table(table_name):
                 """Drop the selected table and refresh list."""
@@ -968,7 +972,7 @@ def build_management_tab(pool):
             # Wire up events
             table_refresh_btn.click(
                 fn=refresh_table_list,
-                outputs=[table_list_df]
+                outputs=[table_refresh_status, table_list_df]
             )
             
             table_list_df.select(
@@ -1000,6 +1004,7 @@ def build_management_tab(pool):
             # Feature 1: View List
             with gr.Accordion(label="1. ビュー一覧", open=True):
                 view_refresh_btn = gr.Button("ビュー一覧を更新", variant="primary")
+                view_refresh_status = gr.Markdown(visible=False)
                 view_list_df = gr.Dataframe(
                     label="ビュー一覧(行をクリックして詳細を表示)",
                     interactive=False,
@@ -1116,9 +1121,12 @@ def build_management_tab(pool):
                 return "", pd.DataFrame(), ""
             
             def refresh_view_list():
-                """Refresh the view list."""
-                df = get_view_list(pool)
-                return gr.Dataframe(value=df, visible=True)
+                try:
+                    yield gr.Markdown(value="⏳ ビュー一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
+                    df = get_view_list(pool)
+                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dataframe(value=df, visible=True)
+                except Exception as e:
+                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
             
             def drop_selected_view(view_name):
                 """Drop the selected view and refresh list."""
@@ -1139,7 +1147,7 @@ def build_management_tab(pool):
             # Wire up events
             view_refresh_btn.click(
                 fn=refresh_view_list,
-                outputs=[view_list_df]
+                outputs=[view_refresh_status, view_list_df]
             )
             
             view_list_df.select(
@@ -1171,6 +1179,7 @@ def build_management_tab(pool):
             # Feature 1: Table Data Display
             with gr.Accordion(label="1. テーブル・ビューデータの表示", open=True):
                 data_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                data_refresh_status = gr.Markdown(visible=False)
                 
                 with gr.Row():
                     data_table_select = gr.Dropdown(
@@ -1251,12 +1260,14 @@ def build_management_tab(pool):
                 sql_template_select = gr.Dropdown(
                     label="SQLテンプレート（オプション）",
                     choices=[
+                        "",
                         "INSERT - 単一行",
                         "INSERT - 複数行",
                         "UPDATE",
                         "DELETE",
                         "MERGE",
                     ],
+                    value="",
                     interactive=True,
                 )
                 
@@ -1281,48 +1292,52 @@ def build_management_tab(pool):
             
             # Event Handlers
             def refresh_data_table_list():
-                """Refresh table and view list for data management."""
-                upload_tables = get_table_list_for_upload(pool)
-                return gr.Dropdown(choices=upload_tables), gr.Dropdown(choices=upload_tables)
+                try:
+                    yield gr.Markdown(value="⏳ テーブル・ビュー一覧を更新中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
+                    upload_tables = get_table_list_for_upload(pool)
+                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dropdown(choices=upload_tables), gr.Dropdown(choices=upload_tables)
+                except Exception as e:
+                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
             
             def display_data(table_name, limit, where_clause):
-                df = display_table_data(pool, table_name, limit, where_clause)
-                if df.empty:
-                    return gr.Markdown(visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
-                widths = []
-                if len(df) > 0:
+                try:
+                    yield gr.Markdown(value="⏳ データを取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                    df = display_table_data(pool, table_name, limit, where_clause)
+                    if df.empty:
+                        yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                        return
+                    widths = []
                     sample = df.head(5)
                     for col in df.columns:
                         series = sample[col].astype(str)
                         row_max = series.map(len).max() if len(series) > 0 else 0
                         length = max(len(str(col)), row_max)
                         widths.append(min(20, length))
-                else:
-                    widths = [min(20, len(c)) for c in df.columns]
+                    total = sum(widths) if widths else 0
+                    if total <= 0:
+                        style_value = ""
+                    else:
+                        col_widths = [max(5, int(100 * w / total)) for w in widths]
+                        diff = 100 - sum(col_widths)
+                        if diff != 0 and len(col_widths) > 0:
+                            col_widths[0] = max(5, col_widths[0] + diff)
+                        rules = ["#data_result_df table { table-layout: fixed; width: 100%; }"]
+                        for idx, pct in enumerate(col_widths, start=1):
+                            rules.append(f"#data_result_df table th:nth-child({idx}), #data_result_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                        style_value = "<style>" + "\n".join(rules) + "</style>"
 
-                total = sum(widths) if widths else 0
-                if total <= 0:
-                    style_value = ""
-                else:
-                    col_widths = [max(5, int(100 * w / total)) for w in widths]
-                    diff = 100 - sum(col_widths)
-                    if diff != 0 and len(col_widths) > 0:
-                        col_widths[0] = max(5, col_widths[0] + diff)
-                    rules = ["#data_result_df table { table-layout: fixed; width: 100%; }"]
-                    for idx, pct in enumerate(col_widths, start=1):
-                        rules.append(f"#data_result_df table th:nth-child({idx}), #data_result_df table td:nth-child({idx}) {{ width: {pct}%; }}")
-                    style_value = "<style>" + "\n".join(rules) + "</style>"
-
-                df_component = gr.Dataframe(
-                    label=f"データ表示（件数: {len(df)}）",
-                    interactive=False,
-                    wrap=True,
-                    visible=True,
-                    value=df,
-                    elem_id="data_result_df",
-                )
-                style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                return gr.Markdown(visible=False), df_component, style_component
+                    df_component = gr.Dataframe(
+                        label=f"データ表示（件数: {len(df)}）",
+                        interactive=False,
+                        wrap=True,
+                        visible=True,
+                        value=df,
+                        elem_id="data_result_df",
+                    )
+                    style_component = gr.HTML(visible=bool(style_value), value=style_value)
+                    yield gr.Markdown(visible=False), df_component, style_component
+                except Exception as e:
+                    yield gr.Markdown(value=f"❌ データ取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
             
             def upload_csv(file, table_name, mode):
                 """Upload CSV file."""
@@ -1354,7 +1369,7 @@ def build_management_tab(pool):
             # Wire up events
             data_refresh_btn.click(
                 fn=refresh_data_table_list,
-                outputs=[data_table_select, csv_table_select]
+                outputs=[data_refresh_status, data_table_select, csv_table_select]
             )
             
             data_display_btn.click(

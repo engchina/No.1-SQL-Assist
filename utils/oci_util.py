@@ -118,14 +118,19 @@ def create_oci_cred(user_ocid, tenancy_ocid, fingerprint, private_key_file, regi
         
         oci_config_path = find_dotenv("/root/.oci/config")
         key_file_path = "/root/.oci/oci_api_key.pem"
-        set_key(oci_config_path, "user", user_ocid, quote_mode="never")
-        set_key(oci_config_path, "tenancy", tenancy_ocid, quote_mode="never")
-        set_key(oci_config_path, "region", region, quote_mode="never")
-        set_key(oci_config_path, "fingerprint", fingerprint, quote_mode="never")
-        set_key(oci_config_path, "key_file", key_file_path, quote_mode="never")
-        shutil.copy(private_key_file.name, key_file_path)
-        load_dotenv(oci_config_path)
-        logger.info("OCI config file updated")
+        try:
+            set_key(oci_config_path, "user", user_ocid, quote_mode="never")
+            set_key(oci_config_path, "tenancy", tenancy_ocid, quote_mode="never")
+            set_key(oci_config_path, "region", region, quote_mode="never")
+            set_key(oci_config_path, "fingerprint", fingerprint, quote_mode="never")
+            set_key(oci_config_path, "key_file", key_file_path, quote_mode="never")
+            shutil.copy(private_key_file.name, key_file_path)
+            load_dotenv(oci_config_path)
+            logger.info("OCI config file updated")
+        except Exception as e:
+            logger.error(f"Error updating OCI config: {e}")
+            logger.exception("Full traceback:")
+            gr.Warning("OCI設定ファイルの更新に失敗しましたが、データベース側の設定は続行します")
 
         # Set up OCI Credential on database
         private_key = process_private_key(private_key_file.name)
@@ -211,7 +216,7 @@ END;
     except Exception as e:
         logger.error(f"Error during credential setup: {e}")
         logger.exception("Full traceback:")
-        gr.Error(f"認証情報の設定中にエラーが発生しました: {e}")
+        gr.Warning("一部の設定でエラーが発生しましたが、可能な範囲で処理を続行しました")
         logger.info("=" * 50)
         return gr.Accordion(), gr.Textbox()
 

@@ -76,6 +76,7 @@ def get_db_profiles(pool) -> pd.DataFrame:
                 )
                 rows = cursor.fetchall() or []
                 df = pd.DataFrame(rows, columns=["Profile Name", "Status"]).sort_values("Profile Name")
+                df = df[df["Profile Name"].astype(str).str.strip().str.upper() != "OCI_CRED$PROF"]
 
         table_names = set(_get_table_names(pool))
         view_names = set(_get_view_names(pool))
@@ -236,7 +237,8 @@ def build_selectai_tab(pool):
             with gr.Tabs():
                 with gr.TabItem(label="Profileの管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
-                        profile_refresh_btn = gr.Button("一覧を更新", variant="primary")
+                        profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                        profile_refresh_status = gr.Markdown(visible=False)
                         profile_list_df = gr.Dataframe(
                             label="プロファイル一覧(行をクリックして詳細を表示)",
                             interactive=False,
@@ -261,7 +263,7 @@ def build_selectai_tab(pool):
 
                 with gr.Accordion(label="3. プロファイルの作成", open=False):
                     with gr.Row():
-                        refresh_btn = gr.Button("一覧を更新", variant="primary")
+                        refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
 
                     with gr.Row():
                         table_choices = _get_table_names(pool)
@@ -307,29 +309,34 @@ def build_selectai_tab(pool):
                     create_info = gr.Markdown(visible=False)
 
                 def refresh_profiles():
-                    df = get_db_profiles(pool)
-                    if df is None or df.empty:
-                        empty_df = pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])
-                        return gr.Dataframe(value=empty_df, visible=True), gr.HTML(visible=False)
-                    sample = df.head(5)
-                    widths = []
-                    for col in sample.columns:
-                        series = sample[col].astype(str)
-                        row_max = series.map(len).max() if len(series) > 0 else 0
-                        length = max(len(str(col)), row_max)
-                        widths.append(min(20, length))
-                    total = sum(widths) if widths else 0
-                    style_value = ""
-                    if total > 0:
-                        col_widths = [max(5, int(100 * w / total)) for w in widths]
-                        diff = 100 - sum(col_widths)
-                        if diff != 0 and len(col_widths) > 0:
-                            col_widths[0] = max(5, col_widths[0] + diff)
-                        rules = ["#profile_list_df table { table-layout: fixed; width: 100%; }"]
-                        for idx, pct in enumerate(col_widths, start=1):
-                            rules.append(f"#profile_list_df table th:nth-child({idx}), #profile_list_df table td:nth-child({idx}) {{ width: {pct}%; }}")
-                        style_value = "<style>" + "\n".join(rules) + "</style>"
-                    return gr.Dataframe(value=df, visible=True), gr.HTML(visible=bool(style_value), value=style_value)
+                    try:
+                        yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
+                        df = get_db_profiles(pool)
+                        if df is None or df.empty:
+                            empty_df = pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])
+                            yield gr.Markdown(value="✅ 更新完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True), gr.HTML(visible=False)
+                            return
+                        sample = df.head(5)
+                        widths = []
+                        for col in sample.columns:
+                            series = sample[col].astype(str)
+                            row_max = series.map(len).max() if len(series) > 0 else 0
+                            length = max(len(str(col)), row_max)
+                            widths.append(min(20, length))
+                        total = sum(widths) if widths else 0
+                        style_value = ""
+                        if total > 0:
+                            col_widths = [max(5, int(100 * w / total)) for w in widths]
+                            diff = 100 - sum(col_widths)
+                            if diff != 0 and len(col_widths) > 0:
+                                col_widths[0] = max(5, col_widths[0] + diff)
+                            rules = ["#profile_list_df table { table-layout: fixed; width: 100%; }"]
+                            for idx, pct in enumerate(col_widths, start=1):
+                                rules.append(f"#profile_list_df table th:nth-child({idx}), #profile_list_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                            style_value = "<style>" + "\n".join(rules) + "</style>"
+                        yield gr.Markdown(visible=False), gr.Dataframe(value=df, visible=True), gr.HTML(visible=bool(style_value), value=style_value)
+                    except Exception as e:
+                        yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
 
                 def _generate_create_sql(name: str, compartment_id: str, tables: list, views: list) -> str:
                     attrs = {
@@ -398,7 +405,7 @@ def build_selectai_tab(pool):
 
                 profile_refresh_btn.click(
                     fn=refresh_profiles,
-                    outputs=[profile_list_df, profile_list_style],
+                    outputs=[profile_refresh_status, profile_list_df, profile_list_style],
                 )
 
                 profile_list_df.select(
@@ -441,7 +448,9 @@ def build_selectai_tab(pool):
                             return []
 
                     with gr.Row():
-                        dev_profile_refresh_btn = gr.Button("一覧を更新", variant="primary")
+                        dev_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                    
+                    dev_profile_refresh_status = gr.Markdown(visible=False)
 
                     dev_profile_select = gr.Dropdown(
                         label="Profile",
@@ -852,7 +861,11 @@ def build_selectai_tab(pool):
                         return "", gr.Dropdown(choices=_dev_profile_names())
 
                     def _on_dev_profile_refresh():
-                        return gr.Dropdown(choices=_dev_profile_names())
+                        try:
+                            yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(visible=False), gr.Dropdown(choices=_dev_profile_names())
+                        except Exception as e:
+                            yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     def _append_comment(current_text: str, template: str):
                         s = str(current_text or "").strip()
@@ -936,7 +949,7 @@ def build_selectai_tab(pool):
 
                     dev_profile_refresh_btn.click(
                         fn=_on_dev_profile_refresh,
-                        outputs=[dev_profile_select],
+                        outputs=[dev_profile_refresh_status, dev_profile_select],
                     )
 
                     dev_feedback_send_btn.click(
@@ -978,7 +991,9 @@ def build_selectai_tab(pool):
                         return []
 
                     with gr.Row():
-                        global_profile_refresh_btn = gr.Button("一覧を更新", variant="primary")
+                        global_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                    
+                    global_profile_refresh_status = gr.Markdown(visible=False)
 
                     global_profile_select = gr.Dropdown(
                         label="Profile",
@@ -1030,11 +1045,15 @@ def build_selectai_tab(pool):
                             return gr.Dataframe(visible=True, value=pd.DataFrame())
 
                     def _on_global_profile_refresh():
-                        return gr.Dropdown(choices=_global_profile_names())
+                        try:
+                            yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(visible=False), gr.Dropdown(choices=_global_profile_names())
+                        except Exception as e:
+                            yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     global_profile_refresh_btn.click(
                         fn=_on_global_profile_refresh,
-                        outputs=[global_profile_select],
+                        outputs=[global_profile_refresh_status, global_profile_select],
                     )
 
                     global_profile_select.change(
@@ -1093,7 +1112,9 @@ def build_selectai_tab(pool):
                             return []
 
                         with gr.Row():
-                            user_profile_refresh_btn = gr.Button("一覧を更新", variant="primary")
+                            user_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                        
+                        user_profile_refresh_status = gr.Markdown(visible=False)
 
                         profile_select = gr.Dropdown(
                             label="Profile",
@@ -1230,7 +1251,11 @@ def build_selectai_tab(pool):
                 return "", gr.Dropdown(choices=_profile_names())
 
             def _on_user_profile_refresh():
-                return gr.Dropdown(choices=_profile_names())
+                try:
+                    yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
+                    yield gr.Markdown(visible=False), gr.Dropdown(choices=_profile_names())
+                except Exception as e:
+                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
             chat_execute_btn.click(
                 fn=_on_chat_execute,
@@ -1245,5 +1270,5 @@ def build_selectai_tab(pool):
 
             user_profile_refresh_btn.click(
                 fn=_on_user_profile_refresh,
-                outputs=[profile_select],
+                outputs=[user_profile_refresh_status, profile_select],
             )
