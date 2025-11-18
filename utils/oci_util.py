@@ -164,7 +164,7 @@ END;"""
                     drop_oci_cred_sql = "BEGIN dbms_vector.drop_credential('OCI_CRED'); END;"
                     cursor.execute(drop_oci_cred_sql)
                     logger.info("Existing OCI_CRED dropped")
-                except DatabaseError as de:
+                except DatabaseError:
                     logger.info("No existing OCI_CRED to drop")
 
                 oci_cred = {
@@ -288,7 +288,7 @@ END;"""
                                     logger.info(f"  Vector length: {vector_length}")
                                     test_query_vector += str(lob_json["embed_vector"]) + "\n"
                                 else:
-                                    logger.warning(f"  'embed_vector' key not found in JSON")
+                                    logger.warning("  'embed_vector' key not found in JSON")
                             elif isinstance(row[0], str):
                                 logger.info(f"Row {idx}: Processing string data (length: {len(row[0])})")
                                 

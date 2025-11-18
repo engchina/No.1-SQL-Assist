@@ -5,6 +5,7 @@
 """
 
 import logging
+import json
 import re
 import traceback
 
@@ -63,7 +64,37 @@ def execute_select_sql(pool, sql: str, limit: int):
                 if rows:
                     cleaned_rows = []
                     for r in rows:
-                        cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
+                        row_vals = []
+                        for v in r:
+                            val = v.read() if hasattr(v, "read") else v
+                            if isinstance(val, (bytes, bytearray)):
+                                try:
+                                    val = val.decode("utf-8")
+                                except Exception:
+                                    try:
+                                        val = val.decode("latin1")
+                                    except Exception:
+                                        val = str(val)
+                            if isinstance(val, (dict, list)):
+                                try:
+                                    val = json.dumps(val, ensure_ascii=False)
+                                except Exception:
+                                    val = str(val)
+                            elif isinstance(val, str):
+                                s = val.strip()
+                                if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+                                    try:
+                                        obj = json.loads(s)
+                                        disp = json.dumps(obj, ensure_ascii=False, indent=2)
+                                        disp = disp.replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '')
+                                        disp = disp.replace('\\"', '"')
+                                        val = disp
+                                    except Exception:
+                                        val = s.replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '').replace('\\"', '"')
+                                else:
+                                    val = s.replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '').replace('\\"', '"')
+                            row_vals.append(val)
+                        cleaned_rows.append(row_vals)
                     df = pd.DataFrame(cleaned_rows, columns=cols)
                     gr.Info(f"{len(df)}件のデータを取得しました")
                     widths = []
@@ -184,7 +215,12 @@ def build_query_tab(pool):
             result_style = gr.HTML(visible=False)
 
         def on_execute(sql, limit):
-            return execute_select_sql(pool, sql, limit)
+            try:
+                yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
+                result_info, result_df, result_style = execute_select_sql(pool, sql, limit)
+                yield result_info, result_df, result_style
+            except Exception as e:
+                yield gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
 
         def on_clear():
             return ""

@@ -5,7 +5,7 @@ Gradio UIコンポーネントを実装します。
 """
 
 import logging
-from typing import List, Tuple
+from typing import List
 
 import gradio as gr
 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth

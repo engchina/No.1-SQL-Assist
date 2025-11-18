@@ -13,6 +13,7 @@ from pathlib import Path
 
 import gradio as gr
 import pandas as pd
+from utils.query_util import build_query_tab
 
 from utils.management_util import (
     get_table_list,
@@ -197,14 +198,29 @@ def build_selectai_profile(pool, name, tables, views):
     return json.dumps(profile, ensure_ascii=False, indent=2)
 
 
-def create_db_profile(pool, name: str, compartment_id: str, region: str, model: str, tables: list, views: list):
+def create_db_profile(
+    pool,
+    name: str,
+    compartment_id: str,
+    region: str,
+    model: str,
+    embedding_model: str,
+    enforce_object_list: bool,
+    comments: bool,
+    annotations: bool,
+    tables: list,
+    views: list,
+):
     attrs = {
         "provider": "oci",
         "credential_name": "OCI_CRED",
         "oci_compartment_id": compartment_id,
         "region": region,
         "model": model,
-        "comments": True,
+        "embedding_model": embedding_model,
+        "enforce_object_list": enforce_object_list,
+        "comments": comments,
+        "annotations": annotations,
         "object_list": [],
     }
 
@@ -229,6 +245,8 @@ def create_db_profile(pool, name: str, compartment_id: str, region: str, model: 
                 name=name,
                 attrs=attr_str,
             )
+
+            pass
 
 
 def build_selectai_tab(pool):
@@ -289,6 +307,16 @@ def build_selectai_tab(pool):
                         )
 
                     with gr.Row():
+                        embedding_model_input = gr.Dropdown(
+                            label="Embedding_Model",
+                            choices=[
+                                "cohere.embed-v4.0",
+                            ],
+                            value="cohere.embed-v4.0",
+                            interactive=True,
+                        )
+
+                    with gr.Row():
                         model_input = gr.Dropdown(
                             label="Model",
                             choices=[
@@ -302,6 +330,30 @@ def build_selectai_tab(pool):
                             value="xai.grok-code-fast-1",
                             interactive=True,
                         )
+
+                    with gr.Row():
+                        enforce_object_list_input = gr.Dropdown(
+                            label="Enforce_Object_List",
+                            choices=["true", "false"],
+                            value="true",
+                            interactive=True,
+                        )
+
+                        comments_input = gr.Dropdown(
+                            label="Comments",
+                            choices=["true", "false"],
+                            value="true",
+                            interactive=True,
+                        )
+
+                        annotations_input = gr.Dropdown(
+                            label="Annotations",
+                            choices=["true", "false"],
+                            value="true",
+                            interactive=True,
+                        )
+
+                    
 
                     with gr.Row():
                         build_btn = gr.Button("作成", variant="primary")
@@ -392,13 +444,29 @@ def build_selectai_tab(pool):
                 def refresh_sources():
                     return gr.CheckboxGroup(choices=_get_table_names(pool)), gr.CheckboxGroup(choices=_get_view_names(pool))
 
-                def build_profile(name, tables, views, compartment_id, region, model):
+                def build_profile(name, tables, views, compartment_id, region, model, embedding_model, enforce_object_list, comments, annotations):
                     if not tables and not views:
                         yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください"), gr.Dataframe(value=get_db_profiles(pool))
                         return
                     try:
                         yield gr.Markdown(visible=True, value="⏳ 作成中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"]))
-                        create_db_profile(pool, name, compartment_id, region, model, tables or [], views or [])
+                        bool_map = {"true": True, "false": False}
+                        eol = bool_map.get(str(enforce_object_list).lower(), True)
+                        com = bool_map.get(str(comments).lower(), True)
+                        ann = bool_map.get(str(annotations).lower(), True)
+                        create_db_profile(
+                            pool,
+                            name,
+                            compartment_id,
+                            region,
+                            model,
+                            embedding_model,
+                            eol,
+                            com,
+                            ann,
+                            tables or [],
+                            views or [],
+                        )
                         yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool))
                     except Exception as e:
                         yield gr.Markdown(visible=True, value=f"❌ 作成に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool))
@@ -429,12 +497,24 @@ def build_selectai_tab(pool):
 
                 build_btn.click(
                     fn=build_profile,
-                    inputs=[profile_name, tables_input, views_input, compartment_id_input, region_input, model_input],
+                    inputs=[
+                        profile_name,
+                        tables_input,
+                        views_input,
+                        compartment_id_input,
+                        region_input,
+                        model_input,
+                        embedding_model_input,
+                        enforce_object_list_input,
+                        comments_input,
+                        annotations_input,
+                    ],
                     outputs=[create_info, profile_list_df],
                 )
 
         with gr.TabItem(label="開発者向け機能"):
             with gr.Tabs():
+                build_query_tab(pool)
                 with gr.TabItem(label="チャット・分析"):
                     with gr.Accordion(label="1. チャット", open=True):
                         def _dev_profile_names():
@@ -901,6 +981,7 @@ def build_selectai_tab(pool):
 
                     def _send_feedback(fb_type, comment, generated_sql_text, prompt_text, profile_name):
                         try:
+                            yield gr.Markdown(visible=True, value="⏳ フィードバック送信中...")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=profile_name)
@@ -908,7 +989,8 @@ def build_selectai_tab(pool):
                                     if q.endswith(";"):
                                         q = q[:-1]
                                     if not q:
-                                        return gr.Markdown(visible=True, value="⚠️ 質問が未入力のため、フィードバックを送信できませんでした")
+                                        yield gr.Markdown(visible=True, value="⚠️ 質問が未入力のため、フィードバックを送信できませんでした")
+                                        return
                                     showsql_stmt = f"select ai showsql {q}"
                                     try:
                                         cursor.execute(showsql_stmt)
@@ -933,9 +1015,9 @@ def build_selectai_tab(pool):
                                         resp=str(generated_sql_text or "").strip(),
                                         fc=str(comment or ""),
                                     )
-                                    return gr.Markdown(visible=True, value="✅ クエリに対するフィードバックを送信しました")
+                                    yield gr.Markdown(visible=True, value="✅ クエリに対するフィードバックを送信しました")
                         except Exception as e:
-                            return gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}")
+                            yield gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}")
 
                     dev_chat_execute_btn.click(
                         fn=_on_dev_chat_execute,
@@ -1010,40 +1092,77 @@ def build_selectai_tab(pool):
                         value=pd.DataFrame(),
                     )
 
+                    global_feedback_index_info = gr.Markdown(visible=False)
+
+                    selected_sql_id = gr.Textbox(label="選択されたSQL_ID", interactive=False)
+                    selected_feedback_delete_btn = gr.Button("選択したフィードバックを削除", variant="stop")
+                    selected_feedback_delete_result = gr.Textbox(label="削除結果", interactive=False)
+
                     with gr.Row():
-                        global_feedback_type_select = gr.Dropdown(
-                            label="種類",
-                            choices=["positive", "negative"],
-                            value="positive",
+                        vec_similarity_threshold_input = gr.Slider(
+                            label="Similarity_Threshold",
+                            minimum=0.10,
+                            maximum=0.95,
+                            step=0.05,
+                            value=0.90,
                             interactive=True,
                         )
-                        global_feedback_comment = gr.Textbox(
-                            label="コメント（検索/削除に使用）",
-                            placeholder="キーワードやコメント（完全一致削除を推奨）",
-                            lines=2,
-                            max_lines=6,
-                        )
-                        global_feedback_op_select = gr.Dropdown(
-                            label="操作",
-                            choices=["LIST", "DELETE"],
-                            value="LIST",
+                        vec_match_limit_input = gr.Slider(
+                            label="Match_Limit",
+                            minimum=1,
+                            maximum=5,
+                            step=1,
+                            value=3,
                             interactive=True,
                         )
-                        global_feedback_action_btn = gr.Button("実行", variant="primary")
+
+                    with gr.Row():
+                        vec_update_btn = gr.Button("ベクトルインデックスを更新", variant="primary")
 
                     def _view_feedback_index_global(profile_name: str):
                         try:
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     tab = f"{str(profile_name).upper()}_FEEDBACK_VECINDEX$VECTAB"
-                                    q = f'SELECT CONTENT, ATTRIBUTES FROM "{tab}" FETCH FIRST 50 ROWS ONLY'
-                                    cursor.execute(q)
+                                    q_no_ctx = (
+                                        f'SELECT CONTENT, '
+                                        f"JSON_VALUE(ATTRIBUTES, '$.sql_id' RETURNING VARCHAR2(128)) AS SQL_ID, "
+                                        f'ATTRIBUTES FROM "{tab}" FETCH FIRST 50 ROWS ONLY'
+                                    )
+                                    rows = []
+                                    cols = []
+                                    cursor.execute(q_no_ctx)
                                     rows = cursor.fetchall() or []
                                     cols = [d[0] for d in cursor.description] if cursor.description else []
-                                    df = pd.DataFrame(rows, columns=cols)
-                                    return gr.Dataframe(visible=True, value=df)
+                                    def _to_plain(val):
+                                        v = val.read() if hasattr(val, "read") else val
+                                        if isinstance(v, bytes):
+                                            try:
+                                                v = v.decode("utf-8")
+                                            except Exception:
+                                                v = v.decode("latin1", errors="ignore")
+                                        s = v
+                                        if not isinstance(s, str):
+                                            s = str(s)
+                                        t = s.strip()
+                                        if (t.startswith("{") and t.endswith("}")) or (t.startswith("[") and t.endswith("]")):
+                                            try:
+                                                obj = json.loads(t)
+                                                s = json.dumps(obj, ensure_ascii=False)
+                                            except Exception:
+                                                pass
+                                        return s
+
+                                    cleaned_rows = []
+                                    for r in rows:
+                                        cleaned_rows.append([_to_plain(v) for v in r])
+                                    df = pd.DataFrame(cleaned_rows, columns=cols)
+                                    if df.empty:
+                                        gr.Info("Indexがありません")
+                                        return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
+                                    return gr.Dataframe(visible=True, value=df), gr.Markdown(visible=False)
                         except Exception:
-                            return gr.Dataframe(visible=True, value=pd.DataFrame())
+                            return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
 
                     def _on_global_profile_refresh():
                         try:
@@ -1057,46 +1176,131 @@ def build_selectai_tab(pool):
                         outputs=[global_profile_refresh_status, global_profile_select],
                     )
 
+                    def _on_profile_select_change(profile_name: str):
+                        try:
+                            attrs = _get_profile_attributes(pool, profile_name) or {}
+                            st = attrs.get("similarity_threshold")
+                            ml = attrs.get("match_limit")
+                            st_val = float(st) if st is not None else 0.90
+                            ml_val = int(ml) if ml is not None else 3
+                            return (
+                                _view_feedback_index_global(profile_name)[0],
+                                _view_feedback_index_global(profile_name)[1],
+                                gr.Slider(value=st_val),
+                                gr.Slider(value=ml_val),
+                            )
+                        except Exception:
+                            return (
+                                _view_feedback_index_global(profile_name)[0],
+                                _view_feedback_index_global(profile_name)[1],
+                                gr.Slider(value=0.90),
+                                gr.Slider(value=3),
+                            )
+
                     global_profile_select.change(
-                        fn=_view_feedback_index_global,
+                        fn=_on_profile_select_change,
                         inputs=[global_profile_select],
-                        outputs=[global_feedback_index_df],
+                        outputs=[global_feedback_index_df, global_feedback_index_info, vec_similarity_threshold_input, vec_match_limit_input],
                     )
 
-                    def _manage_feedback(profile_name: str, fb_type: str, fb_comment: str, op: str):
+                    def on_index_row_select(evt: gr.SelectData, current_df):
                         try:
+                            row_index = evt.index[0]
+                            df = current_df
+                            if isinstance(df, dict) and "data" in df:
+                                df = pd.DataFrame(df["data"], columns=df.get("headers", []))
+                            if isinstance(df, pd.DataFrame) and not df.empty and row_index >= 0:
+                                row = df.iloc[row_index]
+                                sql_id = str(row.get("SQL_ID", ""))
+                                return sql_id
+                        except Exception:
+                            pass
+                        return ""
+
+                    global_feedback_index_df.select(
+                        fn=on_index_row_select,
+                        inputs=[global_feedback_index_df],
+                        outputs=[selected_sql_id],
+                    )
+
+                    def _delete_by_sql_id(profile_name: str, sql_id: str):
+                        try:
+                            if not sql_id:
+                                return _view_feedback_index_global(profile_name)[0], "失敗: SQL_IDが選択されていません"
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
-                                    cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=profile_name)
-                                    if op == "LIST":
-                                        return _view_feedback_index_global(profile_name)
-                                    elif op == "DELETE":
+                                    cursor.execute(
+                                        """
+                                        BEGIN
+                                          DBMS_CLOUD_AI.FEEDBACK(
+                                            profile_name => :p,
+                                            sql_id => :sid,
+                                            operation => 'DELETE'
+                                          );
+                                        END;
+                                        """,
+                                        p=str(profile_name),
+                                        sid=str(sql_id),
+                                    )
+                            return _view_feedback_index_global(profile_name)[0], "成功"
+                        except Exception as e:
+                            return gr.Dataframe(visible=False, value=pd.DataFrame()), f"失敗: {str(e)}"
+
+                    selected_feedback_delete_btn.click(
+                        fn=_delete_by_sql_id,
+                        inputs=[global_profile_select, selected_sql_id],
+                        outputs=[global_feedback_index_df, selected_feedback_delete_result],
+                    )
+
+                    def _update_vector_index(profile_name: str, similarity_threshold: float, match_limit: int):
+                        try:
+                            idx_name = f"{str(profile_name).upper()}_FEEDBACK_VECINDEX"
+                            tab_name = f"{str(profile_name).upper()}_FEEDBACK_VECINDEX$VECTAB"
+                            logger.info(f"Update vector index: profile={profile_name}, index={idx_name}, table={tab_name}, threshold={similarity_threshold}, limit={match_limit}")
+                            with pool.acquire() as conn:
+                                with conn.cursor() as cursor:
+                                    # Verify index table exists
+                                    try:
+                                        cursor.execute(f'SELECT 1 FROM "{tab_name}" FETCH FIRST 1 ROWS ONLY')
+                                        _ = cursor.fetchall()
+                                    except Exception as e:
+                                        logger.error(f"Index table not found: {tab_name}: {e}")
+                                        return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value=f"❌ 索引が存在しません: {tab_name}")
+
+                                    vec_attrs = json.dumps({
+                                        "similarity_threshold": float(similarity_threshold),
+                                        "match_limit": int(match_limit),
+                                    }, ensure_ascii=False)
+                                    logger.info(f"Calling UPDATE_VECTOR_INDEX with attrs={vec_attrs}")
+                                    try:
                                         cursor.execute(
                                             """
                                             BEGIN
-                                              DBMS_CLOUD_AI.FEEDBACK(
-                                                profile_name => :p,
-                                                sql_text => :st,
-                                                feedback_type => :ft,
-                                                feedback_content => :fc,
-                                                operation => 'DELETE'
+                                              DBMS_CLOUD_AI.UPDATE_VECTOR_INDEX(
+                                                index_name => :idx,
+                                                attributes => :vattrs
                                               );
                                             END;
                                             """,
-                                            p=profile_name,
-                                            st=str(fb_comment or "").strip(),
-                                            ft=str(fb_type or "").upper(),
-                                            fc=str(fb_comment or "").strip(),
+                                            idx=idx_name,
+                                            vattrs=vec_attrs,
                                         )
-                                        return _view_feedback_index_global(profile_name)
-                        except Exception:
-                            return gr.Dataframe(visible=True, value=pd.DataFrame())
+                                    except Exception as e:
+                                        logger.error(f"UPDATE_VECTOR_INDEX failed: index={idx_name}, table={tab_name}, error={e}")
+                                        return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {str(e)}")
+                                    logger.info("UPDATE_VECTOR_INDEX succeeded")
+                                    return _view_feedback_index_global(profile_name)
+                        except Exception as e:
+                            logger.error(f"Unexpected error in _update_vector_index: {e}")
+                            return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {str(e)}")
 
-                    global_feedback_action_btn.click(
-                        fn=_manage_feedback,
-                        inputs=[global_profile_select, global_feedback_type_select, global_feedback_comment, global_feedback_op_select],
-                        outputs=[global_feedback_index_df],
+                    vec_update_btn.click(
+                        fn=_update_vector_index,
+                        inputs=[global_profile_select, vec_similarity_threshold_input, vec_match_limit_input],
+                        outputs=[global_feedback_index_df, global_feedback_index_info],
                     )
+
+                    
 
         with gr.TabItem(label="ユーザー向け機能"):
             with gr.Tabs():
