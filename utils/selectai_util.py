@@ -394,15 +394,14 @@ def build_selectai_tab(pool):
 
                 def build_profile(name, tables, views, compartment_id, region, model):
                     if not tables and not views:
-                        return gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください"), gr.Dataframe(value=get_db_profiles(pool))
+                        yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください"), gr.Dataframe(value=get_db_profiles(pool))
+                        return
                     try:
-                        # DBに作成
+                        yield gr.Markdown(visible=True, value="⏳ 作成中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"]))
                         create_db_profile(pool, name, compartment_id, region, model, tables or [], views or [])
-                        return gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool))
+                        yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool))
                     except Exception as e:
-                        return gr.Markdown(visible=True, value=f"❌ 作成に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool))
-
-                
+                        yield gr.Markdown(visible=True, value=f"❌ 作成に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool))
 
                 profile_refresh_btn.click(
                     fn=refresh_profiles,
@@ -593,7 +592,6 @@ def build_selectai_tab(pool):
                                     try:
                                         cursor.execute(showsql_stmt)
                                         rows = cursor.fetchmany(size=200)
-                                        cols = [d[0] for d in cursor.description] if cursor.description else []
                                         if rows:
                                             for r in rows:
                                                 for v in r:
