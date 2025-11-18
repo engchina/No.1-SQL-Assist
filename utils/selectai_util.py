@@ -318,11 +318,12 @@ def build_selectai_tab(pool):
                             return
                         sample = df.head(5)
                         widths = []
+                        columns = max(1, len(df.columns))
                         for col in sample.columns:
                             series = sample[col].astype(str)
                             row_max = series.map(len).max() if len(series) > 0 else 0
                             length = max(len(str(col)), row_max)
-                            widths.append(min(20, length))
+                            widths.append(min(100 / columns, length))
                         total = sum(widths) if widths else 0
                         style_value = ""
                         if total > 0:
@@ -755,13 +756,15 @@ def build_selectai_tab(pool):
                                         widths = []
                                         if len(df) > 0:
                                             sample = df.head(5)
+                                            columns = max(1, len(df.columns))
                                             for col in df.columns:
                                                 series = sample[col].astype(str)
                                                 row_max = series.map(len).max() if len(series) > 0 else 0
                                                 length = max(len(str(col)), row_max)
-                                                widths.append(min(20, length))
+                                                widths.append(min(100 / columns, length))
                                         else:
-                                            widths = [min(20, len(c)) for c in df.columns]
+                                            columns = max(1, len(df.columns))
+                                            widths = [min(100 / columns, len(c)) for c in df.columns]
 
                                         total = sum(widths) if widths else 0
                                         if total <= 0:
@@ -1192,13 +1195,15 @@ def build_selectai_tab(pool):
                                 widths = []
                                 if len(df) > 0:
                                     sample = df.head(5)
+                                    columns = max(1, len(df.columns))
                                     for col in df.columns:
                                         series = sample[col].astype(str)
                                         row_max = series.map(len).max() if len(series) > 0 else 0
                                         length = max(len(str(col)), row_max)
-                                        widths.append(min(20, length))
+                                        widths.append(min(100 / columns, length))
                                 else:
-                                    widths = [min(20, len(c)) for c in df.columns]
+                                    columns = max(1, len(df.columns))
+                                    widths = [min(100 / columns, len(c)) for c in df.columns]
 
                                 total = sum(widths) if widths else 0
                                 if total <= 0:

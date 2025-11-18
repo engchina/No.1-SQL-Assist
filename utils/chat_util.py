@@ -230,6 +230,7 @@ def build_oci_chat_test_tab(pool):
                         label="メッセージ",
                         placeholder="メッセージを入力してください...",
                         lines=3,
+                        max_lines=8,
                         scale=4,
                     )
 

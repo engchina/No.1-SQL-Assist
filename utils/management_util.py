@@ -49,7 +49,8 @@ def get_table_list(pool):
                             cnt = cursor.fetchone()[0]
                         except Exception:
                             cnt = 0
-                        data.append((tn, cnt, comment))
+                        cm = comment.read() if hasattr(comment, "read") else comment
+                        data.append((tn, cnt, cm))
                     df = pd.DataFrame(data, columns=["Table Name", "Rows", "Comments"])
                     logger.info(f"Retrieved {len(df)} tables for ADMIN user")
                     return df
@@ -298,8 +299,11 @@ def get_view_list(pool):
                 rows = cursor.fetchall()
                 
                 if rows:
+                    cleaned_rows = []
+                    for r in rows:
+                        cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
                     columns = [desc[0] for desc in cursor.description]
-                    df = pd.DataFrame(rows, columns=columns)
+                    df = pd.DataFrame(cleaned_rows, columns=columns)
                     logger.info(f"Retrieved {len(df)} views for ADMIN user")
                     return df
                 else:
@@ -522,23 +526,22 @@ def execute_create_view(pool, create_sql):
 
 
 def get_table_list_for_data(pool):
-    """Get list of table and view names for data management dropdown.
-    
-    Args:
-        pool: Oracle database connection pool
-        
-    Returns:
-        list: List of table and view names
-    """
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
-                # Query to get both tables and views
                 sql = """
-                SELECT table_name FROM all_tables WHERE owner = 'ADMIN'
-                UNION
-                SELECT view_name FROM all_views WHERE owner = 'ADMIN'
-                ORDER BY 1
+                SELECT name
+                FROM (
+                    SELECT table_name AS name, 0 AS obj_type
+                    FROM all_tables 
+                    WHERE owner = 'ADMIN' AND table_name NOT LIKE 'DR$%' AND table_name NOT LIKE 'VECTOR$%'
+                    UNION ALL
+                    SELECT view_name AS name, 1 AS obj_type
+                    FROM all_views
+                    WHERE owner = 'ADMIN'
+                )
+                GROUP BY name
+                ORDER BY MIN(obj_type), name
                 """
                 cursor.execute(sql)
                 rows = cursor.fetchall()
@@ -566,7 +569,10 @@ def get_table_list_for_upload(pool):
             with conn.cursor() as cursor:
                 sql = """
                 SELECT table_name FROM all_tables 
-                WHERE owner = 'ADMIN' AND table_name NOT LIKE '%$%'
+                WHERE owner = 'ADMIN' 
+                  AND table_name NOT LIKE '%$%'
+                  AND table_name NOT LIKE 'DR$%'
+                  AND table_name NOT LIKE 'VECTOR$%'
                 ORDER BY 1
                 """
                 cursor.execute(sql)
@@ -609,8 +615,11 @@ def display_table_data(pool, table_name, limit, where_clause=""):
                 rows = cursor.fetchall()
                 
                 if rows:
+                    cleaned_rows = []
+                    for r in rows:
+                        cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
                     columns = [desc[0] for desc in cursor.description]
-                    df = pd.DataFrame(rows, columns=columns)
+                    df = pd.DataFrame(cleaned_rows, columns=columns)
                     logger.info(f"Retrieved {len(df)} rows from {table_name}")
                     gr.Info(f"{len(df)}件のデータを取得しました")
                     return df
@@ -1294,8 +1303,9 @@ def build_management_tab(pool):
             def refresh_data_table_list():
                 try:
                     yield gr.Markdown(value="⏳ テーブル・ビュー一覧を更新中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
+                    data_names = get_table_list_for_data(pool)
                     upload_tables = get_table_list_for_upload(pool)
-                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dropdown(choices=upload_tables), gr.Dropdown(choices=upload_tables)
+                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dropdown(choices=data_names), gr.Dropdown(choices=upload_tables)
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
             
@@ -1308,11 +1318,12 @@ def build_management_tab(pool):
                         return
                     widths = []
                     sample = df.head(5)
+                    columns = max(1, len(df.columns))
                     for col in df.columns:
                         series = sample[col].astype(str)
                         row_max = series.map(len).max() if len(series) > 0 else 0
                         length = max(len(str(col)), row_max)
-                        widths.append(min(20, length))
+                        widths.append(min(100 / columns, length))
                     total = sum(widths) if widths else 0
                     if total <= 0:
                         style_value = ""
