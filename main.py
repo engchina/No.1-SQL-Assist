@@ -9,20 +9,20 @@ import os
 import platform
 import warnings
 
-# Suppress NumPy warnings about longdouble on certain platforms
-warnings.filterwarnings("ignore", message=".*does not match any known type.*")
-warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
-
-import gradio as gr  # noqa: E402
-import oracledb  # noqa: E402
-from dotenv import find_dotenv, load_dotenv  # noqa: E402
-from gradio.themes import Default, GoogleFont  # noqa: E402
+import gradio as gr
+import oracledb
+from dotenv import find_dotenv, load_dotenv
+from gradio.themes import Default, GoogleFont
 
 from utils.css_util import custom_css
 from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab
 from utils.chat_util import build_oci_chat_test_tab
 from utils.management_util import build_management_tab
 from utils.selectai_util import build_selectai_tab
+
+# Suppress NumPy warnings about longdouble on certain platforms
+warnings.filterwarnings("ignore", message=".*does not match any known type.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
 # Load environment variables
 load_dotenv(find_dotenv())
@@ -72,11 +72,11 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
             # OCI Chat Modelテストタブを構築
             build_oci_chat_test_tab(pool)
         
-        with gr.TabItem(label="管理機能"):
+        with gr.TabItem(label="データベース管理機能"):
             # 管理機能タブを構築
             build_management_tab(pool)
 
-        with gr.TabItem(label="SelectAI連携"):
+        with gr.TabItem(label="SelectAI 連携"):
             build_selectai_tab(pool)
 
     gr.Markdown(

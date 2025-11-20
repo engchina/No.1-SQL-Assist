@@ -213,64 +213,64 @@ def build_oci_chat_test_tab(pool):
         gr.TabItem: Chat UIタブ
     """
 
-    with gr.TabItem(label="OCI GenAI Chat Modelのテスト") as tab_chat:       
-        with gr.Row():
-            with gr.Column():
-                chatbot = gr.Chatbot(
-                    label="会話履歴",
-                    height=500,
-                    show_copy_button=True,
-                    avatar_images=(None, None),
-                    type='messages',
-                )
-
-                with gr.Row():
-                    msg_input = gr.Textbox(
-                        value="こんにちわ",
-                        label="メッセージ",
-                        placeholder="メッセージを入力してください...",
-                        lines=3,
-                        max_lines=8,
-                        scale=4,
+    with gr.TabItem(label="OCI GenAI チャットテスト") as tab_chat:
+        with gr.Accordion(label="チャットモデル", open=True):
+            with gr.Row():
+                with gr.Column():
+                    chatbot = gr.Chatbot(
+                        label="会話履歴",
+                        height=350,
+                        show_copy_button=True,
+                        avatar_images=(None, None),
+                        type='messages',
                     )
 
-                with gr.Row():
-                    chat_model_input = gr.Dropdown(
-                        label="モデル",
-                        choices=[
-                            "xai.grok-code-fast-1",
-                            "xai.grok-3",
-                            "xai.grok-3-fast",
-                            "xai.grok-4",
-                            "xai.grok-4-fast-non-reasoning",
-                            "meta.llama-4-scout-17b-16e-instruct",
-                        ],
-                        value="xai.grok-code-fast-1",
-                        interactive=True,
-                        scale=2,
-                    )
+                    with gr.Row():
+                        msg_input = gr.Textbox(
+                            value="こんにちわ",
+                            label="メッセージ",
+                            placeholder="メッセージを入力してください...",
+                            lines=2,
+                            max_lines=8,
+                        )
 
-                with gr.Row():
-                    clear_btn = gr.Button("クリア", scale=1)
-                    send_btn = gr.Button("送信", variant="primary", scale=1)
+                    with gr.Row():
+                        chat_model_input = gr.Dropdown(
+                            label="モデル",
+                            choices=[
+                                "xai.grok-code-fast-1",
+                                "xai.grok-3",
+                                "xai.grok-3-fast",
+                                "xai.grok-4",
+                                "xai.grok-4-fast-non-reasoning",
+                                "meta.llama-4-scout-17b-16e-instruct",
+                            ],
+                            value="xai.grok-code-fast-1",
+                            interactive=True,
+                            scale=2,
+                        )
 
-        # Event handlers
-        send_btn.click(
-            send_chat_message,
-            inputs=[msg_input, chatbot, chat_model_input],
-            outputs=[chatbot, msg_input],
-        )
+                    with gr.Row():
+                        clear_btn = gr.Button("クリア", scale=1)
+                        send_btn = gr.Button("送信", variant="primary", scale=1)
 
-        msg_input.submit(
-            send_chat_message,
-            inputs=[msg_input, chatbot, chat_model_input],
-            outputs=[chatbot, msg_input],
-        )
+            # Event handlers
+            send_btn.click(
+                send_chat_message,
+                inputs=[msg_input, chatbot, chat_model_input],
+                outputs=[chatbot, msg_input],
+            )
 
-        clear_btn.click(
-            clear_chat,
-            inputs=[],
-            outputs=[chatbot, msg_input],
-        )
+            msg_input.submit(
+                send_chat_message,
+                inputs=[msg_input, chatbot, chat_model_input],
+                outputs=[chatbot, msg_input],
+            )
+
+            clear_btn.click(
+                clear_chat,
+                inputs=[],
+                outputs=[chatbot, msg_input],
+            )
 
     return tab_chat

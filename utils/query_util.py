@@ -176,13 +176,13 @@ def execute_select_sql(pool, sql: str, limit: int):
 
 def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
-    with gr.TabItem(label="クエリ実行") as tab_query:
+    with gr.TabItem(label="SQLの実行") as tab_query:
         with gr.Accordion(label="1. SQLの入力", open=True):
             sql_input = gr.Textbox(
                 label="SQL文（SELECTのみ）\n注意: 重いSQLを実行すると、処理が遅くなり画面が一時的に固まる場合があります",
                 placeholder="SELECT 文を入力してください（INSERT/UPDATE等は禁止）",
                 lines=8,
-                max_lines=30,
+                max_lines=15,
                 show_copy_button=True,
             )
 

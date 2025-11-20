@@ -6,6 +6,7 @@ Table Management, View Management, and Data Management.
 
 import logging
 import traceback
+import re
 
 import gradio as gr
 import pandas as pd
@@ -234,6 +235,20 @@ def execute_create_table(pool, create_sql):
                 if not sql_statements:
                     gr.Warning("SQL文が空です")
                     return "エラー: SQL文が空です"
+
+                disallowed = []
+                for idx, sql_stmt in enumerate(sql_statements, 1):
+                    stmt_upper = sql_stmt.strip().upper()
+                    is_create_table = stmt_upper.startswith('CREATE TABLE') or bool(re.match(r'^CREATE\s+GLOBAL\s+TEMPORARY\s+TABLE\b', stmt_upper))
+                    is_comment = stmt_upper.startswith('COMMENT ON TABLE') or stmt_upper.startswith('COMMENT ON COLUMN')
+                    if not (is_create_table or is_comment):
+                        disallowed.append((idx, sql_stmt))
+                if disallowed:
+                    first_idx, first_sql = disallowed[0]
+                    error_msg = f"禁止された操作: CREATE TABLE / COMMENT ON 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    logger.warning(f"Disallowed statement for table creation: {first_sql[:100]}...")
+                    gr.Error(error_msg)
+                    return f"エラー: {error_msg}"
                 
                 executed_count = 0
                 error_messages = []
@@ -411,9 +426,8 @@ def get_view_details(pool, view_name):
                         create_sql += ';'
                     create_sql += '\n'
                     
-                    # Add view comment
                     if view_comment:
-                        create_sql += f"\nCOMMENT ON TABLE {view_name.upper()} IS '{view_comment.replace("'", "''")}';\n"
+                        create_sql += f"\nCOMMENT ON VIEW {view_name.upper()} IS '{view_comment.replace("'", "''")}';\n"
                     
                     # Add column comments
                     if col_comments:
@@ -428,6 +442,67 @@ def get_view_details(pool, view_name):
         logger.error(traceback.format_exc())
         gr.Warning(f"ビュー詳細の取得に失敗しました: {str(e)}")
         return pd.DataFrame(columns=["Column Name", "Data Type", "Nullable", "Comments"]), ""
+
+
+def get_primary_key_info(pool, object_name):
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                sql = (
+                    "SELECT ac.constraint_name, LISTAGG(acc.column_name, ', ') WITHIN GROUP (ORDER BY acc.position) AS columns "
+                    "FROM all_constraints ac "
+                    "JOIN all_cons_columns acc ON ac.owner = acc.owner AND ac.constraint_name = acc.constraint_name "
+                    "WHERE ac.owner = 'ADMIN' AND ac.table_name = :name AND ac.constraint_type = 'P' "
+                    "GROUP BY ac.constraint_name"
+                )
+                cursor.execute(sql, name=object_name.upper())
+                rows = cursor.fetchall() or []
+                def _clean(v):
+                    return v.read() if hasattr(v, "read") else v
+                if rows:
+                    parts = []
+                    for r in rows:
+                        cn = _clean(r[0])
+                        cols = _clean(r[1])
+                        parts.append(f"{cn}: {cols}")
+                    return "\n".join(parts)
+                return ""
+    except Exception:
+        return ""
+
+
+def get_foreign_key_info(pool, object_name):
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                sql = (
+                    "SELECT ac.constraint_name, LISTAGG(acc.column_name, ', ') WITHIN GROUP (ORDER BY acc.position) AS src_columns, "
+                    "       ac_r.table_name AS ref_table, "
+                    "       (SELECT LISTAGG(acc2.column_name, ', ') WITHIN GROUP (ORDER BY acc2.position) "
+                    "        FROM all_cons_columns acc2 "
+                    "        WHERE acc2.owner = ac_r.owner AND acc2.constraint_name = ac.r_constraint_name) AS ref_columns "
+                    "FROM all_constraints ac "
+                    "JOIN all_cons_columns acc ON ac.owner = acc.owner AND ac.constraint_name = acc.constraint_name "
+                    "JOIN all_constraints ac_r ON ac.owner = ac_r.owner AND ac.r_constraint_name = ac_r.constraint_name "
+                    "WHERE ac.owner = 'ADMIN' AND ac.table_name = :name AND ac.constraint_type = 'R' "
+                    "GROUP BY ac.constraint_name, ac_r.table_name, ac_r.owner, ac.r_constraint_name"
+                )
+                cursor.execute(sql, name=object_name.upper())
+                rows = cursor.fetchall() or []
+                def _clean(v):
+                    return v.read() if hasattr(v, "read") else v
+                if rows:
+                    parts = []
+                    for r in rows:
+                        cn = _clean(r[0])
+                        src = _clean(r[1])
+                        rt = _clean(r[2])
+                        rc = _clean(r[3])
+                        parts.append(f"{cn}: {src} -> {rt}({rc})")
+                    return "\n".join(parts)
+                return ""
+    except Exception:
+        return ""
 
 
 def drop_view(pool, view_name):
@@ -486,6 +561,25 @@ def execute_create_view(pool, create_sql):
                 if not sql_statements:
                     gr.Warning("SQL文が空です")
                     return "エラー: SQL文が空です"
+
+                disallowed = []
+                for idx, sql_stmt in enumerate(sql_statements, 1):
+                    stmt_upper = sql_stmt.strip().upper()
+                    is_create_view = (
+                        stmt_upper.startswith('CREATE VIEW')
+                        or bool(re.match(r'^CREATE\s+OR\s+REPLACE\s+VIEW\b', stmt_upper))
+                        or bool(re.match(r'^CREATE\s+OR\s+REPLACE\s+FORCE\s+(?:EDITIONABLE\s+)?VIEW\b', stmt_upper))
+                        or bool(re.match(r'^CREATE\s+OR\s+REPLACE\s+EDITIONABLE\s+VIEW\b', stmt_upper))
+                    )
+                    is_comment = stmt_upper.startswith('COMMENT ON TABLE') or stmt_upper.startswith('COMMENT ON VIEW') or stmt_upper.startswith('COMMENT ON COLUMN')
+                    if not (is_create_view or is_comment):
+                        disallowed.append((idx, sql_stmt))
+                if disallowed:
+                    first_idx, first_sql = disallowed[0]
+                    error_msg = f"禁止された操作: VIEW作成に関係ない文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    logger.warning(f"Disallowed statement for view creation: {first_sql[:100]}...")
+                    gr.Error(error_msg)
+                    return f"エラー: {error_msg}"
                 
                 executed_count = 0
                 error_messages = []
@@ -772,16 +866,21 @@ def execute_data_sql(pool, sql_statements):
                     gr.Warning("SQL文が空です")
                     return "エラー: SQL文が空です"
                 
-                # Check for SELECT statements (prohibited)
+                disallowed = []
                 for idx, sql_stmt in enumerate(statements, 1):
-                    # Remove leading/trailing whitespace and convert to uppercase for checking
                     stmt_upper = sql_stmt.strip().upper()
-                    # Check if statement starts with SELECT (including WITH clauses)
-                    if stmt_upper.startswith('SELECT') or (stmt_upper.startswith('WITH') and 'SELECT' in stmt_upper):
-                        error_msg = f"禁止された操作: SELECT文は実行できません。\n文{idx}: {sql_stmt[:100]}..."
-                        logger.warning(f"SELECT statement prohibited: {sql_stmt[:100]}...")
-                        gr.Error(error_msg)
-                        return f"エラー: {error_msg}"
+                    is_insert = stmt_upper.startswith('INSERT')
+                    is_update = stmt_upper.startswith('UPDATE')
+                    is_delete = stmt_upper.startswith('DELETE')
+                    is_merge = stmt_upper.startswith('MERGE')
+                    if not (is_insert or is_update or is_delete or is_merge):
+                        disallowed.append((idx, sql_stmt))
+                if disallowed:
+                    first_idx, first_sql = disallowed[0]
+                    error_msg = f"禁止された操作: INSERT, UPDATE, DELETE, MERGE 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    logger.warning(f"Disallowed statement for data SQL: {first_sql[:100]}...")
+                    gr.Error(error_msg)
+                    return f"エラー: {error_msg}"
                 
                 executed_count = 0
                 error_messages = []
@@ -826,6 +925,73 @@ def execute_data_sql(pool, sql_statements):
         return f"エラー: {str(e)}"
 
 
+def execute_comment_sql(pool, sql_statements):
+    """Execute COMMENT ON SQL statement(s).
+    
+    Supports executing multiple COMMENT statements separated by semicolons.
+    Only COMMENT ON TABLE / COMMENT ON COLUMN を許可。
+    
+    Args:
+        pool: Oracle database connection pool
+        sql_statements: Single or multiple SQL statements
+        
+    Returns:
+        str: Result message
+    """
+    if not sql_statements or not sql_statements.strip():
+        gr.Warning("COMMENT文を入力してください")
+        return "エラー: SQL文が入力されていません"
+    
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                statements = [stmt.strip() for stmt in sql_statements.split(';') if stmt.strip()]
+                if not statements:
+                    gr.Warning("SQL文が空です")
+                    return "エラー: SQL文が空です"
+                disallowed = []
+                for idx, sql_stmt in enumerate(statements, 1):
+                    stmt_upper = sql_stmt.strip().upper()
+                    is_comment_table = stmt_upper.startswith('COMMENT ON TABLE')
+                    is_comment_column = stmt_upper.startswith('COMMENT ON COLUMN')
+                    if not (is_comment_table or is_comment_column):
+                        disallowed.append((idx, sql_stmt))
+                if disallowed:
+                    first_idx, first_sql = disallowed[0]
+                    error_msg = f"禁止された操作: COMMENT ON TABLE/COLUMN 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    logger.warning(f"Disallowed statement for comments: {first_sql[:100]}...")
+                    gr.Error(error_msg)
+                    return f"エラー: {error_msg}"
+                executed_count = 0
+                error_messages = []
+                for idx, sql_stmt in enumerate(statements, 1):
+                    try:
+                        cursor.execute(sql_stmt)
+                        executed_count += 1
+                        logger.info(f"Statement {idx}/{len(statements)} executed successfully")
+                    except Exception as stmt_error:
+                        error_msg = f"文{idx}: {str(stmt_error)}"
+                        error_messages.append(error_msg)
+                        logger.error(f"Error executing statement {idx}: {stmt_error}")
+                        logger.error(f"Failed SQL: {sql_stmt[:100]}...")
+                if executed_count > 0:
+                    conn.commit()
+                if error_messages:
+                    result = f"部分的に成功: {executed_count}/{len(statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
+                    gr.Warning(result)
+                    logger.warning(f"Partial success: {executed_count}/{len(statements)} statements executed")
+                    return result
+                else:
+                    result = f"成功: {executed_count}件の文をすべて実行しました"
+                    gr.Info(result)
+                    logger.info(f"All {executed_count} statements executed successfully")
+                    return result
+    except Exception as e:
+        logger.error(f"Error executing comment SQL: {e}")
+        logger.error(traceback.format_exc())
+        gr.Error(f"COMMENT文の実行に失敗しました: {str(e)}")
+        return f"エラー: {str(e)}"
+
 def build_management_tab(pool):
     """Build the Management Function tab with three sub-functions.
     
@@ -834,7 +1000,7 @@ def build_management_tab(pool):
     """
     with gr.Tabs():
         # Table Management Tab
-        with gr.TabItem(label="Tableの管理"):
+        with gr.TabItem(label="テーブルの管理"):
             # Feature 1: Table List
             with gr.Accordion(label="1. テーブル一覧", open=True):
                 table_refresh_btn = gr.Button("テーブル一覧を更新", variant="primary")
@@ -846,6 +1012,7 @@ def build_management_tab(pool):
                     value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]),
                     headers=["Table Name", "Rows", "Comments"],
                     visible=False,
+                    max_height=300,
                 )
             
             # Feature 2: Table Details and Drop
@@ -871,7 +1038,7 @@ def build_management_tab(pool):
                         table_ddl_text = gr.Textbox(
                             label="DDL",
                             lines=15,
-                            max_lines=30,
+                            max_lines=15,
                             interactive=False,
                             show_copy_button=True,
                         )
@@ -879,6 +1046,8 @@ def build_management_tab(pool):
                 table_drop_btn = gr.Button("選択したテーブルを削除", variant="stop")
                 table_drop_result = gr.Textbox(
                     label="削除結果",
+                    lines=2,
+                    max_lines=5,
                     interactive=False,
                 )
             
@@ -888,7 +1057,7 @@ def build_management_tab(pool):
                     label="CREATE TABLE SQL文（複数の文をセミコロンで区切って入力可能）",
                     placeholder="CREATE TABLE文を入力してください\n例:\nCREATE TABLE test_table (\n  id NUMBER PRIMARY KEY,\n  name VARCHAR2(100)\n);\n\nCOMMENT ON TABLE test_table IS 'テストテーブル';\nCOMMENT ON COLUMN test_table.id IS 'ID';\nCOMMENT ON COLUMN test_table.name IS '名称';",
                     lines=10,
-                    max_lines=30,
+                    max_lines=15,
                     show_copy_button=True,
                 )
                 
@@ -898,6 +1067,8 @@ def build_management_tab(pool):
                 
                 create_table_result = gr.Textbox(
                     label="作成結果",
+                    lines=2,
+                    max_lines=5,
                     interactive=False,
                 )
             
@@ -1009,7 +1180,7 @@ def build_management_tab(pool):
             )
         
         # View Management Tab
-        with gr.TabItem(label="Viewの管理"):
+        with gr.TabItem(label="ビューの管理"):
             # Feature 1: View List
             with gr.Accordion(label="1. ビュー一覧", open=True):
                 view_refresh_btn = gr.Button("ビュー一覧を更新", variant="primary")
@@ -1046,14 +1217,36 @@ def build_management_tab(pool):
                         view_ddl_text = gr.Textbox(
                             label="DDL",
                             lines=15,
-                            max_lines=30,
+                            max_lines=15,
                             interactive=False,
+                            show_copy_button=True,
+                        )
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### JOIN条件")
+                        view_join_text = gr.Textbox(
+                            label="JOIN条件",
+                            lines=6,
+                            max_lines=15,
+                            interactive=True,
+                            show_copy_button=True,
+                        )
+                    with gr.Column():
+                        gr.Markdown("### WHERE条件")
+                        view_where_text = gr.Textbox(
+                            label="WHERE条件",
+                            lines=6,
+                            max_lines=15,
+                            interactive=True,
                             show_copy_button=True,
                         )
                 
                 view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
                 view_drop_result = gr.Textbox(
                     label="削除結果",
+                    lines=2,
+                    max_lines=5,
                     interactive=False,
                 )
             
@@ -1061,9 +1254,9 @@ def build_management_tab(pool):
             with gr.Accordion(label="3. ビュー作成", open=False):
                 create_view_sql = gr.Textbox(
                     label="CREATE VIEW SQL文（複数の文をセミコロンで区切って入力可能）",
-                    placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\nSELECT id, name FROM test_table;\n\nCOMMENT ON TABLE test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
+                    placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\nSELECT id, name FROM test_table;\n\nCOMMENT ON VIEW test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
                     lines=10,
-                    max_lines=30,
+                    max_lines=15,
                     show_copy_button=True,
                 )
                 
@@ -1073,6 +1266,8 @@ def build_management_tab(pool):
                 
                 create_view_result = gr.Textbox(
                     label="作成結果",
+                    lines=2,
+                    max_lines=5,
                     interactive=False,
                 )
             
@@ -1119,7 +1314,81 @@ def build_management_tab(pool):
                             view_name = str(current_df.iloc[row_index, 0])
                             logger.info(f"View selected from row {row_index}: {view_name}")
                             col_df, ddl = get_view_details(pool, view_name)
-                            return view_name, col_df, ddl
+                            def _parse_sql(sql_text: str):
+                                info = {"joins": [], "where": "", "alias_map": {}}
+                                if not sql_text:
+                                    return info
+                                s = sql_text
+                                m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", s, flags=re.IGNORECASE)
+                                if m:
+                                    s = m.group(0)
+                                s1 = re.sub(r"--.*", "", s)
+                                s1 = re.sub(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/", "", s1)
+                                s1_select = re.split(r";", s1, maxsplit=1)[0]
+                                join_iter = re.finditer(
+                                    r"\b(?:(LEFT|RIGHT|FULL|INNER|OUTER|CROSS|NATURAL)\s+)?JOIN\s+([A-Za-z0-9_\"\.\$]+)(?:\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?)?\s+ON\s*([\s\S]*?)(?=\bJOIN\b|\bWHERE\b|\bGROUP\b|\bORDER\b|$)",
+                                    s1_select,
+                                    flags=re.IGNORECASE,
+                                )
+                                joins = []
+                                for m2 in join_iter:
+                                    jt = (m2.group(1) or "").strip()
+                                    obj = (m2.group(2) or "").strip()
+                                    alias = (m2.group(3) or "").strip()
+                                    on_txt = (m2.group(4) or "").strip()
+                                    parts_obj = [x for x in obj.split(".")]
+                                    base_tok = parts_obj[-1] if parts_obj else obj
+                                    if alias:
+                                        alias_up = alias.strip('"').upper()
+                                        # base_tok will be replaced later by alias_map if available
+                                    display_join_obj = base_tok
+                                    jt_prefix = (jt + " ") if jt else ""
+                                    joins.append(f"{jt_prefix}JOIN {display_join_obj} ON {on_txt}")
+                                info["joins"] = joins
+                                where_match = re.search(r"\bWHERE\b([\s\S]*?)(?=\bGROUP\b|\bORDER\b|$)", s1_select, flags=re.IGNORECASE)
+                                if where_match:
+                                    info["where"] = where_match.group(1).strip()
+                                fm = re.search(r"\bFROM\b([\s\S]*?)(?=\bWHERE\b|\bGROUP\b|\bORDER\b|$)", s1_select, flags=re.IGNORECASE)
+                                from_part = fm.group(1) if fm else ""
+                                def _pairs(pat):
+                                    try:
+                                        return re.findall(pat, from_part, flags=re.IGNORECASE)
+                                    except Exception:
+                                        return []
+                                base_pair = _pairs(r"\bFROM\b\s+(\"?[A-Za-z0-9_\$]+\"?(?:\.\"?[A-Za-z0-9_\$]+\"?)?)(?:\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?)?")
+                                comma_pairs = _pairs(r",\s*(\"?[A-Za-z0-9_\$]+\"?(?:\.\"?[A-Za-z0-9_\$]+\"?)?)\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?")
+                                join_pairs = _pairs(r"\bJOIN\b\s+(\"?[A-Za-z0-9_\$]+\"?(?:\.\"?[A-Za-z0-9_\$]+\"?)?)\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?")
+                                pairs = []
+                                if base_pair:
+                                    pairs.extend(base_pair)
+                                if comma_pairs:
+                                    pairs.extend(comma_pairs)
+                                if join_pairs:
+                                    pairs.extend(join_pairs)
+                                alias_map = {}
+                                for obj, alias in pairs:
+                                    if not alias:
+                                        continue
+                                    parts = [x for x in str(obj).split('.')]
+                                    base_tok = parts[-1] if parts else str(obj)
+                                    alias_up = str(alias).strip().strip('"').upper()
+                                    alias_map[alias_up] = base_tok
+                                info["alias_map"] = alias_map
+                                return info
+                            p = _parse_sql(ddl)
+                            def _replace_aliases(text, amap):
+                                t = str(text or "")
+                                if not t or not amap:
+                                    return t
+                                for a, b in amap.items():
+                                    t = re.sub(rf'\"{a}\"', b, t, flags=re.IGNORECASE)
+                                    t = re.sub(rf'\b{a}\b(?=\s*\.)', b, t, flags=re.IGNORECASE)
+                                    t = re.sub(rf'(\b(?:LEFT|RIGHT|FULL|INNER|OUTER|CROSS|NATURAL)?\s*JOIN\s+)\b{a}\b', rf'\1{b}', t, flags=re.IGNORECASE)
+                                return t
+                            amap = p.get("alias_map", {})
+                            joins_text = "\n\n".join([_replace_aliases(j, amap) for j in p.get("joins", [])])
+                            where_text = _replace_aliases(p.get("where", ""), amap)
+                            return view_name, col_df, ddl, joins_text, where_text
                         else:
                             logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
@@ -1127,7 +1396,7 @@ def build_management_tab(pool):
                     logger.error(traceback.format_exc())
                     gr.Error(f"ビュー選択エラー: {str(e)}")
                 
-                return "", pd.DataFrame(), ""
+                return "", pd.DataFrame(), "", "", ""
             
             def refresh_view_list():
                 try:
@@ -1141,7 +1410,7 @@ def build_management_tab(pool):
                 """Drop the selected view and refresh list."""
                 result = drop_view(pool, view_name)
                 new_list = get_view_list(pool)
-                return result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), ""
+                return result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), "", "", ""
             
             def execute_create_view_handler(sql):
                 """Execute CREATE VIEW and refresh list."""
@@ -1162,14 +1431,14 @@ def build_management_tab(pool):
             view_list_df.select(
                 fn=on_view_select,
                 inputs=[view_list_df],
-                outputs=[selected_view_name, view_columns_df, view_ddl_text]
+                outputs=[selected_view_name, view_columns_df, view_ddl_text, view_join_text, view_where_text]
             )
             
             view_drop_btn.click(
                 fn=drop_selected_view,
                 inputs=[selected_view_name],
                 outputs=[view_drop_result, view_list_df, selected_view_name, 
-                        view_columns_df, view_ddl_text]
+                        view_columns_df, view_ddl_text, view_join_text, view_where_text]
             )
             
             create_view_btn.click(
@@ -1184,7 +1453,7 @@ def build_management_tab(pool):
             )
         
         # Data Management Tab
-        with gr.TabItem(label="Dataの管理"):
+        with gr.TabItem(label="データの管理"):
             # Feature 1: Table Data Display
             with gr.Accordion(label="1. テーブル・ビューデータの表示", open=True):
                 data_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
@@ -1207,6 +1476,7 @@ def build_management_tab(pool):
                     label="WHERE条件（オプション）",
                     placeholder="例: status = 'A' AND created_at > SYSDATE - 7",
                     lines=2,
+                    max_lines=5,
                 )
                 
                 data_display_btn = gr.Button("データを表示", variant="primary")
@@ -1261,6 +1531,7 @@ def build_management_tab(pool):
                 csv_upload_result = gr.Textbox(
                     label="アップロード結果",
                     lines=5,
+                    max_lines=5,
                     interactive=False,
                 )
             
@@ -1284,7 +1555,7 @@ def build_management_tab(pool):
                     label="SQL文（複数の文をセミコロンで区切って入力可能）",
                     placeholder="INSERT/UPDATE/DELETE/MERGE文を入力してください（注: SELECT文は禁止されています）\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';",
                     lines=10,
-                    max_lines=30,
+                    max_lines=15,
                     show_copy_button=True,
                 )
                 
@@ -1294,7 +1565,8 @@ def build_management_tab(pool):
                 
                 data_sql_result = gr.Textbox(
                     label="実行結果",
-                    lines=5,
+                    lines=2,
+                    max_lines=5,
                     interactive=False,
                 )
 

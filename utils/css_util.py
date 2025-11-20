@@ -214,4 +214,19 @@ gradio-app {
     background-image: url("https://objectstorage.ap-osaka-1.oraclecloud.com/n/idqcucnenh88/b/public-images/o/main_bg.png") !important;
     background-size: 100vw 100vh !important;
 }
+/* Force vertical scrollbar for multi-line textboxes */
+textarea[rows]:not([rows="1"]) {
+  overflow-y: auto !important;
+  scrollbar-width: thin !important;
+}
+
+textarea[rows]:not([rows="1"])::-webkit-scrollbar {
+  all: initial !important;
+  background: #f1f1f1 !important;
+}
+
+textarea[rows]:not([rows="1"])::-webkit-scrollbar-thumb {
+  all: initial !important;
+  background: #a8a8a8 !important;
+}
 """

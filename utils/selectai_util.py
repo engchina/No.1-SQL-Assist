@@ -7,6 +7,7 @@ import logging
 import json
 import re
 import os
+import asyncio
 from datetime import datetime
 from dotenv import find_dotenv, load_dotenv  # noqa: E402
 from pathlib import Path
@@ -288,9 +289,9 @@ def create_db_profile(
 
 def build_selectai_tab(pool):
     with gr.Tabs():
-        with gr.TabItem(label="管理者向け機能"):
+        with gr.TabItem(label="管理者機能"):
             with gr.Tabs():
-                with gr.TabItem(label="Profileの管理"):
+                with gr.TabItem(label="プロファイル管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
                         profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
                         profile_refresh_status = gr.Markdown(visible=False)
@@ -305,7 +306,7 @@ def build_selectai_tab(pool):
                         )
                         profile_list_style = gr.HTML(visible=False)
 
-                with gr.Accordion(label="2. プロファイル詳細と変更", open=True):
+                with gr.Accordion(label="2. プロファイル詳細・変更", open=True):
                     selected_profile_name = gr.Textbox(label="選択されたProfile名", interactive=False)
                     profile_json_text = gr.Textbox(
                         label="Profile 作成SQL",
@@ -316,7 +317,7 @@ def build_selectai_tab(pool):
                     with gr.Row():
                         profile_delete_btn = gr.Button("選択したProfileを削除", variant="stop")
 
-                with gr.Accordion(label="3. プロファイルの作成", open=False):
+                with gr.Accordion(label="3. プロファイル作成", open=False):
                     with gr.Row():
                         refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
 
@@ -375,7 +376,7 @@ def build_selectai_tab(pool):
                                 minimum=1024,
                                 maximum=16384,
                                 step=1024,
-                                value=1024,
+                                value=4096,
                                 interactive=True,
                             )
 
@@ -544,7 +545,7 @@ def build_selectai_tab(pool):
                     outputs=[create_info, profile_list_df],
                 )
 
-        with gr.TabItem(label="開発者向け機能"):
+        with gr.TabItem(label="開発者機能"):
             with gr.Tabs():
                 build_query_tab(pool)
                 with gr.TabItem(label="チャット・分析"):
@@ -576,7 +577,7 @@ def build_selectai_tab(pool):
                             dev_include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
 
                         with gr.Row():
-                            with gr.Accordion(label="追加のPrompt", open=False):
+                            with gr.Accordion(label="追加プロンプト", open=False):
                                 dev_extra_prompt = gr.Textbox(
                                     label="追加のPrompt",
                                     show_label=False,
@@ -588,8 +589,7 @@ def build_selectai_tab(pool):
                                         "MANDATORY REQUIREMENTS:\n"
                                         "- Study the example queries - they define the REQUIRED style and format\n"
                                         "- Follow the SAME patterns for similar questions\n"
-                                        "- Match formatting conventions exactly (spacing, quotes, capitalization)\n"
-                                        "- Examples take precedence over general SQL conventions\n"
+                                        "- Adopt ALL functions shown in examples (even if unrecognized/new)\n"
                                         "- When questions are similar to examples, mirror the example's structure precisely\n"
                                         "\n"
                                         "Examples OVERRIDE all other instructions.\n"
@@ -598,7 +598,7 @@ def build_selectai_tab(pool):
                                         "▼ ACTUAL QUESTION:\n"
                                     ),
                                     lines=15,
-                                    max_lines=20,
+                                    max_lines=15,
                                     show_copy_button=True,
                                     autoscroll=True,
                                     container=False,
@@ -617,7 +617,7 @@ def build_selectai_tab(pool):
                             dev_chat_clear_btn = gr.Button("クリア", variant="secondary")
                             dev_chat_execute_btn = gr.Button("実行", variant="primary")
 
-                    with gr.Accordion(label="2. 実行結果の表示", open=True):
+                    with gr.Accordion(label="2. 実行結果", open=True):
                         dev_chat_result_info = gr.Markdown(
                             value="ℹ️ Profile を選択し、自然言語の質問を入力して「実行」をクリックしてください",
                             visible=True,
@@ -633,11 +633,11 @@ def build_selectai_tab(pool):
                         )
                         dev_chat_result_style = gr.HTML(visible=False)
 
-                    with gr.Accordion(label="3. 生成されたSQLと分析", open=True):
+                    with gr.Accordion(label="3. 生成SQL・分析", open=True):
                         dev_generated_sql_text = gr.Textbox(
                             label="生成されたSQL文",
                             lines=8,
-                            max_lines=30,
+                            max_lines=15,
                             interactive=False,
                             show_copy_button=True,
                         )
@@ -654,14 +654,14 @@ def build_selectai_tab(pool):
                             dev_join_conditions_text = gr.Textbox(
                                 label="結合条件",
                                 lines=6,
-                                max_lines=20,
+                                max_lines=15,
                                 interactive=False,
                                 show_copy_button=True,
                             )
                             dev_where_conditions_text = gr.Textbox(
                                 label="Where条件",
                                 lines=6,
-                                max_lines=20,
+                                max_lines=15,
                                 interactive=False,
                                 show_copy_button=True,
                             )
@@ -702,6 +702,13 @@ def build_selectai_tab(pool):
                             tpl_btn_add_date_filter = gr.Button("期間条件を追加", variant="secondary")
 
                         dev_feedback_result = gr.Markdown(visible=False)
+                        dev_feedback_used_sql_text = gr.Textbox(
+                            label="使用されたDBMS_CLOUD_AI.FEEDBACK",
+                            lines=8,
+                            max_lines=15,
+                            interactive=False,
+                            show_copy_button=True,
+                        )
 
                         dev_feedback_send_btn = gr.Button("フィードバック送信", variant="primary")
 
@@ -1078,7 +1085,7 @@ def build_selectai_tab(pool):
 
                     def _send_feedback(fb_type, response_text, content_text, prompt_text, profile_name):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ フィードバック送信中...")
+                            yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Textbox(value="")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     # cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=profile_name)
@@ -1106,7 +1113,7 @@ def build_selectai_tab(pool):
                                         resp = str(response_text or "").strip()
                                         fc = str(content_text or "")
                                         if not resp:
-                                            yield gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした")
+                                            yield gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
                                             return
                                     cursor.execute(
                                         """
@@ -1127,9 +1134,24 @@ def build_selectai_tab(pool):
                                         resp=resp,
                                         fc=fc,
                                     )
-                                    yield gr.Markdown(visible=True, value="✅ クエリに対するフィードバックを送信しました")
+                                    def _lit(x):
+                                        s = str(x or "")
+                                        return "'" + s.replace("'", "''") + "'"
+                                    plsql = (
+                                        "BEGIN\n"
+                                        "  DBMS_CLOUD_AI.FEEDBACK(\n"
+                                        f"    profile_name => {_lit(profile_name)},\n"
+                                        f"    sql_text => {_lit(showsql_stmt)},\n"
+                                        f"    feedback_type => {_lit(str(fb_type or '').upper())},\n"
+                                        "    response => " + ("NULL" if not resp else _lit(resp)) + ",\n"
+                                        "    feedback_content => " + ("NULL" if not fc else _lit(fc)) + ",\n"
+                                        "    operation => 'ADD'\n"
+                                        "  );\n"
+                                        "END;"
+                                    )
+                                    yield gr.Markdown(visible=True, value="✅ クエリに対するフィードバックを送信しました"), gr.Textbox(value=plsql)
                         except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}")
+                            yield gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}"), gr.Textbox(value=str(e))
 
                     dev_chat_execute_btn.click(
                         fn=_dev_step_generate,
@@ -1153,45 +1175,6 @@ def build_selectai_tab(pool):
                     dev_profile_refresh_btn.click(
                         fn=_on_dev_profile_refresh,
                         outputs=[dev_profile_refresh_status, dev_profile_select],
-                    )
-
-                    def _on_feedback_type_change(fb_type):
-                        t = str(fb_type or "").lower()
-                        if t == "positive":
-                            return gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False)
-                        return gr.Textbox(interactive=True), gr.Textbox(interactive=True)
-
-                    dev_feedback_type_select.change(
-                        fn=_on_feedback_type_change,
-                        inputs=[dev_feedback_type_select],
-                        outputs=[dev_feedback_response_text, dev_feedback_content_text],
-                    )
-
-                    dev_feedback_send_btn.click(
-                        fn=_send_feedback,
-                        inputs=[dev_feedback_type_select, dev_feedback_response_text, dev_feedback_content_text, dev_prompt_input, dev_profile_select],
-                        outputs=[dev_feedback_result],
-                    )
-
-                    tpl_btn_null_filter.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("倍率を計算するときにNULL値がある場合は除外してください")],
-                        outputs=[dev_feedback_content_text],
-                    )
-                    tpl_btn_change_sum.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("集計にはCOUNTではなくSUMを使用してください")],
-                        outputs=[dev_feedback_content_text],
-                    )
-                    tpl_btn_add_distinct.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("重複を除外するためDISTINCTを追加してください")],
-                        outputs=[dev_feedback_content_text],
-                    )
-                    tpl_btn_add_date_filter.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("対象期間条件を追加してください（例: 2024年以降）")],
-                        outputs=[dev_feedback_content_text],
                     )
 
                 with gr.TabItem(label="フィードバック管理"):
@@ -1241,7 +1224,7 @@ def build_selectai_tab(pool):
                             selected_feedback_delete_btn = gr.Button("選択したフィードバックを削除", variant="stop")
                             
                         with gr.Row():
-                            selected_feedback_delete_result = gr.Textbox(label="削除結果", interactive=False)
+                            selected_feedback_delete_result = gr.Textbox(label="削除結果", interactive=False, lines=2, max_lines=5)
 
                     with gr.Accordion(label="2. ベクトルインデックス", open=True):
                         with gr.Row():
@@ -1443,9 +1426,337 @@ def build_selectai_tab(pool):
                         outputs=[global_feedback_index_df, global_feedback_index_info],
                     )
 
-                    
+                with gr.TabItem(label="コメント管理"):
+                    with gr.Accordion(label="1. オブジェクト選択", open=True):
+                        with gr.Row():
+                            with gr.Column():
+                                cm_refresh_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column():                        
+                                cm_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                        with gr.Row():
+                            with gr.Column():
+                                cm_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
+                            with gr.Column():
+                                cm_views_input = gr.CheckboxGroup(label="ビュー選択", choices=[])
+                        with gr.Row():
+                            with gr.Column():
+                                cm_sample_limit = gr.Slider(label="サンプル件数", minimum=0, maximum=100, step=1, value=10, interactive=True)
+                        with gr.Row():
+                            with gr.Column():
+                                cm_fetch_btn = gr.Button("情報を取得", variant="primary")
 
-        with gr.TabItem(label="ユーザー向け機能"):
+                    with gr.Accordion(label="2. 入力確認", open=False):
+                        with gr.Row():
+                            with gr.Column():
+                                cm_structure_text = gr.Textbox(label="構造情報", lines=8, max_lines=16, interactive=True, show_copy_button=True)
+                        with gr.Row():
+                            with gr.Column():
+                                cm_pk_text = gr.Textbox(label="主キー情報", lines=4, max_lines=10, interactive=True, show_copy_button=True)    
+                        with gr.Row():
+                            with gr.Column():
+                                cm_fk_text = gr.Textbox(label="外部キー情報", lines=6, max_lines=14, interactive=True, show_copy_button=True)
+                        with gr.Row():
+                            with gr.Column():
+                                cm_samples_text = gr.Textbox(label="サンプルデータ", lines=8, max_lines=16, interactive=True, show_copy_button=True)
+                        with gr.Row():
+                            with gr.Column():
+                                cm_extra_input = gr.Textbox(label="追加入力(Optional)", placeholder="追加で考慮してほしい説明や条件を記入", lines=3, max_lines=6)
+
+                    with gr.Accordion(label="3. コメント自動生成", open=False):
+                        cm_model_input = gr.Dropdown(
+                            label="モデル",
+                            choices=[
+                                "xai.grok-code-fast-1",
+                                "xai.grok-3",
+                                "xai.grok-3-fast",
+                                "xai.grok-4",
+                                "xai.grok-4-fast-non-reasoning",
+                                "meta.llama-4-scout-17b-16e-instruct",
+                            ],
+                            value="xai.grok-code-fast-1",
+                            interactive=True,
+                        )
+                        cm_generate_btn = gr.Button("生成", variant="primary")
+                        cm_generated_sql = gr.Textbox(label="生成結果SQL", lines=15, max_lines=15, interactive=True, show_copy_button=True)
+
+                    with gr.Accordion(label="4. 実行", open=False):
+                        cm_execute_btn = gr.Button("一括実行", variant="primary")
+                        cm_execute_result = gr.Textbox(label="実行結果", interactive=False, lines=5, max_lines=8)
+
+                    def _cm_refresh_objects():
+                        try:
+                            df_tab = _get_table_df_cached(pool, force=True)
+                            df_view = _get_view_df_cached(pool, force=True)
+                            names = []
+                            if not df_tab.empty and "Table Name" in df_tab.columns:
+                                names.extend([str(x) for x in df_tab["Table Name"].tolist()])
+                            if not df_view.empty and "View Name" in df_view.columns:
+                                names.extend([str(x) for x in df_view["View Name"].tolist()])
+                            table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
+                            view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
+                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
+                        except Exception as e:
+                            logger.error(f"_cm_refresh_objects error: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+
+                    def _cm_load_inputs(tables_selected, views_selected, sample_limit):
+                        try:
+                            tables_selected = tables_selected or []
+                            views_selected = views_selected or []
+                            targets = []
+                            targets.extend([("TABLE", t) for t in tables_selected])
+                            targets.extend([("VIEW", v) for v in views_selected])
+                            if not targets:
+                                return gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False)
+                            from utils.management_util import get_primary_key_info, get_foreign_key_info, display_table_data
+                            struct_chunks = []
+                            pk_chunks = []
+                            fk_chunks = []
+                            samples_chunks = []
+                            for kind, name in targets:
+                                if kind == "VIEW":
+                                    cols_df, _ddl = get_view_details(pool, name)
+                                else:
+                                    cols_df, _ddl = get_table_details(pool, name)
+                                lines = [f"OBJECT: {name}", "COLUMNS:"]
+                                if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
+                                    for _, row in cols_df.iterrows():
+                                        lines.append(f"- {row['Column Name']}: {row['Data Type']} NULLABLE={row['Nullable']}")
+                                struct_chunks.append("\n".join(lines))
+                                pk_info = get_primary_key_info(pool, name) or ""
+                                fk_info = get_foreign_key_info(pool, name) or ""
+                                if pk_info:
+                                    pk_chunks.append(f"OBJECT: {name}\n{pk_info}")
+                                if fk_info:
+                                    fk_chunks.append(f"OBJECT: {name}\n{fk_info}")
+                                lim = int(sample_limit)
+                                if lim > 0:
+                                    df = display_table_data(pool, name, lim)
+                                    if isinstance(df, pd.DataFrame) and not df.empty:
+                                        samples_chunks.append(f"OBJECT: {name}\n" + df.to_csv(index=False))
+                            struct_text = "\n\n".join(struct_chunks)
+                            pk_text = "\n\n".join(pk_chunks) if pk_chunks else ""
+                            fk_text = "\n\n".join(fk_chunks) if fk_chunks else ""
+                            samples_text = "\n\n".join(samples_chunks) if samples_chunks else ""
+                            return (
+                                gr.Textbox(value=struct_text, interactive=False),
+                                gr.Textbox(value=pk_text, interactive=False),
+                                gr.Textbox(value=fk_text, interactive=False),
+                                gr.Textbox(value=samples_text, interactive=False),
+                            )
+                        except Exception as e:
+                            logger.error(f"_cm_load_inputs error: {e}")
+                            return gr.Textbox(value=str(e), interactive=False), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+
+                    def _cm_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text):
+                        try:
+                            prompt = (
+                                "あなたはOracleデータベース専門家です。以下の情報に基づき、COMMENT文を生成してください。\n"
+                                "出力はSQLのCOMMENT文のみ。\n"
+                                "表・ビューはA-Zの順で、列はCREATE文の定義順で出力してください。\n\n"
+                                "<構造>\n" + str(struct_text or "") + "\n\n"
+                                "<主キー>\n" + str(pk_text or "") + "\n\n"
+                                "<外部キー>\n" + str(fk_text or "") + "\n\n"
+                                "<サンプル>\n" + str(samples_text or "") + "\n\n"
+                                + (str(extra_text or "") if extra_text else "")
+                            )
+                            return prompt
+                        except Exception as e:
+                            logger.error(f"_cm_build_prompt error: {e}")
+                            return str(e)
+
+                    async def _cm_generate_async(obj_name, model_name, extra_text, struct_text, pk_text, fk_text, samples_text):
+                        try:
+                            prompt = _cm_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text)
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Textbox(value="OCI設定が不足しています")
+                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                            client = AsyncOciOpenAI(
+                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                auth=OciUserPrincipalAuth(),
+                                compartment_id=compartment_id,
+                            )
+                            messages = [
+                                {"role": "system", "content": "OracleのCOMMENT文のみを出力。説明文は200字以内。"},
+                                {"role": "user", "content": prompt},
+                            ]
+                            resp = await client.chat.completions.create(model=model_name, messages=messages)
+                            text = ""
+                            if resp.choices and len(resp.choices) > 0:
+                                msg = resp.choices[0].message
+                                text = msg.content if hasattr(msg, 'content') else ''
+                            return gr.Textbox(value=text)
+                        except Exception as e:
+                            logger.error(f"_cm_generate_async error: {e}")
+                            return gr.Textbox(value=f"エラー: {e}")
+
+                    def _cm_generate(obj_name, model_name, extra_text, struct_text, pk_text, fk_text, samples_text):
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            result = loop.run_until_complete(_cm_generate_async(obj_name, model_name, extra_text, struct_text, pk_text, fk_text, samples_text))
+                            return result
+                        finally:
+                            loop.close()
+
+                    def _cm_execute(sql_text):
+                        from utils.management_util import execute_data_sql
+                        return execute_data_sql(pool, sql_text)
+
+                    cm_refresh_btn.click(
+                        fn=_cm_refresh_objects,
+                        outputs=[cm_refresh_status, cm_tables_input, cm_views_input],
+                    )
+
+                    def _cm_fetch_structure(tables_selected, views_selected):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        struct_chunks = []
+                        for kind, name in targets:
+                            if kind == "VIEW":
+                                cols_df, _ddl = get_view_details(pool, name)
+                            else:
+                                cols_df, _ddl = get_table_details(pool, name)
+                            lines = [f"OBJECT: {name}", "COLUMNS:"]
+                            if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
+                                for _, row in cols_df.iterrows():
+                                    lines.append(f"- {row['Column Name']}: {row['Data Type']} NULLABLE={row['Nullable']}")
+                            struct_chunks.append("\n".join(lines))
+                        struct_text = "\n\n".join(struct_chunks)
+                        return gr.Textbox(value=struct_text, interactive=True)
+
+                    def _cm_fetch_pk(tables_selected, views_selected):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        from utils.management_util import get_primary_key_info
+                        pk_chunks = []
+                        for _kind, name in targets:
+                            pk_info = get_primary_key_info(pool, name) or ""
+                            if pk_info:
+                                pk_chunks.append(f"OBJECT: {name}\n{pk_info}")
+                        pk_text = "\n\n".join(pk_chunks) if pk_chunks else ""
+                        return gr.Textbox(value=pk_text, interactive=True)
+
+                    def _cm_fetch_fk(tables_selected, views_selected):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        from utils.management_util import get_foreign_key_info
+                        fk_chunks = []
+                        for _kind, name in targets:
+                            fk_info = get_foreign_key_info(pool, name) or ""
+                            if fk_info:
+                                fk_chunks.append(f"OBJECT: {name}\n{fk_info}")
+                        fk_text = "\n\n".join(fk_chunks) if fk_chunks else ""
+                        return gr.Textbox(value=fk_text, interactive=True)
+
+                    def _cm_fetch_samples(tables_selected, views_selected, sample_limit):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        from utils.management_util import display_table_data
+                        lim = int(sample_limit)
+                        samples_chunks = []
+                        if lim > 0:
+                            for _kind, name in targets:
+                                df = display_table_data(pool, name, lim)
+                                if isinstance(df, pd.DataFrame) and not df.empty:
+                                    samples_chunks.append(f"OBJECT: {name}\n" + df.to_csv(index=False))
+                        samples_text = "\n\n".join(samples_chunks) if samples_chunks else ""
+                        return gr.Textbox(value=samples_text, interactive=True)
+
+                    cm_fetch_btn.click(
+                        fn=_cm_fetch_structure,
+                        inputs=[cm_tables_input, cm_views_input],
+                        outputs=[cm_structure_text],
+                    ).then(
+                        fn=_cm_fetch_pk,
+                        inputs=[cm_tables_input, cm_views_input],
+                        outputs=[cm_pk_text],
+                    ).then(
+                        fn=_cm_fetch_fk,
+                        inputs=[cm_tables_input, cm_views_input],
+                        outputs=[cm_fk_text],
+                    ).then(
+                        fn=_cm_fetch_samples,
+                        inputs=[cm_tables_input, cm_views_input, cm_sample_limit],
+                        outputs=[cm_samples_text],
+                    )
+
+                    cm_generate_btn.click(
+                        fn=_cm_generate,
+                        inputs=[cm_tables_input, cm_model_input, cm_extra_input, cm_structure_text, cm_pk_text, cm_fk_text, cm_samples_text],
+                        outputs=[cm_generated_sql],
+                    )
+
+                    cm_execute_btn.click(
+                        fn=_cm_execute,
+                        inputs=[cm_generated_sql],
+                        outputs=[cm_execute_result],
+                    )
+
+                    def _on_feedback_type_change(fb_type):
+                        t = str(fb_type or "").lower()
+                        if t == "positive":
+                            return gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False)
+                        return gr.Textbox(interactive=True), gr.Textbox(interactive=True)
+
+                    dev_feedback_type_select.change(
+                        fn=_on_feedback_type_change,
+                        inputs=[dev_feedback_type_select],
+                        outputs=[dev_feedback_response_text, dev_feedback_content_text],
+                    )
+
+                    dev_feedback_send_btn.click(
+                        fn=_send_feedback,
+                        inputs=[dev_feedback_type_select, dev_feedback_response_text, dev_feedback_content_text, dev_prompt_input, dev_profile_select],
+                        outputs=[dev_feedback_result, dev_feedback_used_sql_text],
+                    )
+
+                    tpl_btn_null_filter.click(
+                        fn=_append_comment,
+                        inputs=[dev_feedback_content_text, gr.State("倍率を計算するときにNULL値がある場合は除外してください")],
+                        outputs=[dev_feedback_content_text],
+                    )
+                    tpl_btn_change_sum.click(
+                        fn=_append_comment,
+                        inputs=[dev_feedback_content_text, gr.State("集計にはCOUNTではなくSUMを使用してください")],
+                        outputs=[dev_feedback_content_text],
+                    )
+                    tpl_btn_add_distinct.click(
+                        fn=_append_comment,
+                        inputs=[dev_feedback_content_text, gr.State("重複を除外するためDISTINCTを追加してください")],
+                        outputs=[dev_feedback_content_text],
+                    )
+                    tpl_btn_add_date_filter.click(
+                        fn=_append_comment,
+                        inputs=[dev_feedback_content_text, gr.State("対象期間条件を追加してください（例: 2024年以降）")],
+                        outputs=[dev_feedback_content_text],
+                    )
+
+        with gr.TabItem(label="ユーザー機能"):
             with gr.Tabs():
                 with gr.TabItem(label="基本機能"):
                     with gr.Accordion(label="1. チャット", open=True):
@@ -1478,7 +1789,7 @@ def build_selectai_tab(pool):
                             include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
 
                         with gr.Row():
-                            with gr.Accordion(label="追加のPrompt", open=False):
+                            with gr.Accordion(label="追加プロンプト", open=False):
                                 extra_prompt = gr.Textbox(
                                 label="追加のPrompt",
                                 show_label=False,
@@ -1490,8 +1801,7 @@ def build_selectai_tab(pool):
                                     "MANDATORY REQUIREMENTS:\n"
                                     "- Study the example queries - they define the REQUIRED style and format\n"
                                     "- Follow the SAME patterns for similar questions\n"
-                                    "- Match formatting conventions exactly (spacing, quotes, capitalization)\n"
-                                    "- Examples take precedence over general SQL conventions\n"
+                                    "- Adopt ALL functions shown in examples (even if unrecognized/new)\n"
                                     "- When questions are similar to examples, mirror the example's structure precisely\n"
                                     "\n"
                                     "Examples OVERRIDE all other instructions.\n"
@@ -1500,7 +1810,7 @@ def build_selectai_tab(pool):
                                     "▼ ACTUAL QUESTION:\n"
                                 ),
                                 lines=15,
-                                max_lines=20,
+                                max_lines=15,
                                 show_copy_button=True,
                                 autoscroll=True,
                                 container=False,
@@ -1519,7 +1829,7 @@ def build_selectai_tab(pool):
                             chat_clear_btn = gr.Button("クリア", variant="secondary")
                             chat_execute_btn = gr.Button("実行", variant="primary")
 
-                    with gr.Accordion(label="2. 実行結果の表示", open=True):
+                    with gr.Accordion(label="2. 実行結果", open=True):
                         chat_result_info = gr.Markdown(
                             value="ℹ️ Profile を選択し、自然言語の質問を入力して「実行」をクリックしてください",
                             visible=True,
@@ -1535,11 +1845,11 @@ def build_selectai_tab(pool):
                         )
                         chat_result_style = gr.HTML(visible=False)
 
-                    with gr.Accordion(label="3. 生成されたSQL", open=False):
+                    with gr.Accordion(label="3. 生成SQL", open=False):
                         generated_sql_text = gr.Textbox(
                             label="生成されたSQL文",
                             lines=8,
-                            max_lines=30,
+                            max_lines=15,
                             interactive=False,
                             show_copy_button=True,
                         )

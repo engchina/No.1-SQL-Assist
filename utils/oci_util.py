@@ -352,90 +352,91 @@ def build_oci_genai_tab(pool):
         return create_oci_cred(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool)
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="OCI GenAIの設定*") as tab_create_oci_cred:
-        with gr.Accordion(label="使用されたSQL", open=False) as tab_create_oci_cred_sql_accordion:
-            tab_create_oci_cred_sql_text = gr.Textbox(
-                label="SQL",
-                show_label=False,
-                lines=25,
-                max_lines=50,
-                autoscroll=False,
-                interactive=False,
-                show_copy_button=True,
-            )
-
-        with gr.Row():
-            with gr.Column():
-                tab_create_oci_cred_user_ocid_text = gr.Textbox(
-                    label="User OCID*",
-                    lines=1,
-                    interactive=True,
+    with gr.TabItem(label="OCI GenAI 設定") as tab_create_oci_cred:
+        with gr.Accordion(label="OCI GenAI 設定", open=True):
+            with gr.Accordion(label="SQL ログ", open=False) as tab_create_oci_cred_sql_accordion:
+                tab_create_oci_cred_sql_text = gr.Textbox(
+                    label="SQL",
+                    show_label=False,
+                    lines=25,
+                    max_lines=50,
+                    autoscroll=False,
+                    interactive=False,
+                    show_copy_button=True,
                 )
 
-        with gr.Row():
-            with gr.Column():
-                tab_create_oci_cred_tenancy_ocid_text = gr.Textbox(
-                    label="Tenancy OCID*",
-                    lines=1,
-                    interactive=True,
-                )
+            with gr.Row():
+                with gr.Column():
+                    tab_create_oci_cred_user_ocid_text = gr.Textbox(
+                        label="User OCID*",
+                        lines=1,
+                        interactive=True,
+                    )
 
-        with gr.Row():
-            with gr.Column():
-                tab_create_oci_cred_fingerprint_text = gr.Textbox(
-                    label="Fingerprint*",
-                    lines=1,
-                    interactive=True,
-                )
+            with gr.Row():
+                with gr.Column():
+                    tab_create_oci_cred_tenancy_ocid_text = gr.Textbox(
+                        label="Tenancy OCID*",
+                        lines=1,
+                        interactive=True,
+                    )
 
-        with gr.Row():
-            with gr.Column():
-                tab_create_oci_cred_private_key_file = gr.File(
-                    label="Private Key*",
-                    file_types=[".pem"],
-                    type="filepath",
-                    interactive=True,
-                )
+            with gr.Row():
+                with gr.Column():
+                    tab_create_oci_cred_fingerprint_text = gr.Textbox(
+                        label="Fingerprint*",
+                        lines=1,
+                        interactive=True,
+                    )
 
-        with gr.Row():
-            with gr.Column():
-                tab_create_oci_cred_region_text = gr.Dropdown(
-                    choices=["ap-osaka-1", "us-chicago-1"],
-                    label="Region*",
-                    interactive=True,
-                    value="us-chicago-1",
-                )
+            with gr.Row():
+                with gr.Column():
+                    tab_create_oci_cred_private_key_file = gr.File(
+                        label="Private Key*",
+                        file_types=[".pem"],
+                        type="filepath",
+                        interactive=True,
+                    )
 
-        with gr.Row():
-            with gr.Column():
-                tab_create_oci_clear_button = gr.ClearButton(value="クリア")
-            with gr.Column():
-                tab_create_oci_cred_button = gr.Button(value="設定/再設定", variant="primary")
+            with gr.Row():
+                with gr.Column():
+                    tab_create_oci_cred_region_text = gr.Dropdown(
+                        choices=["ap-osaka-1", "us-chicago-1"],
+                        label="Region*",
+                        interactive=True,
+                        value="us-chicago-1",
+                    )
 
-    # イベントハンドラーの設定
-    tab_create_oci_clear_button.add(
-        components=[
-            tab_create_oci_cred_sql_text,
-            tab_create_oci_cred_user_ocid_text,
-            tab_create_oci_cred_tenancy_ocid_text,
-            tab_create_oci_cred_fingerprint_text,
-            tab_create_oci_cred_private_key_file,
-        ]
-    )
+            with gr.Row():
+                with gr.Column():
+                    tab_create_oci_clear_button = gr.ClearButton(value="クリア")
+                with gr.Column():
+                    tab_create_oci_cred_button = gr.Button(value="設定/再設定", variant="primary")
 
-    tab_create_oci_cred_button.click(
-        create_oci_cred_wrapper,
-        inputs=[
-            tab_create_oci_cred_user_ocid_text,
-            tab_create_oci_cred_tenancy_ocid_text,
-            tab_create_oci_cred_fingerprint_text,
-            tab_create_oci_cred_private_key_file,
-            tab_create_oci_cred_region_text,
-        ],
-        outputs=[tab_create_oci_cred_sql_accordion, tab_create_oci_cred_sql_text],
-    )
+        # イベントハンドラーの設定
+        tab_create_oci_clear_button.add(
+            components=[
+                tab_create_oci_cred_sql_text,
+                tab_create_oci_cred_user_ocid_text,
+                tab_create_oci_cred_tenancy_ocid_text,
+                tab_create_oci_cred_fingerprint_text,
+                tab_create_oci_cred_private_key_file,
+            ]
+        )
 
-    return tab_create_oci_cred
+        tab_create_oci_cred_button.click(
+            create_oci_cred_wrapper,
+            inputs=[
+                tab_create_oci_cred_user_ocid_text,
+                tab_create_oci_cred_tenancy_ocid_text,
+                tab_create_oci_cred_fingerprint_text,
+                tab_create_oci_cred_private_key_file,
+                tab_create_oci_cred_region_text,
+            ],
+            outputs=[tab_create_oci_cred_sql_accordion, tab_create_oci_cred_sql_text],
+        )
+
+        return tab_create_oci_cred
 
 
 def build_oci_embedding_test_tab(pool):
@@ -453,46 +454,46 @@ def build_oci_embedding_test_tab(pool):
         return test_oci_cred(test_query_text, embed_model, pool)
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="OCI GenAI Embeddingモデルのテスト") as tab_test_oci_cred:      
+    with gr.TabItem(label="OCI GenAI 埋め込みテスト") as tab_test_oci_cred:      
+        with gr.Accordion(label="埋め込みモデル", open=True):
+            with gr.Row():
+                with gr.Column():
+                    tab_test_oci_cred_vector_text = gr.Textbox(
+                        label="ベクトル結果",
+                        lines=15,
+                        max_lines=15,
+                        autoscroll=False,
+                        interactive=False,
+                        show_copy_button=True,
+                    )
 
-        with gr.Row():
-            with gr.Column():
-                tab_test_oci_cred_vector_text = gr.Textbox(
-                    label="ベクトル結果",
-                    lines=15,
-                    max_lines=20,
-                    autoscroll=False,
-                    interactive=False,
-                    show_copy_button=True,
-                )
+            with gr.Row():
+                with gr.Column():
+                    tab_test_oci_cred_query_text = gr.Textbox(
+                        label="テキスト",
+                        placeholder="埋め込みベクトルに変換するテキストを入力してください...",
+                        lines=2,
+                        max_lines=5,
+                        value="こんにちわ",
+                    )
+            
+            with gr.Row():
+                with gr.Column():
+                    tab_test_oci_cred_model_input = gr.Dropdown(
+                        label="モデル",
+                        choices=["cohere.embed-v4.0"],
+                        value="cohere.embed-v4.0",
+                        interactive=True,
+                    )
 
-        with gr.Row():
-            with gr.Column():
-                tab_test_oci_cred_query_text = gr.Textbox(
-                    label="テキスト",
-                    placeholder="埋め込みベクトルに変換するテキストを入力してください...",
-                    lines=2,
-                    max_lines=5,
-                    value="こんにちわ",
-                )
-        
-        with gr.Row():
-            with gr.Column():
-                tab_test_oci_cred_model_input = gr.Dropdown(
-                    label="モデル",
-                    choices=["cohere.embed-v4.0"],
-                    value="cohere.embed-v4.0",
-                    interactive=True,
-                )
-
-        with gr.Row():
-            with gr.Column():
-                tab_test_clear_button = gr.ClearButton(
-                    value="クリア",
-                    components=[]
-                )
-            with gr.Column():
-                tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
+            with gr.Row():
+                with gr.Column():
+                    tab_test_clear_button = gr.ClearButton(
+                        value="クリア",
+                        components=[]
+                    )
+                with gr.Column():
+                    tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
 
         # イベントハンドラーの設定
         tab_test_clear_button.add(
