@@ -718,322 +718,6 @@ def build_selectai_tab(pool):
                         esc = s.replace("'", "''")
                         return f"select ai showsql '{esc}'"
  
-                    def _execute_select_ai_dev(selected_profile: str, prompt: str):
-                        if not selected_profile or not str(selected_profile).strip():
-                            gr.Warning("Profileを選択してください")
-                            return (
-                                gr.Markdown(visible=True, value="⚠️ Profileを選択してください"),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"),
-                                gr.HTML(visible=False, value=""),
-                                gr.Textbox(value=""),
-                                gr.Markdown(visible=False),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Name", "Type"])),
-                                gr.Textbox(value=""),
-                                gr.Textbox(value=""),
-                            )
-                        if not prompt or not str(prompt).strip():
-                            gr.Warning("質問を入力してください")
-                            return (
-                                gr.Markdown(visible=True, value="ℹ️ 質問を入力してください"),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"),
-                                gr.HTML(visible=False, value=""),
-                                gr.Textbox(value=""),
-                                gr.Markdown(visible=False),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Name", "Type"])),
-                                gr.Textbox(value=""),
-                                gr.Textbox(value=""),
-                            )
-
-                        q = str(prompt).strip()
-                        if q.endswith(";"):
-                            q = q[:-1]
-
-                        try:
-                            with pool.acquire() as conn:
-                                with conn.cursor() as cursor:
-                                    try:
-                                        cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=selected_profile)
-                                    except Exception as e:
-                                        logger.error(f"set profile error: {e}")
-
-                                    
-                                    gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name=> :name, action=> :a)"
-                                    showsql_stmt = _build_showsql_stmt(q)
-                                    show_text = ""
-                                    show_cells = []
-                                    try:
-                                        cursor.execute(gen_stmt, q=showsql_stmt, name=selected_profile, a="showsql")
-                                        rows = cursor.fetchmany(size=200)
-                                        if rows:
-                                            for r in rows:
-                                                for v in r:
-                                                    try:
-                                                        s = v.read() if hasattr(v, "read") else str(v)
-                                                    except Exception:
-                                                        s = str(v)
-                                                    if s:
-                                                        show_cells.append(s)
-                                            show_text = "\n".join(show_cells)
-                                    except Exception as e:
-                                        logger.error(f"dev showsql generate error: {e}")
-                                        show_text = ""
-                                    try:
-                                        cursor.execute(showsql_stmt)
-                                    except Exception as e:
-                                        logger.error(f"dev showsql execute error: {e}")
-                                    # Ensures the Select AI statement is recorded for later SQL_ID lookup
-                                    _ = _get_sql_id_for_text(showsql_stmt)
-
-                                    def _extract_sql(text: str) -> str:
-                                        if not text:
-                                            return ""
-                                        m = re.search(r"```sql\s*([\s\S]*?)```", text, flags=re.IGNORECASE)
-                                        if m:
-                                            s = m.group(1).strip()
-                                            return s
-                                        m2 = re.search(r"SQL\s*:([\s\S]+)$", text, flags=re.IGNORECASE)
-                                        if m2:
-                                            s = m2.group(1).strip()
-                                            return s
-                                        m3 = re.search(r"\b(SELECT|WITH)\b[\s\S]*", text, flags=re.IGNORECASE)
-                                        if m3:
-                                            s = m3.group(0).strip()
-                                            return s
-                                        return ""
-
-                                    generated_sql = _extract_sql(show_text)
-                                    if not generated_sql and show_cells:
-                                        for cell in show_cells:
-                                            c = str(cell)
-                                            # Try JSON parse
-                                            try:
-                                                obj = json.loads(c)
-                                                if isinstance(obj, dict):
-                                                    for k in ["sql", "SQL", "generated_sql", "query", "Query"]:
-                                                        if k in obj and obj[k]:
-                                                            generated_sql = str(obj[k]).strip()
-                                                            break
-                                                if generated_sql:
-                                                    break
-                                            except Exception:
-                                                pass
-                                            # Fallback: find SQL pattern in cell
-                                            m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", c, flags=re.IGNORECASE)
-                                            if m:
-                                                generated_sql = m.group(0).strip()
-                                                break
-                                    gen_sql_display = generated_sql
-                                    if gen_sql_display and not gen_sql_display.endswith(";"):
-                                        gen_sql_display = gen_sql_display
-
-                                    def _parse_sql(sql_text: str):
-                                        info = {"tables": [], "views": [], "joins": [], "where": "", "object_names": []}
-                                        if not sql_text:
-                                            return info
-                                        s = sql_text
-                                        s1 = re.sub(r"--.*", "", s)
-                                        s1 = re.sub(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/", "", s1)
-                                        from_match = re.search(r"\bFROM\b([\s\S]*?)(\bWHERE\b|\bGROUP\b|\bORDER\b|$)", s1, flags=re.IGNORECASE)
-                                        if from_match:
-                                            from_part = from_match.group(1)
-                                            toks = re.findall(r"\bJOIN\b\s+([\w\.\$]+)", from_part, flags=re.IGNORECASE)
-                                            base = re.findall(r"\bFROM\b\s+([\w\.\$]+)", s1, flags=re.IGNORECASE)
-                                            names = []
-                                            if base:
-                                                names.append(base[0])
-                                            names.extend(toks)
-                                            all_names = []
-                                            for n in names:
-                                                nn = n.split(".")[-1]
-                                                all_names.append(nn)
-                                            info["object_names"] = list(dict.fromkeys(all_names))
-                                            join_parts = re.findall(r"\bJOIN\b[\s\S]*?\bON\b\s*([\s\S]*?)(?=\bJOIN\b|\bWHERE\b|\bGROUP\b|\bORDER\b|$)", s1, flags=re.IGNORECASE)
-                                            info["joins"] = [jp.strip() for jp in join_parts if jp.strip()]
-                                        where_match = re.search(r"\bWHERE\b([\s\S]*?)(?=\bGROUP\b|\bORDER\b|$)", s1, flags=re.IGNORECASE)
-                                        if where_match:
-                                            info["where"] = where_match.group(1).strip()
-                                        try:
-                                            table_df = _get_table_df_cached(pool)
-                                            view_df = _get_view_df_cached(pool)
-                                            table_set = set([str(x).upper() for x in (table_df["Table Name"].tolist() if "Table Name" in table_df.columns else [])])
-                                            view_set = set([str(x).upper() for x in (view_df["View Name"].tolist() if "View Name" in view_df.columns else [])])
-                                            t_list = []
-                                            v_list = []
-                                            for nm in info.get("object_names", []):
-                                                up = str(nm).upper()
-                                                if up in table_set:
-                                                    t_list.append(nm)
-                                                elif up in view_set:
-                                                    v_list.append(nm)
-                                            info["tables"] = t_list
-                                            info["views"] = v_list
-                                        except Exception:
-                                            pass
-                                        return info
-
-                                    parsed = _parse_sql(generated_sql)
-                                    if not parsed.get("tables") and not parsed.get("views"):
-                                        try:
-                                            attrs = _get_profile_attributes(pool, selected_profile) or {}
-                                            obj_list = attrs.get("object_list") or []
-                                            names = [o.get("name") for o in obj_list if o.get("name")]
-                                            table_df = _get_table_df_cached(pool)
-                                            view_df = _get_view_df_cached(pool)
-                                            table_set = set([str(x).upper() for x in (table_df["Table Name"].tolist() if "Table Name" in table_df.columns else [])])
-                                            view_set = set([str(x).upper() for x in (view_df["View Name"].tolist() if "View Name" in view_df.columns else [])])
-                                            t_list = []
-                                            v_list = []
-                                            for nm in names:
-                                                up = str(nm).upper()
-                                                if up in table_set:
-                                                    t_list.append(nm)
-                                                elif up in view_set:
-                                                    v_list.append(nm)
-                                            parsed["tables"] = t_list
-                                            parsed["views"] = v_list
-                                        except Exception:
-                                            pass
-
-                                    analysis_text = ""
-                                    try:
-                                        if generated_sql:
-                                            ex_stmt = f"SELECT AI EXPLAINSQL <sql>\n{generated_sql}\n</sql>。\n日本語で解説してください。"
-                                            cursor.execute(ex_stmt)
-                                            arows = cursor.fetchmany(size=200)
-                                            if arows:
-                                                parts = []
-                                                for r in arows:
-                                                    for v in r:
-                                                        try:
-                                                            s = v.read() if hasattr(v, "read") else str(v)
-                                                        except Exception:
-                                                            s = str(v)
-                                                        if s:
-                                                            parts.append(s)
-                                                analysis_text = "\n".join(parts)
-                                    except Exception:
-                                        analysis_text = ""
-
-                                    exec_rows = []
-                                    exec_cols = []
-                                    if generated_sql and re.match(r"^\s*(select|with)\b", generated_sql, flags=re.IGNORECASE):
-                                        run_sql = generated_sql.strip()
-                                        if run_sql.endswith(";"):
-                                            run_sql = run_sql[:-1]
-                                        cursor.execute(run_sql)
-                                        exec_rows = cursor.fetchmany(size=100)
-                                        exec_cols = [d[0] for d in cursor.description] if cursor.description else []
-                                    if exec_rows:
-                                        cleaned_rows = []
-                                        for r in exec_rows:
-                                            cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
-                                        df = pd.DataFrame(cleaned_rows, columns=exec_cols)
-                                        gr.Info(f"{len(df)}件のデータを取得しました")
-
-                                        widths = []
-                                        if len(df) > 0:
-                                            sample = df.head(5)
-                                            columns = max(1, len(df.columns))
-                                            for col in df.columns:
-                                                series = sample[col].astype(str)
-                                                row_max = series.map(len).max() if len(series) > 0 else 0
-                                                length = max(len(str(col)), row_max)
-                                                widths.append(min(100 / columns, length))
-                                        else:
-                                            columns = max(1, len(df.columns))
-                                            widths = [min(100 / columns, len(c)) for c in df.columns]
-
-                                        total = sum(widths) if widths else 0
-                                        if total <= 0:
-                                            col_widths = None
-                                        else:
-                                            col_widths = [max(5, int(100 * w / total)) for w in widths]
-                                            diff = 100 - sum(col_widths)
-                                            if diff != 0 and len(col_widths) > 0:
-                                                col_widths[0] = max(5, col_widths[0] + diff)
-
-                                        df_component = gr.Dataframe(
-                                            visible=True,
-                                            value=df,
-                                            label=f"実行結果（件数: {len(df)}）",
-                                            elem_id="selectai_dev_chat_result_df",
-                                        )
-                                        style_value = ""
-                                        if col_widths:
-                                            rules = []
-                                            rules.append("#selectai_dev_chat_result_df table { table-layout: fixed; width: 100%; }")
-                                            for idx, pct in enumerate(col_widths, start=1):
-                                                rules.append(
-                                                    f"#selectai_dev_chat_result_df table th:nth-child({idx}), #selectai_dev_chat_result_df table td:nth-child({idx}) {{ width: {pct}%; }}"
-                                                )
-                                            style_value = "<style>" + "\n".join(rules) + "</style>"
-                                        style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                                        used_objs = []
-                                        for n in parsed.get("tables", []):
-                                            used_objs.append((n, "TABLE"))
-                                        for n in parsed.get("views", []):
-                                            used_objs.append((n, "VIEW"))
-                                        used_df = pd.DataFrame(used_objs, columns=["Name", "Type"])
-
-                                        summary_lines = []
-                                        summary_lines.append(f"生成SQLの有無: {'あり' if bool(generated_sql) else 'なし'}")
-                                        summary_lines.append(f"テーブル数: {len(parsed.get('tables', []))} / ビュー数: {len(parsed.get('views', []))}")
-                                        summary_lines.append(f"JOIN条件数: {len(parsed.get('joins', []))}")
-                                        summary_lines.append(f"Where条件: {'あり' if bool(parsed.get('where')) else 'なし'}")
-                                        src_hint = "SHOWSQL由来" if bool(show_text) else "解析推定"
-                                        summary_lines.append(f"情報ソース: {src_hint}")
-                                        base_md = "\n".join(["### SQL分析", *[f"- {x}" for x in summary_lines]])
-                                        summary_md = base_md + (f"\n\n### EXPLAINSQL\n````\n{analysis_text}\n````" if analysis_text else "")
-
-                                        return (
-                                            gr.Markdown(visible=False),
-                                            df_component,
-                                            style_component,
-                                            gr.Textbox(value=gen_sql_display),
-                                            gr.Markdown(visible=True, value=summary_md),
-                                            gr.Dataframe(visible=True, value=used_df),
-                                            gr.Textbox(value="\n\n".join(parsed.get("joins", []))),
-                                            gr.Textbox(value=parsed.get("where", "")),
-                                        )
-                                    else:
-                                        used_objs = []
-                                        for n in parsed.get("tables", []):
-                                            used_objs.append((n, "TABLE"))
-                                        for n in parsed.get("views", []):
-                                            used_objs.append((n, "VIEW"))
-                                        used_df = pd.DataFrame(used_objs, columns=["Name", "Type"])
-                                        summary_lines = []
-                                        summary_lines.append(f"生成SQLの有無: {'あり' if bool(generated_sql) else 'なし'}")
-                                        summary_lines.append(f"テーブル数: {len(parsed.get('tables', []))} / ビュー数: {len(parsed.get('views', []))}")
-                                        summary_lines.append(f"JOIN条件数: {len(parsed.get('joins', []))}")
-                                        summary_lines.append(f"Where条件: {'あり' if bool(parsed.get('where')) else 'なし'}")
-                                        src_hint = "SHOWSQL由来" if bool(show_text) else "解析推定"
-                                        summary_lines.append(f"情報ソース: {src_hint}")
-                                        base_md = "\n".join(["### SQL分析", *[f"- {x}" for x in summary_lines]])
-                                        summary_md = base_md + (f"\n\n### EXPLAINSQL\n````\n{analysis_text}\n````" if analysis_text else "")
-                                        return (
-                                            gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"),
-                                            gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"),
-                                            gr.HTML(visible=False, value=""),
-                                            gr.Textbox(value=gen_sql_display),
-                                            gr.Markdown(visible=True, value=summary_md),
-                                            gr.Dataframe(visible=True, value=used_df),
-                                            gr.Textbox(value="\n\n".join(parsed.get("joins", []))),
-                                            gr.Textbox(value=parsed.get("where", "")),
-                                        )
-                        except Exception as e:
-                            ui_msg = f"❌ エラー: {str(e)}"
-                            return (
-                                gr.Markdown(visible=True, value=ui_msg),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"),
-                                gr.HTML(visible=False, value=""),
-                                gr.Textbox(value=""),
-                                gr.Markdown(visible=False),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Name", "Type"])),
-                                gr.Textbox(value=""),
-                                gr.Textbox(value=""),
-                            )
-
                     def _dev_step_generate(profile, prompt, extra_prompt, include_extra):
                         s = str(prompt or "").strip()
                         ep = str(extra_prompt or "").strip()
@@ -1536,6 +1220,9 @@ def build_selectai_tab(pool):
                             )
 
                         with gr.Row():
+                            global_feedback_index_refresh_btn = gr.Button("最新エントリを取得", variant="primary")
+
+                        with gr.Row():
                             global_feedback_index_df = gr.Dataframe(
                                 label="フィードバック索引の最新エントリ",
                                 interactive=False,
@@ -1556,6 +1243,7 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             selected_feedback_delete_result = gr.Textbox(label="削除結果", interactive=False)
 
+                    with gr.Accordion(label="2. ベクトルインデックス", open=True):
                         with gr.Row():
                             vec_similarity_threshold_input = gr.Slider(
                                 label="Similarity_Threshold",
@@ -1636,29 +1324,26 @@ def build_selectai_tab(pool):
 
                     def _on_profile_select_change(profile_name: str):
                         try:
-                            attrs = _get_profile_attributes(pool, profile_name) or {}
-                            st = attrs.get("similarity_threshold")
-                            ml = attrs.get("match_limit")
-                            st_val = float(st) if st is not None else 0.90
-                            ml_val = int(ml) if ml is not None else 3
                             return (
-                                _view_feedback_index_global(profile_name)[0],
-                                _view_feedback_index_global(profile_name)[1],
-                                gr.Slider(value=st_val),
-                                gr.Slider(value=ml_val),
+                                gr.Dataframe(visible=False, value=pd.DataFrame()),
+                                gr.Markdown(visible=True, value="ℹ️ Profile選択後は『最新エントリを取得』をクリックしてください"),
                             )
                         except Exception:
                             return (
-                                _view_feedback_index_global(profile_name)[0],
-                                _view_feedback_index_global(profile_name)[1],
-                                gr.Slider(value=0.90),
-                                gr.Slider(value=3),
+                                gr.Dataframe(visible=False, value=pd.DataFrame()),
+                                gr.Markdown(visible=True, value="ℹ️ Profile選択後は『最新エントリを取得』をクリックしてください"),
                             )
 
                     global_profile_select.change(
                         fn=_on_profile_select_change,
                         inputs=[global_profile_select],
-                        outputs=[global_feedback_index_df, global_feedback_index_info, vec_similarity_threshold_input, vec_match_limit_input],
+                        outputs=[global_feedback_index_df, global_feedback_index_info],
+                    )
+
+                    global_feedback_index_refresh_btn.click(
+                        fn=_view_feedback_index_global,
+                        inputs=[global_profile_select],
+                        outputs=[global_feedback_index_df, global_feedback_index_info],
                     )
 
                     def on_index_row_select(evt: gr.SelectData, current_df):
@@ -1858,174 +1543,6 @@ def build_selectai_tab(pool):
                             interactive=False,
                             show_copy_button=True,
                         )
-
-            def _execute_select_ai(selected_profile: str, prompt: str):
-                if not selected_profile or not str(selected_profile).strip():
-                    gr.Warning("Profileを選択してください")
-                    return (
-                        gr.Markdown(visible=True, value="⚠️ Profileを選択してください"),
-                        gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"),
-                        gr.HTML(visible=False, value=""),
-                    )
-                if not prompt or not str(prompt).strip():
-                    gr.Warning("質問を入力してください")
-                    return (
-                        gr.Markdown(visible=True, value="ℹ️ 質問を入力してください"),
-                        gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"),
-                        gr.HTML(visible=False, value=""),
-                    )
-
-                q = str(prompt).strip()
-                if q.endswith(";"):
-                    q = q[:-1]
-
-                try:
-                    with pool.acquire() as conn:
-                        with conn.cursor() as cursor:
-                            try:
-                                cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=selected_profile)
-                            except Exception as e:
-                                logger.error(f"SET_PROFILE failed: {e}")
-                            
-                            gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
-                            showsql_stmt = _build_showsql_stmt(q)
-                            show_text = ""
-                            show_cells = []
-                            try:
-                                cursor.execute(gen_stmt, q=showsql_stmt, name=selected_profile, a="showsql")
-                                rows = cursor.fetchmany(size=200)
-                                if rows:
-                                    for r in rows:
-                                        for v in r:
-                                            try:
-                                                s = v.read() if hasattr(v, "read") else str(v)
-                                            except Exception:
-                                                s = str(v)
-                                            if s:
-                                                show_cells.append(s)
-                                    show_text = "\n".join(show_cells)
-                            except Exception as e:
-                                logger.error(f"user showsql generate error: {e}")
-                                show_text = ""
-                            try:
-                                cursor.execute(showsql_stmt)
-                            except Exception as e:
-                                logger.error(f"user showsql execute error: {e}")
-                            _ = _get_sql_id_for_text(showsql_stmt)
-
-                            def _extract_sql(text: str) -> str:
-                                if not text:
-                                    return ""
-                                m = re.search(r"```sql\s*([\s\S]*?)```", text, flags=re.IGNORECASE)
-                                if m:
-                                    s = m.group(1).strip()
-                                    return s
-                                m2 = re.search(r"SQL\s*:([\s\S]+)$", text, flags=re.IGNORECASE)
-                                if m2:
-                                    s = m2.group(1).strip()
-                                    return s
-                                m3 = re.search(r"\b(SELECT|WITH)\b[\s\S]*", text, flags=re.IGNORECASE)
-                                if m3:
-                                    s = m3.group(0).strip()
-                                    return s
-                                return ""
-
-                            generated_sql = _extract_sql(show_text)
-                            if not generated_sql and show_cells:
-                                for cell in show_cells:
-                                    c = str(cell)
-                                    try:
-                                        obj = json.loads(c)
-                                        if isinstance(obj, dict):
-                                            for k in ["sql", "SQL", "generated_sql", "query", "Query"]:
-                                                if k in obj and obj[k]:
-                                                    generated_sql = str(obj[k]).strip()
-                                                    break
-                                        if generated_sql:
-                                            break
-                                    except Exception:
-                                        pass
-                                    m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", c, flags=re.IGNORECASE)
-                                    if m:
-                                        generated_sql = m.group(0).strip()
-                                        break
-
-                            gen_sql_display = generated_sql
-                            exec_rows = []
-                            exec_cols = []
-                            if generated_sql and re.match(r"^\s*(select|with)\b", generated_sql, flags=re.IGNORECASE):
-                                run_sql = generated_sql.strip()
-                                if run_sql.endswith(";"):
-                                    run_sql = run_sql[:-1]
-                                cursor.execute(run_sql)
-                                exec_rows = cursor.fetchmany(size=100)
-                                exec_cols = [d[0] for d in cursor.description] if cursor.description else []
-                            if exec_rows:
-                                cleaned_rows = []
-                                for r in exec_rows:
-                                    cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
-                                df = pd.DataFrame(cleaned_rows, columns=exec_cols)
-                                gr.Info(f"{len(df)}件のデータを取得しました")
-
-                                widths = []
-                                if len(df) > 0:
-                                    sample = df.head(5)
-                                    columns = max(1, len(df.columns))
-                                    for col in df.columns:
-                                        series = sample[col].astype(str)
-                                        row_max = series.map(len).max() if len(series) > 0 else 0
-                                        length = max(len(str(col)), row_max)
-                                        widths.append(min(100 / columns, length))
-                                else:
-                                    columns = max(1, len(df.columns))
-                                    widths = [min(100 / columns, len(c)) for c in df.columns]
-
-                                total = sum(widths) if widths else 0
-                                if total <= 0:
-                                    col_widths = None
-                                else:
-                                    col_widths = [max(5, int(100 * w / total)) for w in widths]
-                                    diff = 100 - sum(col_widths)
-                                    if diff != 0 and len(col_widths) > 0:
-                                        col_widths[0] = max(5, col_widths[0] + diff)
-
-                                df_component = gr.Dataframe(
-                                    visible=True,
-                                    value=df,
-                                    label=f"実行結果（件数: {len(df)}）",
-                                    elem_id="selectai_chat_result_df",
-                                )
-                                style_value = ""
-                                if col_widths:
-                                    rules = []
-                                    rules.append("#selectai_chat_result_df table { table-layout: fixed; width: 100%; }")
-                                    for idx, pct in enumerate(col_widths, start=1):
-                                        rules.append(
-                                            f"#selectai_chat_result_df table th:nth-child({idx}), #selectai_chat_result_df table td:nth-child({idx}) {{ width: {pct}%; }}"
-                                        )
-                                    style_value = "<style>" + "\n".join(rules) + "</style>"
-                                style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                                return (
-                                    gr.Markdown(visible=False),
-                                    df_component,
-                                    style_component,
-                                    gr.Textbox(value=gen_sql_display),
-                                )
-                            else:
-                                return (
-                                    gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"),
-                                    gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_chat_result_df"),
-                                    gr.HTML(visible=False, value=""),
-                                    gr.Textbox(value=gen_sql_display),
-                                )
-                except Exception as e:
-                    ui_msg = f"❌ エラー: {str(e)}"
-                    return (
-                        gr.Markdown(visible=True, value=ui_msg),
-                        gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"),
-                        gr.HTML(visible=False, value=""),
-                        gr.Textbox(value=""),
-                    )
 
             def _user_step_generate(profile, prompt, extra_prompt, include_extra):
                 s = str(prompt or "").strip()
