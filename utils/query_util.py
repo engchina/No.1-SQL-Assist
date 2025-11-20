@@ -214,6 +214,81 @@ def build_query_tab(pool):
             )
             result_style = gr.HTML(visible=False)
 
+        with gr.Accordion(label="3. AI分析と処理", open=False):
+            ai_model_input = gr.Dropdown(
+                label="モデル",
+                choices=[
+                    "xai.grok-code-fast-1",
+                    "xai.grok-3",
+                    "xai.grok-3-fast",
+                    "xai.grok-4",
+                    "xai.grok-4-fast-non-reasoning",
+                    "meta.llama-4-scout-17b-16e-instruct",
+                ],
+                value="xai.grok-code-fast-1",
+                interactive=True,
+            )
+            ai_analyze_btn = gr.Button("AI分析", variant="primary")
+            ai_status_md = gr.Markdown(visible=False)
+            ai_result_md = gr.Markdown(visible=False)
+
+        async def _ai_analyze_async(model_name, sql_text, limit_value, result_df_input):
+            from utils.chat_util import get_oci_region, get_compartment_id
+            region = get_oci_region()
+            compartment_id = get_compartment_id()
+            if not region or not compartment_id:
+                return gr.Markdown(visible=True, value="OCI設定が不足しています")
+            try:
+                import pandas as pd
+                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                if isinstance(result_df_input, dict) and "data" in result_df_input:
+                    headers = result_df_input.get("headers", [])
+                    df = pd.DataFrame(result_df_input["data"], columns=headers)
+                elif isinstance(result_df_input, pd.DataFrame):
+                    df = result_df_input
+                else:
+                    df = pd.DataFrame()
+                preview = df.head(20).to_markdown(index=False) if not df.empty else ""
+                q = (sql_text or "").strip()
+                if q.endswith(";"):
+                    q = q[:-1]
+                prompt = (
+                    "以下のSELECT文とその結果を分析し、問題点や最適化の提案、次に取るべき対応案を提示してください。\n\n"
+                    + ("SQL:\n```sql\n" + q + "\n```\n" if q else "")
+                    + ("取得件数:\n" + str(limit_value) + "\n" if limit_value else "")
+                    + ("結果プレビュー:\n" + preview + "\n" if preview else "")
+                )
+                client = AsyncOciOpenAI(
+                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                    auth=OciUserPrincipalAuth(),
+                    compartment_id=compartment_id,
+                )
+                messages = [
+                    {"role": "system", "content": "あなたは熟練のデータベースエンジニア兼SQL最適化の専門家です。結果とSQLを精確に分析し、性能、可読性、正確性の観点で改善提案を出してください。"},
+                    {"role": "user", "content": prompt},
+                ]
+                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                text = ""
+                if getattr(resp, "choices", None):
+                    msg = resp.choices[0].message
+                    text = msg.content if hasattr(msg, "content") else ""
+                return gr.Markdown(visible=True, value=text or "分析結果が空です")
+            except Exception as e:
+                return gr.Markdown(visible=True, value=f"エラー: {e}")
+
+        def ai_analyze(model_name, sql_text, limit_value, result_df_input):
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
+                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, limit_value, result_df_input))
+                yield gr.Markdown(visible=True, value="✅ 完了"), result_md
+            except Exception as e:
+                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
+            finally:
+                loop.close()
+
         def on_execute(sql, limit):
             try:
                 yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
@@ -229,6 +304,12 @@ def build_query_tab(pool):
             fn=on_execute,
             inputs=[sql_input, limit_input],
             outputs=[result_info, result_df, result_style],
+        )
+
+        ai_analyze_btn.click(
+            fn=ai_analyze,
+            inputs=[ai_model_input, sql_input, limit_input, result_df],
+            outputs=[ai_status_md, ai_result_md],
         )
 
         clear_btn.click(
