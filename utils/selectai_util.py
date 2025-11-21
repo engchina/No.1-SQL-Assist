@@ -1760,6 +1760,335 @@ def build_selectai_tab(pool):
                         outputs=[dev_feedback_content_text],
                     )
 
+                with gr.TabItem(label="アノテーション管理"):
+                    with gr.Accordion(label="1. オブジェクト選択", open=True):
+                        with gr.Row():
+                            with gr.Column():
+                                am_refresh_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column():
+                                am_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                        with gr.Row():
+                            with gr.Column():
+                                am_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
+                            with gr.Column():
+                                am_views_input = gr.CheckboxGroup(label="ビュー選択", choices=[])
+                        with gr.Row():
+                            with gr.Column():
+                                am_sample_limit = gr.Slider(label="サンプル件数", minimum=0, maximum=100, step=1, value=10, interactive=True)
+                        with gr.Row():
+                            with gr.Column():
+                                am_fetch_btn = gr.Button("情報を取得", variant="primary")
+
+                    with gr.Accordion(label="2. 入力確認", open=False):
+                        with gr.Row():
+                            with gr.Column():
+                                am_structure_text = gr.Textbox(label="構造情報", lines=8, max_lines=16, interactive=True, show_copy_button=True)
+                        with gr.Row():
+                            with gr.Column():
+                                am_pk_text = gr.Textbox(label="主キー情報", lines=4, max_lines=10, interactive=True, show_copy_button=True)
+                        with gr.Row():
+                            with gr.Column():
+                                am_fk_text = gr.Textbox(label="外部キー情報", lines=6, max_lines=14, interactive=True, show_copy_button=True)
+                        with gr.Row():
+                            with gr.Column():
+                                am_samples_text = gr.Textbox(label="サンプルデータ", lines=8, max_lines=16, interactive=True, show_copy_button=True)
+                        with gr.Row():
+                            with gr.Column():
+                                am_extra_input = gr.Textbox(label="追加入力(Optional)", placeholder="追加で考慮してほしい説明や条件を記入", lines=3, max_lines=6)
+
+                    with gr.Accordion(label="3. アノテーション自動生成", open=False):
+                        am_model_input = gr.Dropdown(
+                            label="モデル",
+                            choices=[
+                                "xai.grok-code-fast-1",
+                                "xai.grok-3",
+                                "xai.grok-3-fast",
+                                "xai.grok-4",
+                                "xai.grok-4-fast-non-reasoning",
+                                "meta.llama-4-scout-17b-16e-instruct",
+                            ],
+                            value="xai.grok-code-fast-1",
+                            interactive=True,
+                        )
+                        am_generate_btn = gr.Button("生成", variant="primary")
+                        am_generated_sql = gr.Textbox(label="生成結果SQL", lines=15, max_lines=15, interactive=True, show_copy_button=True)
+
+                    with gr.Accordion(label="4. 実行", open=False):
+                        am_execute_btn = gr.Button("一括実行", variant="primary")
+                        am_execute_result = gr.Textbox(label="実行結果", interactive=False, lines=5, max_lines=8)
+
+                    def _am_refresh_objects():
+                        try:
+                            df_tab = _get_table_df_cached(pool, force=True)
+                            df_view = _get_view_df_cached(pool, force=True)
+                            table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
+                            view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
+                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
+                        except Exception as e:
+                            logger.error(f"_am_refresh_objects error: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+
+                    def _am_fetch_structure(tables_selected, views_selected):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        struct_chunks = []
+                        for kind, name in targets:
+                            if kind == "VIEW":
+                                cols_df, _ddl = get_view_details(pool, name)
+                            else:
+                                cols_df, _ddl = get_table_details(pool, name)
+                            lines = [f"OBJECT: {name}", "COLUMNS:"]
+                            if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
+                                for _, row in cols_df.iterrows():
+                                    lines.append(f"- {row['Column Name']}: {row['Data Type']} NULLABLE={row['Nullable']}")
+                            struct_chunks.append("\n".join(lines))
+                        struct_text = "\n\n".join(struct_chunks)
+                        return gr.Textbox(value=struct_text, interactive=True)
+
+                    def _am_fetch_pk(tables_selected, views_selected):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        from utils.management_util import get_primary_key_info
+                        pk_chunks = []
+                        for _kind, name in targets:
+                            pk_info = get_primary_key_info(pool, name) or ""
+                            if pk_info:
+                                pk_chunks.append(f"OBJECT: {name}\n{pk_info}")
+                        pk_text = "\n\n".join(pk_chunks) if pk_chunks else ""
+                        return gr.Textbox(value=pk_text, interactive=True)
+
+                    def _am_fetch_fk(tables_selected, views_selected):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        from utils.management_util import get_foreign_key_info
+                        fk_chunks = []
+                        for _kind, name in targets:
+                            fk_info = get_foreign_key_info(pool, name) or ""
+                            if fk_info:
+                                fk_chunks.append(f"OBJECT: {name}\n{fk_info}")
+                        fk_text = "\n\n".join(fk_chunks) if fk_chunks else ""
+                        return gr.Textbox(value=fk_text, interactive=True)
+
+                    def _am_fetch_samples(tables_selected, views_selected, sample_limit):
+                        tables_selected = tables_selected or []
+                        views_selected = views_selected or []
+                        targets = []
+                        targets.extend([("TABLE", t) for t in tables_selected])
+                        targets.extend([("VIEW", v) for v in views_selected])
+                        if not targets:
+                            return gr.Textbox(value="", interactive=True)
+                        from utils.management_util import display_table_data
+                        lim = int(sample_limit)
+                        samples_chunks = []
+                        if lim > 0:
+                            for _kind, name in targets:
+                                df = display_table_data(pool, name, lim)
+                                if isinstance(df, pd.DataFrame) and not df.empty:
+                                    samples_chunks.append(f"OBJECT: {name}\n" + df.to_csv(index=False))
+                        samples_text = "\n\n".join(samples_chunks) if samples_chunks else ""
+                        return gr.Textbox(value=samples_text, interactive=True)
+
+                    def _am_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text):
+                        has_samples = bool(str(samples_text or "").strip())
+                        prompt = (
+                            "あなたはOracleデータベース専門家です。以下の情報に基づき、ALTER TABLE/ALTER VIEW の ANNOTATIONS 文のみを生成してください。\n"
+                            "出力はSQLのアノテーション文のみ。説明や余計な文は出力しないでください。\n"
+                            "テーブル・ビューはA-Zの順、列は定義順で出力してください。\n"
+                            "ビューの列レベルのアノテーションは生成しないでください（列はテーブル列に対してのみ生成）。\n\n"
+                            "参考構文とルール:\n"
+                            "- 対象: TABLE / VIEW / MATERIALIZED VIEW / INDEX（本ツールでは TABLE 列と VIEW 本体を対象）\n"
+                            "- 操作: ADD / DROP / REPLACE（CREATE 時は ADD/ADD IF NOT EXISTS のみ）\n"
+                            "- 注釈名: 英数字と $, _, # を無引用で許容。予約語や空白を含む場合は二重引用符。最大1024文字。\n"
+                            "- 値: 最大4000文字。単一引用符は '' にエスケープ。\n"
+                            "- 複数注釈は同一文で列挙可能。\n"
+                            + ("- サンプルが取得できた場合のみ 'sample_header' と 'sample_data' を生成する。\n" if has_samples else "- サンプルが無い場合は 'sample_header' と 'sample_data' を生成しない。\n")
+                            + "例:\n"
+                            + "  ALTER TABLE T1 ANNOTATIONS (Operations '[\"Sort\", \"Group\"]', Hidden);\n"
+                            + "  ALTER TABLE T1 MODIFY (ID ANNOTATIONS (UI_Display 'ID', Classification 'Doc Info'));\n"
+                            + "  ALTER VIEW SALES_V ANNOTATIONS (UI_Display 'Sales View');\n\n"
+                            + "<構造>\n" + str(struct_text or "") + "\n\n"
+                            + "<主キー>\n" + str(pk_text or "") + "\n\n"
+                            + "<外部キー>\n" + str(fk_text or "") + "\n\n"
+                            + "<サンプル>\n" + str(samples_text or "") + "\n\n"
+                            + (str(extra_text or "") if extra_text else "")
+                        )
+                        return prompt
+
+                    async def _am_generate_async(model_name, struct_text, pk_text, fk_text, samples_text, extra_text):
+                        try:
+                            prompt = _am_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text)
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Textbox(value="OCI設定が不足しています")
+                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                            client = AsyncOciOpenAI(
+                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                auth=OciUserPrincipalAuth(),
+                                compartment_id=compartment_id,
+                            )
+                            messages = [
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "出力は次の形式のみ: \n"
+                                        "- テーブル: ALTER TABLE <表> ANNOTATIONS (<name> '<value>'[, ...]);\n"
+                                        "- 列: ALTER TABLE <表> MODIFY (<列> ANNOTATIONS (<name> '<value>'[, ...]));\n"
+                                        "- ビュー: ALTER VIEW <ビュー> ANNOTATIONS (<name> '<value>'[, ...]);\n"
+                                        "制約: ビュー列のアノテーションは生成しない。'data_type' と 'nullable' を優先的に使用。'sample_header' と 'sample_data' はサンプルが存在する場合のみ生成。'type' は使用しない。値内の単一引用符は '' にエスケープ。余計な説明は出力しない。\n\n"
+                                        "Oracle公式の annotations_clause ルール:\n"
+                                        "- ADD / DROP / REPLACE をサポート（CREATE は ADD/ADD IF NOT EXISTS）。\n"
+                                        "- 注釈名は識別子。予約語や空白を含む場合は二重引用符。\n"
+                                        "- 値は最大4000文字。複数注釈は同一文で列挙可能。\n"
+                                        "例: ALTER TABLE T1 ANNOTATIONS (Operations '[\"Sort\", \"Group\"]', Hidden);\n"
+                                        "例: ALTER TABLE T1 MODIFY (ID ANNOTATIONS (UI_Display 'ID'));\n"
+                                        "例: ALTER VIEW V1 ANNOTATIONS (UI_Display 'Sales View');"
+                                    ),
+                                },
+                                {"role": "user", "content": prompt},
+                            ]
+                            resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
+                            text = ""
+                            if resp.choices and len(resp.choices) > 0:
+                                msg = resp.choices[0].message
+                                text = msg.content if hasattr(msg, "content") else ""
+                            # サンプルが無い場合は、出力から sample_header / sample_data を除去
+                            if not str(samples_text or "").strip():
+                                try:
+                                    import re
+                                    s = str(text or "")
+                                    # 個々の注釈項目を削除
+                                    s = re.sub(r"(?i)(,\s*)?sample_header\s*'[^']*'", "", s)
+                                    s = re.sub(r"(?i)(,\s*)?sample_data\s*'[^']*'", "", s)
+                                    # 余分なカンマを整理
+                                    s = re.sub(r"\(\s*,\s*", "(", s)
+                                    s = re.sub(r",\s*\)", ")", s)
+                                    # ANNOTATIONS () を含む行は削除
+                                    lines = [ln for ln in s.splitlines() if "ANNOTATIONS ()" not in ln.replace(" ", "")]
+                                    text = "\n".join(lines)
+                                except Exception:
+                                    pass
+                            return gr.Textbox(value=text)
+                        except Exception as e:
+                            logger.error(f"_am_generate_async error: {e}")
+                            return gr.Textbox(value=f"エラー: {e}")
+
+                    def _am_generate(model_name, struct_text, pk_text, fk_text, samples_text, extra_text):
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            result = loop.run_until_complete(_am_generate_async(model_name, struct_text, pk_text, fk_text, samples_text, extra_text))
+                            return result
+                        finally:
+                            loop.close()
+
+                    def _am_execute(sql_text):
+                        import re
+                        def _extract_names(inner):
+                            names = []
+                            for itm in re.split(r",", inner):
+                                t = itm.strip()
+                                if not t:
+                                    continue
+                                if t.startswith('"'):
+                                    m2 = re.match(r'^"([^"]+)"', t)
+                                    nm = m2.group(1) if m2 else t
+                                else:
+                                    m2 = re.match(r'^([A-Za-z0-9_\$#]+)', t)
+                                    nm = m2.group(1) if m2 else t
+                                if nm:
+                                    names.append(nm)
+                            return [n for n in names if n]
+                        def _prep(s):
+                            txt = str(s or "")
+                            parts = [p.strip() for p in txt.split(';') if p.strip()]
+                            out = []
+                            for p in parts:
+                                up = re.sub(r"\s+", " ", p.upper())
+                                if (up.startswith("ALTER VIEW ") or up.startswith("ALTER TABLE ")) and (" ANNOTATIONS (" in up):
+                                    if " DROP " in up:
+                                        out.append(p)
+                                        continue
+                                    m = re.search(r"(?is)^\s*ALTER\s+(VIEW|TABLE)\s+([A-Za-z0-9_\"\.]+)\s+ANNOTATIONS\s*\(([\s\S]*?)\)\s*$", p)
+                                    if m:
+                                        kind = m.group(1)
+                                        obj = m.group(2)
+                                        inner = m.group(3)
+                                        names = _extract_names(inner)
+                                        if names:
+                                            drop_items = ", ".join([f"DROP IF EXISTS {n}" for n in names])
+                                            drop_stmt = f"ALTER {kind} {obj} ANNOTATIONS ({drop_items})"
+                                            out.append(drop_stmt)
+                                    else:
+                                        m2 = re.search(r"(?is)^\s*ALTER\s+TABLE\s+([A-Za-z0-9_\"\.]+)\s+MODIFY\s*\(\s*([A-Za-z0-9_\"\.]+)\s+ANNOTATIONS\s*\(([\s\S]*?)\)\s*\)\s*$", p)
+                                        if m2:
+                                            obj = m2.group(1)
+                                            col = m2.group(2)
+                                            inner = m2.group(3)
+                                            names = _extract_names(inner)
+                                            if names:
+                                                drop_items = ", ".join([f"DROP IF EXISTS {n}" for n in names])
+                                                drop_stmt = f"ALTER TABLE {obj} MODIFY ({col} ANNOTATIONS ({drop_items}))"
+                                                out.append(drop_stmt)
+                                    out.append(p)
+                                else:
+                                    out.append(p)
+                            return ";\n".join(out)
+                        from utils.management_util import execute_annotation_sql
+                        return execute_annotation_sql(pool, _prep(sql_text))
+
+                    am_refresh_btn.click(
+                        fn=_am_refresh_objects,
+                        outputs=[am_refresh_status, am_tables_input, am_views_input],
+                    )
+
+                    am_fetch_btn.click(
+                        fn=_am_fetch_structure,
+                        inputs=[am_tables_input, am_views_input],
+                        outputs=[am_structure_text],
+                    ).then(
+                        fn=_am_fetch_pk,
+                        inputs=[am_tables_input, am_views_input],
+                        outputs=[am_pk_text],
+                    ).then(
+                        fn=_am_fetch_fk,
+                        inputs=[am_tables_input, am_views_input],
+                        outputs=[am_fk_text],
+                    ).then(
+                        fn=_am_fetch_samples,
+                        inputs=[am_tables_input, am_views_input, am_sample_limit],
+                        outputs=[am_samples_text],
+                    )
+
+                    am_generate_btn.click(
+                        fn=_am_generate,
+                        inputs=[am_model_input, am_structure_text, am_pk_text, am_fk_text, am_samples_text, am_extra_input],
+                        outputs=[am_generated_sql],
+                    )
+
+                    am_execute_btn.click(
+                        fn=_am_execute,
+                        inputs=[am_generated_sql],
+                        outputs=[am_execute_result],
+                    )
+
         with gr.TabItem(label="ユーザー機能"):
             with gr.Tabs():
                 with gr.TabItem(label="基本機能"):

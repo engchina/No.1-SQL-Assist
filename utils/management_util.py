@@ -427,7 +427,7 @@ def get_view_details(pool, view_name):
                     create_sql += '\n'
                     
                     if view_comment:
-                        create_sql += f"\nCOMMENT ON VIEW {view_name.upper()} IS '{view_comment.replace("'", "''")}';\n"
+                        create_sql += f"\nCOMMENT ON TABLE {view_name.upper()} IS '{view_comment.replace("'", "''")}';\n"
                     
                     # Add column comments
                     if col_comments:
@@ -571,7 +571,7 @@ def execute_create_view(pool, create_sql):
                         or bool(re.match(r'^CREATE\s+OR\s+REPLACE\s+FORCE\s+(?:EDITIONABLE\s+)?VIEW\b', stmt_upper))
                         or bool(re.match(r'^CREATE\s+OR\s+REPLACE\s+EDITIONABLE\s+VIEW\b', stmt_upper))
                     )
-                    is_comment = stmt_upper.startswith('COMMENT ON TABLE') or stmt_upper.startswith('COMMENT ON VIEW') or stmt_upper.startswith('COMMENT ON COLUMN')
+                    is_comment = stmt_upper.startswith('COMMENT ON TABLE') or stmt_upper.startswith('COMMENT ON COLUMN')
                     if not (is_create_view or is_comment):
                         disallowed.append((idx, sql_stmt))
                 if disallowed:
@@ -992,6 +992,78 @@ def execute_comment_sql(pool, sql_statements):
         gr.Error(f"COMMENT文の実行に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 
+def execute_annotation_sql(pool, sql_statements):
+    if not sql_statements or not str(sql_statements).strip():
+        gr.Warning("アノテーション文を入力してください")
+        return "エラー: SQL文が入力されていません"
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                statements = [stmt.strip() for stmt in str(sql_statements).split(';') if stmt.strip()]
+                if not statements:
+                    gr.Warning("SQL文が空です")
+                    return "エラー: SQL文が空です"
+                disallowed = []
+                for idx, sql_stmt in enumerate(statements, 1):
+                    up = sql_stmt.strip().upper()
+                    has_annotations = ' ANNOTATIONS ' in re.sub(r"\s+", ' ', up)
+                    is_alter_table = up.startswith('ALTER TABLE ')
+                    is_alter_view = up.startswith('ALTER VIEW ')
+                    contains_for_column = ' FOR COLUMN ' in re.sub(r"\s+", ' ', up)
+                    if is_alter_view and contains_for_column:
+                        disallowed.append((idx, sql_stmt))
+                        continue
+                    if has_annotations and is_alter_table:
+                        norm = re.sub(r"\s+", ' ', sql_stmt.strip())
+                        if ' MODIFY ' in norm.upper():
+                            m = re.search(r"MODIFY\s*\(([^\)]*)\)", norm, flags=re.IGNORECASE)
+                            if m:
+                                inner = m.group(1)
+                                if ' ANNOTATIONS ' not in re.sub(r"\s+", ' ', inner.upper()):
+                                    disallowed.append((idx, sql_stmt))
+                                    continue
+                        elif ' ANNOTATIONS ' in norm.upper():
+                            pass
+                        else:
+                            disallowed.append((idx, sql_stmt))
+                            continue
+                    if not (has_annotations and (is_alter_table or is_alter_view)):
+                        disallowed.append((idx, sql_stmt))
+                if disallowed:
+                    first_idx, first_sql = disallowed[0]
+                    msg = f"禁止された操作: ビュー列のアノテーションや無効な文は実行できません。許可: ALTER TABLE MODIFY ... ANNOTATIONS / ALTER VIEW ANNOTATIONS\n文{first_idx}: {first_sql[:100]}..."
+                    logger.warning(f"Disallowed statement for annotations: {first_sql[:100]}...")
+                    gr.Error(msg)
+                    return f"エラー: {msg}"
+                executed_count = 0
+                errors = []
+                for idx, sql_stmt in enumerate(statements, 1):
+                    try:
+                        cursor.execute(sql_stmt)
+                        executed_count += 1
+                        logger.info(f"Statement {idx}/{len(statements)} executed successfully")
+                    except Exception as e:
+                        em = f"文{idx}: {str(e)}"
+                        errors.append(em)
+                        logger.error(f"Error executing statement {idx}: {e}")
+                        logger.error(f"Failed SQL: {sql_stmt[:100]}...")
+                if executed_count > 0:
+                    conn.commit()
+                if errors:
+                    result = f"部分的に成功: {executed_count}/{len(statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(errors)
+                    gr.Warning(result)
+                    logger.warning(f"Partial success: {executed_count}/{len(statements)} statements executed")
+                    return result
+                else:
+                    result = f"成功: {executed_count}件の文をすべて実行しました"
+                    gr.Info(result)
+                    logger.info(f"All {executed_count} statements executed successfully")
+                    return result
+    except Exception as e:
+        logger.error(f"Error executing annotation SQL: {e}")
+        logger.error(traceback.format_exc())
+        gr.Error(f"アノテーション文の実行に失敗しました: {str(e)}")
+        return f"エラー: {str(e)}"
 def build_management_tab(pool):
     """Build the Management Function tab with three sub-functions.
     
@@ -1339,7 +1411,7 @@ def build_management_tab(pool):
             with gr.Accordion(label="3. ビュー作成", open=False):
                 create_view_sql = gr.Textbox(
                     label="CREATE VIEW SQL文（複数の文をセミコロンで区切って入力可能）",
-                    placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\nSELECT id, name FROM test_table;\n\nCOMMENT ON VIEW test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
+                    placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\nSELECT id, name FROM test_table;\n\nCOMMENT ON TABLE test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
                     lines=10,
                     max_lines=15,
                     show_copy_button=True,
