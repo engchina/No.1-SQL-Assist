@@ -327,8 +327,8 @@ def build_oci_genai_tab(pool):
         return update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region)
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="OCI GenAI 設定") as tab_create_oci_cred:
-        with gr.Accordion(label="OCI GenAI 設定", open=True):
+    with gr.TabItem(label="OCI 認証情報設定") as tab_create_oci_cred:
+        with gr.Accordion(label="OCI 認証情報設定", open=True):
             with gr.Row():
                 with gr.Column():
                     tab_create_oci_cred_user_ocid_text = gr.Textbox(
@@ -421,8 +421,8 @@ def build_oci_embedding_test_tab(pool):
         return test_oci_cred(test_query_text, embed_model, pool)
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="OCI GenAI 埋め込みテスト") as tab_test_oci_cred:
-        with gr.Accordion(label="OCI 認証", open=True):
+    with gr.TabItem(label="テキスト埋め込みテスト") as tab_test_oci_cred:
+        with gr.Accordion(label="OCI 認証情報の作成", open=True):
             with gr.Row():
                 with gr.Column():
                     tab_auto_create_status_md = gr.Markdown(visible=False)

@@ -94,7 +94,7 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
             # OCI GenAI Embeddingテストタブを構築
             build_oci_embedding_test_tab(pool)
 
-        with gr.TabItem(label="データベース管理機能"):
+        with gr.TabItem(label="データベース管理"):
             # 管理機能タブを構築
             build_management_tab(pool)
 
