@@ -39,32 +39,7 @@ def get_region():
     return region
 
 
-def create_oci_cred(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool=None):
-    """OCI認証情報を設定する.
-
-    Args:
-        user_ocid: ユーザーOCID
-        tenancy_ocid: テナンシーOCID
-        fingerprint: フィンガープリント
-        private_key_file: 秘密鍵ファイル
-        region: リージョン
-        pool: データベース接続プール
-
-    Returns:
-        tuple: (Accordion, Textbox) のタプル
-    """
-
-    def process_private_key(private_key_file_path):
-        """秘密鍵ファイルを処理してヘッダー・フッターを削除する."""
-        with open(private_key_file_path, "r", encoding="utf-8") as file:
-            lines = file.readlines()
-
-        processed_key = "".join(line.strip() for line in lines if not line.startswith("--"))
-        return processed_key
-
-    logger.info("=" * 50)
-    logger.info("Starting OCI credential setup...")
-    
+def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
     has_error = False
     if not user_ocid:
         has_error = True
@@ -83,70 +58,80 @@ def create_oci_cred(user_ocid, tenancy_ocid, fingerprint, private_key_file, regi
         gr.Warning("Regionを選択してください")
 
     if has_error:
-        logger.warning("Credential setup failed: Missing required fields")
-        logger.info("=" * 50)
-        return gr.Accordion(), gr.Textbox()
+        return gr.Markdown(visible=True, value="❌ 入力不足です")
 
-    user_ocid = user_ocid.strip()
-    tenancy_ocid = tenancy_ocid.strip()
-    fingerprint = fingerprint.strip()
-    region = region.strip()
-    
-    # Check for compartment OCID
-    compartment_ocid = os.environ.get("OCI_COMPARTMENT_OCID", "")
-    if not compartment_ocid:
-        logger.error("OCI_COMPARTMENT_OCID environment variable is not set")
-        gr.Error("OCI_COMPARTMENT_OCID環境変数が設定されていません。.envファイルを確認してください。")
-        logger.info("=" * 50)
-        return gr.Accordion(), gr.Textbox()
+    user_ocid = str(user_ocid).strip()
+    tenancy_ocid = str(tenancy_ocid).strip()
+    fingerprint = str(fingerprint).strip()
+    region = str(region).strip()
 
-    logger.info(f"Setting up credentials for region: {region}")
-    
     try:
-        # Set up OCI config
         base_dir = Path(__file__).resolve().parent.parent
         oci_dir = Path("/root/.oci")
         oci_dir.mkdir(parents=True, exist_ok=True)
-        
+
         if not (oci_dir / "config").exists():
             config_src = base_dir / ".oci" / "config"
             if config_src.exists():
                 shutil.copy(str(config_src), str(oci_dir / "config"))
-                logger.info("OCI config file copied")
             else:
-                logger.warning(f"Source OCI config not found at {config_src}")
-        
+                pass
+
         oci_config_path = find_dotenv("/root/.oci/config")
         key_file_path = "/root/.oci/oci_api_key.pem"
-        try:
-            set_key(oci_config_path, "user", user_ocid, quote_mode="never")
-            set_key(oci_config_path, "tenancy", tenancy_ocid, quote_mode="never")
-            set_key(oci_config_path, "region", region, quote_mode="never")
-            set_key(oci_config_path, "fingerprint", fingerprint, quote_mode="never")
-            set_key(oci_config_path, "key_file", key_file_path, quote_mode="never")
-            shutil.copy(private_key_file.name, key_file_path)
-            load_dotenv(oci_config_path)
-            logger.info("OCI config file updated")
-        except Exception as e:
-            logger.error(f"Error updating OCI config: {e}")
-            logger.exception("Full traceback:")
-            gr.Warning("OCI設定ファイルの更新に失敗しましたが、データベース側の設定は続行します")
 
-        # Set up OCI Credential on database
+        set_key(oci_config_path, "user", user_ocid, quote_mode="never")
+        set_key(oci_config_path, "tenancy", tenancy_ocid, quote_mode="never")
+        set_key(oci_config_path, "region", region, quote_mode="never")
+        set_key(oci_config_path, "fingerprint", fingerprint, quote_mode="never")
+        set_key(oci_config_path, "key_file", key_file_path, quote_mode="never")
+        shutil.copy(private_key_file.name, key_file_path)
+        load_dotenv(oci_config_path)
+
+        return gr.Markdown(visible=True, value="✅ OCI設定ファイルを更新しました")
+    except Exception as e:
+        logger.error(f"Error updating OCI config: {e}")
+        return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルの更新に失敗しました: {e}")
+
+
+def create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool=None):
+    def process_private_key(private_key_file_path):
+        with open(private_key_file_path, "r", encoding="utf-8") as file:
+            lines = file.readlines()
+        return "".join(line.strip() for line in lines if not line.startswith("--"))
+
+    has_error = False
+    if not user_ocid:
+        has_error = True
+        gr.Warning("User OCIDを入力してください")
+    if not tenancy_ocid:
+        has_error = True
+        gr.Warning("Tenancy OCIDを入力してください")
+    if not fingerprint:
+        has_error = True
+        gr.Warning("Fingerprintを入力してください")
+    if not private_key_file:
+        has_error = True
+        gr.Warning("Private Keyを入力してください")
+    if has_error:
+        return gr.Accordion(), gr.Textbox()
+
+    compartment_ocid = os.environ.get("OCI_COMPARTMENT_OCID", "")
+    if not compartment_ocid:
+        gr.Error("OCI_COMPARTMENT_OCID環境変数が設定されていません")
+        return gr.Accordion(), gr.Textbox()
+
+    if pool is None:
+        gr.Error("データベース接続プールが初期化されていません")
+        return gr.Accordion(), gr.Textbox()
+
+    try:
         private_key = process_private_key(private_key_file.name)
-
-        if pool is None:
-            logger.error("Database connection pool is None")
-            gr.Error("データベース接続プールが初期化されていません")
-            logger.info("=" * 50)
-            return gr.Accordion(), gr.Textbox()
-
-        logger.info("Setting up database credentials...")
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
                 try:
-                    # Define the PL/SQL statement
-                    append_acl_sql = """
+                    cursor.execute(
+                        """
 BEGIN
   DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
     host => '*',
@@ -154,41 +139,36 @@ BEGIN
                        principal_name => 'admin',
                        principal_type => xs_acl.ptype_db));
 END;"""
-                    # Execute the PL/SQL statement
-                    cursor.execute(append_acl_sql)
-                    logger.info("Network ACL configured")
-                except DatabaseError as de:
-                    logger.warning(f"ACL setup warning: {de}")
+                    )
+                except DatabaseError:
+                    pass
 
                 try:
-                    drop_oci_cred_sql = "BEGIN dbms_vector.drop_credential('OCI_CRED'); END;"
-                    cursor.execute(drop_oci_cred_sql)
-                    logger.info("Existing OCI_CRED dropped")
+                    cursor.execute("BEGIN dbms_vector.drop_credential('OCI_CRED'); END;")
                 except DatabaseError:
-                    logger.info("No existing OCI_CRED to drop")
+                    pass
 
                 oci_cred = {
-                    "user_ocid": user_ocid,
-                    "tenancy_ocid": tenancy_ocid,
+                    "user_ocid": str(user_ocid).strip(),
+                    "tenancy_ocid": str(tenancy_ocid).strip(),
                     "compartment_ocid": compartment_ocid,
                     "private_key": private_key.strip(),
-                    "fingerprint": fingerprint,
+                    "fingerprint": str(fingerprint).strip(),
                 }
 
-                create_oci_cred_sql = """
+                cursor.execute(
+                    """
 BEGIN
    dbms_vector.create_credential(
        credential_name => 'OCI_CRED',
        params => json(:json_params)
    );
-END;"""
-
-                cursor.execute(create_oci_cred_sql, json_params=json.dumps(oci_cred))
+END;""",
+                    json_params=json.dumps(oci_cred),
+                )
                 conn.commit()
-                logger.info("✓ OCI credentials created in database")
 
-        create_oci_cred_sql = f"""
--- Append Host ACE
+        create_sql_preview = f"""
 BEGIN
   DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
     host => '*',
@@ -197,27 +177,19 @@ BEGIN
                        principal_type => xs_acl.ptype_db));
 END;
 
--- Drop Existing OCI Credential
 BEGIN dbms_vector.drop_credential('OCI_CRED'); END;
 
--- Create New OCI Credential
 BEGIN
     dbms_vector.create_credential(
         credential_name => 'OCI_CRED',
         params => json('{json.dumps(oci_cred)}')
     );
-END;
-"""
-        gr.Info("OCI API Keyの設定が完了しました")
-        logger.info("✓ OCI credential setup completed successfully")
-        logger.info("=" * 50)
-        return gr.Accordion(), gr.Textbox(value=create_oci_cred_sql.strip())
-        
+END;"""
+
+        gr.Info("OCI_CREDの作成が完了しました")
+        return gr.Accordion(), gr.Textbox(value=create_sql_preview.strip())
     except Exception as e:
-        logger.error(f"Error during credential setup: {e}")
-        logger.exception("Full traceback:")
-        gr.Warning("一部の設定でエラーが発生しましたが、可能な範囲で処理を続行しました")
-        logger.info("=" * 50)
+        logger.error(f"Error creating OCI credential: {e}")
         return gr.Accordion(), gr.Textbox()
 
 
@@ -348,23 +320,13 @@ def build_oci_genai_tab(pool):
     
     # ラッパー関数の定義
     def create_oci_cred_wrapper(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
-        """OCI認証情報を設定するためのラッパー関数."""
-        return create_oci_cred(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool)
+        return create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool)
+    def update_oci_config_wrapper(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
+        return update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region)
     
     # UIコンポーネントの構築
     with gr.TabItem(label="OCI GenAI 設定") as tab_create_oci_cred:
         with gr.Accordion(label="OCI GenAI 設定", open=True):
-            with gr.Accordion(label="SQL ログ", open=False) as tab_create_oci_cred_sql_accordion:
-                tab_create_oci_cred_sql_text = gr.Textbox(
-                    label="SQL",
-                    show_label=False,
-                    lines=25,
-                    max_lines=50,
-                    autoscroll=False,
-                    interactive=False,
-                    show_copy_button=True,
-                )
-
             with gr.Row():
                 with gr.Column():
                     tab_create_oci_cred_user_ocid_text = gr.Textbox(
@@ -411,12 +373,15 @@ def build_oci_genai_tab(pool):
                 with gr.Column():
                     tab_create_oci_clear_button = gr.ClearButton(value="クリア")
                 with gr.Column():
-                    tab_create_oci_cred_button = gr.Button(value="設定/再設定", variant="primary")
+                    tab_update_oci_config_button = gr.Button(value="OCI設定ファイルを更新", variant="primary")
+
+            with gr.Row():
+                with gr.Column():
+                    tab_create_oci_config_status_md = gr.Markdown(visible=False)
 
         # イベントハンドラーの設定
         tab_create_oci_clear_button.add(
             components=[
-                tab_create_oci_cred_sql_text,
                 tab_create_oci_cred_user_ocid_text,
                 tab_create_oci_cred_tenancy_ocid_text,
                 tab_create_oci_cred_fingerprint_text,
@@ -424,8 +389,8 @@ def build_oci_genai_tab(pool):
             ]
         )
 
-        tab_create_oci_cred_button.click(
-            create_oci_cred_wrapper,
+        tab_update_oci_config_button.click(
+            update_oci_config_wrapper,
             inputs=[
                 tab_create_oci_cred_user_ocid_text,
                 tab_create_oci_cred_tenancy_ocid_text,
@@ -433,7 +398,7 @@ def build_oci_genai_tab(pool):
                 tab_create_oci_cred_private_key_file,
                 tab_create_oci_cred_region_text,
             ],
-            outputs=[tab_create_oci_cred_sql_accordion, tab_create_oci_cred_sql_text],
+            outputs=[tab_create_oci_config_status_md],
         )
 
         return tab_create_oci_cred
@@ -454,14 +419,32 @@ def build_oci_embedding_test_tab(pool):
         return test_oci_cred(test_query_text, embed_model, pool)
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="OCI GenAI 埋め込みテスト") as tab_test_oci_cred:      
+    with gr.TabItem(label="OCI GenAI 埋め込みテスト") as tab_test_oci_cred:
+        with gr.Accordion(label="OCI 認証", open=True):
+            with gr.Row():
+                with gr.Column():
+                    tab_auto_create_status_md = gr.Markdown(visible=False)
+            with gr.Accordion(label="SQL", open=False):
+                with gr.Column():
+                    tab_auto_create_sql_text = gr.Textbox(
+                        label="SQL",
+                        show_label=False,
+                        lines=15,
+                        max_lines=15,
+                        autoscroll=False,
+                        interactive=False,
+                        show_copy_button=True,
+                    )
+            with gr.Row():
+                tab_auto_create_btn = gr.Button(value="OCI_CREDを作成", variant="primary")
+
         with gr.Accordion(label="埋め込みモデル", open=True):
             with gr.Row():
                 with gr.Column():
                     tab_test_oci_cred_vector_text = gr.Textbox(
                         label="ベクトル結果",
-                        lines=15,
-                        max_lines=15,
+                        lines=8,
+                        max_lines=8,
                         autoscroll=False,
                         interactive=False,
                         show_copy_button=True,
@@ -506,4 +489,96 @@ def build_oci_embedding_test_tab(pool):
             outputs=[tab_test_oci_cred_vector_text],
         )
 
+        def create_oci_cred_from_config_wrapper():
+            for _vals in create_oci_db_credential_from_config(pool):
+                yield _vals
+
+        tab_auto_create_btn.click(
+            create_oci_cred_from_config_wrapper,
+            outputs=[tab_auto_create_btn, tab_auto_create_status_md, tab_auto_create_sql_text],
+        )
+
     return tab_test_oci_cred
+
+def create_oci_db_credential_from_config(pool=None):
+    try:
+        yield gr.Button(value="作成中...", interactive=False), gr.Markdown(visible=True, value="⏳ OCI_CRED作成中..."), gr.Textbox(value="")
+        oci_config_path = find_dotenv("/root/.oci/config")
+        user_ocid = get_key(oci_config_path, "user")
+        tenancy_ocid = get_key(oci_config_path, "tenancy")
+        fingerprint = get_key(oci_config_path, "fingerprint")
+        key_file_path = get_key(oci_config_path, "key_file")
+        region = get_key(oci_config_path, "region")
+        compartment_ocid = get_key(oci_config_path, "compartment_ocid") or os.environ.get("OCI_COMPARTMENT_OCID", "")
+        if not all([user_ocid, tenancy_ocid, fingerprint, key_file_path, region]):
+            yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="❌ OCI設定ファイルが不完全です"), gr.Textbox(value="")
+            return
+        if not compartment_ocid:
+            yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="❌ Compartment OCIDが見つかりません"), gr.Textbox(value="")
+            return
+        def _proc_key(path):
+            with open(path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            return "".join(line.strip() for line in lines if not line.startswith("--"))
+        private_key = _proc_key(key_file_path)
+        if pool is None:
+            yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="❌ データベース接続プール未初期化"), gr.Textbox(value="")
+            return
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                try:
+                    cursor.execute(
+                        """
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+    host => '*',
+    ace => xs$ace_type(privilege_list => xs$name_list('connect'),
+                       principal_name => 'admin',
+                       principal_type => xs_acl.ptype_db));
+END;"""
+                    )
+                except DatabaseError:
+                    pass
+                try:
+                    cursor.execute("BEGIN dbms_vector.drop_credential('OCI_CRED'); END;")
+                except DatabaseError:
+                    pass
+                oci_cred = {
+                    "user_ocid": str(user_ocid).strip(),
+                    "tenancy_ocid": str(tenancy_ocid).strip(),
+                    "compartment_ocid": compartment_ocid,
+                    "private_key": private_key.strip(),
+                    "fingerprint": str(fingerprint).strip(),
+                }
+                cursor.execute(
+                    """
+BEGIN
+   dbms_vector.create_credential(
+       credential_name => 'OCI_CRED',
+       params => json(:json_params)
+   );
+END;""",
+                    json_params=json.dumps(oci_cred),
+                )
+                conn.commit()
+        preview = f"""
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+    host => '*',
+    ace => xs$ace_type(privilege_list => xs$name_list('connect'),
+                       principal_name => 'admin',
+                       principal_type => xs_acl.ptype_db));
+END;
+
+BEGIN dbms_vector.drop_credential('OCI_CRED'); END;
+
+BEGIN
+    dbms_vector.create_credential(
+        credential_name => 'OCI_CRED',
+        params => json('{json.dumps(oci_cred)}')
+    );
+END;"""
+        yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="✅ OCI_CREDを作成しました"), gr.Textbox(value=preview.strip())
+    except Exception as e:
+        logger.error(f"Error creating OCI_CRED from config: {e}")
+        yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")

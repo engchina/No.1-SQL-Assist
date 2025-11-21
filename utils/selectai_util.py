@@ -15,7 +15,6 @@ from time import time
 
 import gradio as gr
 import pandas as pd
-from utils.query_util import build_query_tab
 
 from utils.management_util import (
     get_table_list,
@@ -322,10 +321,8 @@ def build_selectai_tab(pool):
                         refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
 
                     with gr.Row():
-                        table_choices = _get_table_names(pool)
-                        view_choices = _get_view_names(pool)
-                        tables_input = gr.CheckboxGroup(label="テーブル選択", choices=table_choices)
-                        views_input = gr.CheckboxGroup(label="ビュー選択", choices=view_choices)
+                        tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
+                        views_input = gr.CheckboxGroup(label="ビュー選択", choices=[])
 
                     with gr.Row():
                         profile_name = gr.Textbox(
@@ -522,8 +519,16 @@ def build_selectai_tab(pool):
                     outputs=[create_info, profile_list_df, selected_profile_name, profile_json_text],
                 )
 
+                def refresh_sources_handler():
+                    try:
+                        t = _get_table_names(pool)
+                        v = _get_view_names(pool)
+                        return gr.CheckboxGroup(choices=t), gr.CheckboxGroup(choices=v)
+                    except Exception:
+                        return gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+
                 refresh_btn.click(
-                    fn=refresh_sources,
+                    fn=refresh_sources_handler,
                     outputs=[tables_input, views_input],
                 )
 
@@ -547,7 +552,6 @@ def build_selectai_tab(pool):
 
         with gr.TabItem(label="開発者機能"):
             with gr.Tabs():
-                build_query_tab(pool)
                 with gr.TabItem(label="チャット・分析"):
                     with gr.Accordion(label="1. チャット", open=True):
                         def _dev_profile_names():

@@ -19,6 +19,7 @@ from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab
 from utils.chat_util import build_oci_chat_test_tab
 from utils.management_util import build_management_tab
 from utils.selectai_util import build_selectai_tab
+from utils.query_util import build_query_tab
 
 # Suppress NumPy warnings about longdouble on certain platforms
 warnings.filterwarnings("ignore", message=".*does not match any known type.*")
@@ -33,8 +34,29 @@ if platform.system() == "Linux":
         lib_dir=os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_8")
     )
 
-# Initialize database connection pool
-pool = oracledb.create_pool(
+# Lazy database connection pool
+class LazyPool:
+    def __init__(self, **kwargs):
+        self._pool = None
+        self._kwargs = kwargs
+
+    def _ensure(self):
+        if self._pool is None:
+            self._pool = oracledb.create_pool(**self._kwargs)
+
+    def acquire(self):
+        self._ensure()
+        return self._pool.acquire()
+
+    def close(self):
+        if self._pool is not None:
+            self._pool.close()
+
+    def __getattr__(self, name):
+        self._ensure()
+        return getattr(self._pool, name)
+
+pool = LazyPool(
     dsn=os.environ.get("ORACLE_26AI_CONNECTION_STRING", ""),
     min=5,
     max=20,
@@ -65,19 +87,20 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
         with gr.TabItem(label="環境設定"):
             # OCI GenAI設定タブを構築
             build_oci_genai_tab(pool)
-            
+
             # OCI GenAI Embeddingテストタブを構築
             build_oci_embedding_test_tab(pool)
-            
-            # OCI Chat Modelテストタブを構築
-            build_oci_chat_test_tab(pool)
-        
+
         with gr.TabItem(label="データベース管理機能"):
             # 管理機能タブを構築
             build_management_tab(pool)
 
+        build_query_tab(pool)
+
         with gr.TabItem(label="SelectAI 連携"):
             build_selectai_tab(pool)
+
+        build_oci_chat_test_tab(pool)
 
     gr.Markdown(
         value="### 本ソフトウェアは検証評価用です。日常利用のための基本機能は備えていない点につきましてご理解をよろしくお願い申し上げます。",

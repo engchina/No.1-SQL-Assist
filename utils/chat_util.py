@@ -213,26 +213,10 @@ def build_oci_chat_test_tab(pool):
         gr.TabItem: Chat UIタブ
     """
 
-    with gr.TabItem(label="OCI GenAI チャットテスト") as tab_chat:
-        with gr.Accordion(label="チャットモデル", open=True):
+    with gr.TabItem(label="AI チャット") as tab_chat:
+        with gr.Accordion(label="チャット", open=True):
             with gr.Row():
                 with gr.Column():
-                    chatbot = gr.Chatbot(
-                        label="会話履歴",
-                        height=350,
-                        show_copy_button=True,
-                        avatar_images=(None, None),
-                        type='messages',
-                    )
-
-                    with gr.Row():
-                        msg_input = gr.Textbox(
-                            value="こんにちわ",
-                            label="メッセージ",
-                            placeholder="メッセージを入力してください...",
-                            lines=2,
-                            max_lines=8,
-                        )
 
                     with gr.Row():
                         chat_model_input = gr.Dropdown(
@@ -248,6 +232,23 @@ def build_oci_chat_test_tab(pool):
                             value="xai.grok-code-fast-1",
                             interactive=True,
                             scale=2,
+                        )
+                    with gr.Row():
+                        chatbot = gr.Chatbot(
+                            label="会話履歴",
+                            height=350,
+                            show_copy_button=True,
+                            avatar_images=(None, None),
+                            type='messages',
+                        )
+
+                    with gr.Row():
+                        msg_input = gr.Textbox(
+                            value="こんにちわ",
+                            label="メッセージ",
+                            placeholder="メッセージを入力してください...",
+                            lines=2,
+                            max_lines=8,
                         )
 
                     with gr.Row():
