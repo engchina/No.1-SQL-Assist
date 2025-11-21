@@ -1,7 +1,7 @@
 """クエリ実行ユーティリティモジュール.
 
-このモジュールは、Select文のみを安全に実行し、結果を表形式で
-表示するためのGradio UIコンポーネントを提供します。
+SELECTを1文のみ、その他のデータ操作/DDL/PL/SQLを複数文同時に安全に実行し、
+SELECTはデータフレーム表示、非SELECTはサマリー表示を行うUIコンポーネントを提供します。
 """
 
 import logging
@@ -11,6 +11,7 @@ import traceback
 
 import gradio as gr
 import pandas as pd
+import oracledb
 from oracledb import DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -174,13 +175,256 @@ def execute_select_sql(pool, sql: str, limit: int):
     )
 
 
+def _split_sql_statements(sql: str):
+    if not sql:
+        return []
+    s = str(sql)
+    stmts = []
+    buf = []
+    in_s = False
+    in_d = False
+    in_lc = False
+    in_bc = False
+    pl = 0
+    i = 0
+    L = len(s)
+    def ahead_word(j):
+        k = j
+        while k < L and s[k].isspace():
+            k += 1
+        w = []
+        while k < L and (s[k].isalpha() or s[k] == '_'):
+            w.append(s[k])
+            k += 1
+        return ''.join(w).lower(), k
+    while i < L:
+        ch = s[i]
+        nxt = s[i+1] if i + 1 < L else ''
+        if in_lc:
+            buf.append(ch)
+            if ch == '\n':
+                in_lc = False
+            i += 1
+            continue
+        if in_bc:
+            buf.append(ch)
+            if ch == '*' and nxt == '/':
+                buf.append(nxt)
+                in_bc = False
+                i += 2
+            else:
+                i += 1
+            continue
+        if not in_s and not in_d:
+            if ch == '-' and nxt == '-':
+                buf.append(ch)
+                buf.append(nxt)
+                in_lc = True
+                i += 2
+                continue
+            if ch == '/' and nxt == '*':
+                buf.append(ch)
+                buf.append(nxt)
+                in_bc = True
+                i += 2
+                continue
+        if ch == "'" and not in_d:
+            buf.append(ch)
+            if in_s:
+                pk = s[i+1] if i + 1 < L else ''
+                if pk == "'":
+                    buf.append(pk)
+                    i += 2
+                    continue
+                in_s = False
+                i += 1
+            else:
+                in_s = True
+                i += 1
+            continue
+        if ch == '"' and not in_s:
+            buf.append(ch)
+            in_d = not in_d
+            i += 1
+            continue
+        if not in_s and not in_d:
+            if ch.isalpha():
+                w, k = ahead_word(i)
+                if w in ('begin', 'declare'):
+                    pl += 1
+                elif w == 'end':
+                    pass
+                i = k
+                buf.append(s[i-len(w):i])
+                continue
+            if ch == ';' and pl == 0:
+                st = ''.join(buf).strip()
+                if st:
+                    stmts.append(st)
+                buf = []
+                i += 1
+                continue
+            if ch == ';' and pl > 0:
+                js = ''.join(buf)
+                m = re.search(r"\bend\s*$", js, flags=re.IGNORECASE)
+                if m:
+                    pl = max(0, pl - 1)
+                buf.append(ch)
+                i += 1
+                continue
+        buf.append(ch)
+        i += 1
+    tail = ''.join(buf).strip()
+    if tail:
+        stmts.append(tail)
+    return stmts
+
+
+def _normalize_exec(stmt: str) -> str:
+    s = str(stmt or '').strip()
+    if re.match(r"^(exec|execute)\b", s, flags=re.IGNORECASE):
+        body = re.sub(r"^(exec|execute)\s+", "", s, flags=re.IGNORECASE).strip()
+        if body.endswith(';'):
+            body = body[:-1]
+        return f"BEGIN {body}; END;"
+    return s
+
+
+def _stmt_type(stmt: str) -> str:
+    s = str(stmt or '').strip()
+    def strip_comments(x: str) -> str:
+        i = 0
+        L = len(x)
+        while True:
+            while i < L and x[i].isspace():
+                i += 1
+            if i + 1 < L and x[i] == '-' and x[i+1] == '-':
+                i += 2
+                while i < L and x[i] != '\n':
+                    i += 1
+                continue
+            if i + 1 < L and x[i] == '/' and x[i+1] == '*':
+                i += 2
+                while i + 1 < L and not (x[i] == '*' and x[i+1] == '/'):
+                    i += 1
+                i = i + 2 if i + 1 < L else L
+                continue
+            break
+        return x[i:]
+    s = strip_comments(s)
+    m = re.match(r"^comment\s+on\s+([a-zA-Z_]+(?:\s+[a-zA-Z_]+)?)\b", s, flags=re.IGNORECASE)
+    if m:
+        # tgt = m.group(1).upper()
+        return f"COMMENT"
+    if re.match(r"^(select|with)\b", s, flags=re.IGNORECASE):
+        return 'SELECT'
+    for k in ('insert', 'update', 'delete', 'merge', 'create', 'drop', 'alter', 'truncate', 'grant', 'revoke'):
+        if re.match(rf"^{k}\b", s, flags=re.IGNORECASE):
+            return k.upper()
+    if re.match(r"^(begin|declare)\b", s, flags=re.IGNORECASE):
+        return 'PLSQL'
+    if re.match(r"^(exec|execute)\b", s, flags=re.IGNORECASE):
+        return 'PLSQL'
+    return 'UNKNOWN'
+
+
+def execute_sql_general(pool, sql: str, limit: int):
+    if not sql or not str(sql).strip():
+        gr.Warning("SQLを入力してください")
+        return (
+            gr.Markdown(visible=True),
+            gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
+            gr.HTML(visible=False, value=""),
+        )
+    statements = _split_sql_statements(sql)
+    statements = [s for s in statements if s and s.strip()]
+    if not statements:
+        gr.Warning("SQLを入力してください")
+        return (
+            gr.Markdown(visible=True),
+            gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
+            gr.HTML(visible=False, value=""),
+        )
+    types = [_stmt_type(s) for s in statements]
+    sel_count = sum(1 for t in types if t == 'SELECT')
+    if len(statements) == 1 and sel_count == 1:
+        return execute_select_sql(pool, statements[0], limit)
+    if len(statements) > 1 and sel_count > 0:
+        gr.Error("複数実行時はSELECT文を含めることはできません")
+        return (
+            gr.Markdown(visible=True, value="❌ エラー: 複数実行にSELECTは含められません"),
+            gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
+            gr.HTML(visible=False, value=""),
+        )
+    import time
+    rows = []
+    ok = True
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                try:
+                    cursor.callproc("dbms_output.enable")
+                except Exception:
+                    pass
+                for idx, st in enumerate(statements, start=1):
+                    typ = _stmt_type(st)
+                    run = _normalize_exec(st)
+                    t0 = time.perf_counter()
+                    try:
+                        cursor.execute(run)
+                        rc = cursor.rowcount if hasattr(cursor, 'rowcount') else None
+                        dur = int((time.perf_counter() - t0) * 1000)
+                        is_dml = typ in ('INSERT', 'UPDATE', 'DELETE', 'MERGE')
+                        is_plsql = typ == 'PLSQL'
+                        is_comment = typ.startswith('COMMENT ON')
+                        msg = _fetch_dbms_output(cursor)
+                        if is_dml:
+                            msg = msg or f"RowsAffected={rc if rc is not None else 0}"
+                        elif is_plsql:
+                            msg = msg or 'PL/SQL executed'
+                        elif is_comment:
+                            msg = msg or 'Comment applied'
+                        else:
+                            msg = msg or 'OK'
+                        rows.append([idx, typ, '成功', rc if rc is not None else -1, msg, dur])
+                    except Exception as e:
+                        ok = False
+                        dur = int((time.perf_counter() - t0) * 1000)
+                        msg = str(e)
+                        rows.append([idx, typ, '失敗', -1, msg, dur])
+                        break
+                if ok:
+                    conn.commit()
+                else:
+                    conn.rollback()
+    except Exception as e:
+        s = str(e)
+        df = pd.DataFrame(rows, columns=["No", "Type", "Status", "RowsAffected", "Message", "Duration_ms"]) if rows else pd.DataFrame()
+        info = f"❌ エラー: {s}"
+        return (
+            gr.Markdown(visible=True, value=info),
+            gr.Dataframe(visible=True, value=df, label="実行結果", elem_id="query_result_df"),
+            gr.HTML(visible=False, value=""),
+        )
+    df = pd.DataFrame(rows, columns=["No", "Type", "Status", "RowsAffected", "Message", "Duration_ms"]) if rows else pd.DataFrame()
+    succ = sum(1 for r in rows if r[2] == '成功')
+    fail = sum(1 for r in rows if r[2] == '失敗')
+    tx = "コミット済み" if ok else "ロールバック済み"
+    gr.Info(f"成功: {succ}件 / 失敗: {fail}件 ({tx})")
+    return (
+        gr.Markdown(visible=False),
+        gr.Dataframe(visible=True, value=df, label="実行サマリー", elem_id="query_result_df"),
+        gr.HTML(visible=False, value=""),
+    )
+
+
 def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
     with gr.TabItem(label="SQLの実行") as tab_query:
         with gr.Accordion(label="1. SQLの入力", open=True):
             sql_input = gr.Textbox(
-                label="SQL文（SELECTのみ）\n注意: 重いSQLを実行すると、処理が遅くなり画面が一時的に固まる場合があります",
-                placeholder="SELECT 文を入力してください（INSERT/UPDATE等は禁止）",
+                label="SQL文（SELECTは1文のみ、その他は複数文同時実行可）\n注意: 複数実行時はSELECTを含めないでください",
+                placeholder="複数の文はセミコロンで区切って入力できます。\n例: INSERT/UPDATE/DELETE/MERGE/CREATE/BEGIN..END/EXEC など。SELECTは1回に1文のみ",
                 lines=8,
                 max_lines=15,
                 show_copy_button=True,
@@ -200,7 +444,7 @@ def build_query_tab(pool):
 
         with gr.Accordion(label="2. 実行結果の表示", open=True):
             result_info = gr.Markdown(
-                value="ℹ️ SELECT文を入力して「実行」をクリックしてください",
+                value="ℹ️ SELECTは1文のみ実行可能。INSERT/UPDATE/DELETE/MERGE/CREATE/PL/SQL/EXECは複数文をセミコロンで区切って同時実行可能。複数実行時はSELECTを含めないでください",
                 visible=True,
             )
 
@@ -232,7 +476,7 @@ def build_query_tab(pool):
             ai_status_md = gr.Markdown(visible=False)
             ai_result_md = gr.Markdown(visible=False)
 
-        async def _ai_analyze_async(model_name, sql_text, limit_value, result_df_input):
+        async def _ai_analyze_async(model_name, sql_text, result_info_text, result_df_input):
             from utils.chat_util import get_oci_region, get_compartment_id
             region = get_oci_region()
             compartment_id = get_compartment_id()
@@ -252,10 +496,14 @@ def build_query_tab(pool):
                 q = (sql_text or "").strip()
                 if q.endswith(";"):
                     q = q[:-1]
+                info_text = str(result_info_text or "").strip()
                 prompt = (
-                    "以下のSELECT文とその結果を分析し、問題点や最適化の提案、次に取るべき対応案を提示してください。\n\n"
+                    "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
+                    "1) エラー原因（該当する場合）\n"
+                    "2) 解決方法（修正案や具体的手順）\n"
+                    "3) 簡潔な結論（不要な詳細は省略）\n\n"
                     + ("SQL:\n```sql\n" + q + "\n```\n" if q else "")
-                    + ("取得件数:\n" + str(limit_value) + "\n" if limit_value else "")
+                    + ("実行メッセージ:\n" + info_text + "\n" if info_text else "")
                     + ("結果プレビュー:\n" + preview + "\n" if preview else "")
                 )
                 client = AsyncOciOpenAI(
@@ -264,7 +512,7 @@ def build_query_tab(pool):
                     compartment_id=compartment_id,
                 )
                 messages = [
-                    {"role": "system", "content": "あなたは熟練のデータベースエンジニア兼SQL最適化の専門家です。結果とSQLを精確に分析し、性能、可読性、正確性の観点で改善提案を出してください。"},
+                    {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                     {"role": "user", "content": prompt},
                 ]
                 resp = await client.chat.completions.create(model=model_name, messages=messages)
@@ -276,13 +524,13 @@ def build_query_tab(pool):
             except Exception as e:
                 return gr.Markdown(visible=True, value=f"エラー: {e}")
 
-        def ai_analyze(model_name, sql_text, limit_value, result_df_input):
+        def ai_analyze(model_name, sql_text, result_info_text, result_df_input):
             import asyncio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, limit_value, result_df_input))
+                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, result_info_text, result_df_input))
                 yield gr.Markdown(visible=True, value="✅ 完了"), result_md
             except Exception as e:
                 yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
@@ -292,10 +540,10 @@ def build_query_tab(pool):
         def on_execute(sql, limit):
             try:
                 yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
-                result_info, result_df, result_style = execute_select_sql(pool, sql, limit)
+                result_info, result_df, result_style = execute_sql_general(pool, sql, limit)
                 yield result_info, result_df, result_style
             except Exception as e:
-                yield gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
+                yield gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {str(e)}"), gr.Dataframe(visible=False), gr.HTML(visible=False, value="")
 
         def on_clear():
             return ""
@@ -308,7 +556,7 @@ def build_query_tab(pool):
 
         ai_analyze_btn.click(
             fn=ai_analyze,
-            inputs=[ai_model_input, sql_input, limit_input, result_df],
+            inputs=[ai_model_input, sql_input, result_info, result_df],
             outputs=[ai_status_md, ai_result_md],
         )
 
@@ -318,3 +566,22 @@ def build_query_tab(pool):
         )
 
     return tab_query
+def _fetch_dbms_output(cursor, batch: int = 1000) -> str:
+    try:
+        lines = []
+        while True:
+            lv = cursor.arrayvar(oracledb.STRING, batch)
+            nv = cursor.var(oracledb.NUMBER)
+            nv.setvalue(0, batch)
+            cursor.callproc("dbms_output.get_lines", [lv, nv])
+            n = int(nv.getvalue(0) or 0)
+            arr = lv.getvalue() or []
+            if n > 0:
+                lines.extend([str(x) for x in arr[:n] if x])
+                if n < batch:
+                    break
+            else:
+                break
+        return "\n".join(lines)
+    except Exception:
+        return ""

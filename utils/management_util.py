@@ -1219,7 +1219,10 @@ def build_management_tab(pool):
                         sql_part = str(ddl_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
-                        "以下のテーブル管理に関するSQLと結果を分析し、問題点と改善提案を示し、次に取るべき対応案を提示してください。\n\n"
+                        "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
+                        "1) エラー原因（該当する場合）\n"
+                        "2) 解決方法（修正案や具体的手順）\n"
+                        "3) 簡潔な結論（不要な詳細は省略）\n\n"
                         + ("SQL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
                         + ("実行結果:\n" + result_part + "\n" if result_part else "")
                         + ("列情報プレビュー:\n" + preview + "\n" if preview else "")
@@ -1230,7 +1233,7 @@ def build_management_tab(pool):
                         compartment_id=compartment_id,
                     )
                     messages = [
-                        {"role": "system", "content": "あなたは熟練のデータベースエンジニアです。SQLと結果を正確に分析し、修正と最適化の提案を行ってください。"},
+                        {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                         {"role": "user", "content": prompt},
                     ]
                     resp = await client.chat.completions.create(model=model_name, messages=messages)
@@ -1576,7 +1579,10 @@ def build_management_tab(pool):
                     where_part = str(where_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
-                        "以下のビュー管理に関するSQLと結果を分析し、問題点と改善提案を示し、次に取るべき対応案を提示してください。\n\n"
+                        "以下のSQL/DDLと実行結果を分析してください。出力は次の3点に限定します。\n"
+                        "1) エラー原因（該当する場合）\n"
+                        "2) 解決方法（修正案や具体的手順）\n"
+                        "3) 簡潔な結論（不要な詳細は省略）\n\n"
                         + ("SQL/DDL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
                         + ("JOIN条件:\n" + join_part + "\n" if join_part else "")
                         + ("WHERE条件:\n" + where_part + "\n" if where_part else "")
@@ -1589,7 +1595,7 @@ def build_management_tab(pool):
                         compartment_id=compartment_id,
                     )
                     messages = [
-                        {"role": "system", "content": "あなたは熟練のデータベースエンジニアです。SQLと結果を正確に分析し、修正と最適化の提案を行ってください。"},
+                        {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                         {"role": "user", "content": prompt},
                     ]
                     resp = await client.chat.completions.create(model=model_name, messages=messages)
@@ -1909,7 +1915,10 @@ def build_management_tab(pool):
                     where_part = f" WHERE {str(where_text).strip()}" if where_text and str(where_text).strip() else ""
                     sql_text = f"SELECT * FROM ADMIN.{str(obj_name or '').upper()}{where_part} FETCH FIRST {int(limit_value or 0)} ROWS ONLY" if obj_name else ""
                     prompt = (
-                        "以下のデータ取得SQLとその結果を分析し、潜在的な問題、クレンジングや集計の提案、今後の対応案を提示してください。\n\n"
+                        "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
+                        "1) エラー原因（該当する場合）\n"
+                        "2) 解決方法（修正案や具体的手順）\n"
+                        "3) 簡潔な結論（不要な詳細は省略）\n\n"
                         + ("SQL:\n```sql\n" + sql_text + "\n```\n" if sql_text else "")
                         + ("結果プレビュー:\n" + preview + "\n" if preview else "")
                     )
@@ -1919,7 +1928,7 @@ def build_management_tab(pool):
                         compartment_id=compartment_id,
                     )
                     messages = [
-                        {"role": "system", "content": "あなたは熟練のデータ分析・SQLの専門家です。実行可能な改善提案を提供してください。"},
+                        {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                         {"role": "user", "content": prompt},
                     ]
                     resp = await client.chat.completions.create(model=model_name, messages=messages)
