@@ -245,8 +245,8 @@ def build_oci_chat_test_tab(pool):
                     with gr.Row():
                         msg_input = gr.Textbox(
                             value="こんにちわ",
-                            label="メッセージ",
-                            placeholder="メッセージを入力してください...",
+                            label="💬 メッセージ",
+                            placeholder="メッセージを入力してください（Enterで改行、Shift＋Enterで送信）",
                             lines=2,
                             max_lines=8,
                         )

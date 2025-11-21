@@ -12,6 +12,8 @@ from pathlib import Path
 
 import gradio as gr
 import oracledb
+import pandas as pd
+import oci
 from dotenv import find_dotenv, get_key, load_dotenv, set_key
 from oracledb import DatabaseError
 
@@ -582,3 +584,220 @@ END;"""
     except Exception as e:
         logger.error(f"Error creating OCI_CRED from config: {e}")
         yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+    
+def _oci_config_with_region(region: str) -> dict:
+    cfg_path = find_dotenv("/root/.oci/config")
+    cfg = oci.config.from_file(file_location=cfg_path) if cfg_path else {}
+    if region:
+        cfg["region"] = region
+    return cfg
+
+
+def _list_adb(region: str, compartment_id: str):
+    cfg = _oci_config_with_region(region)
+    client = oci.database.DatabaseClient(cfg)
+    resp = client.list_autonomous_databases(compartment_id=compartment_id)
+    return resp.data
+
+
+def _get_adb(client: oci.database.DatabaseClient, adb_id: str):
+    return client.get_autonomous_database(autonomous_database_id=adb_id).data
+
+
+def _start_adb(region: str, adb_id: str):
+    cfg = _oci_config_with_region(region)
+    client = oci.database.DatabaseClient(cfg)
+    client.start_autonomous_database(autonomous_database_id=adb_id)
+    try:
+        return _get_adb(client, adb_id)
+    except Exception:
+        return oci.database.models.AutonomousDatabase(lifecycle_state="STARTING")
+
+
+def _stop_adb(region: str, adb_id: str):
+    cfg = _oci_config_with_region(region)
+    client = oci.database.DatabaseClient(cfg)
+    client.stop_autonomous_database(autonomous_database_id=adb_id)
+    try:
+        return _get_adb(client, adb_id)
+    except Exception:
+        return oci.database.models.AutonomousDatabase(lifecycle_state="STOPPING")
+
+
+def build_oracle_ai_database_tab():
+    with gr.TabItem(label="Oracle AI Database") as tab_adb:
+        with gr.Accordion(label="Oracle AI Database", open=True):
+            with gr.Row():
+                region_input = gr.Dropdown(label="リージョン", choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True)
+            with gr.Row():
+                fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
+            with gr.Row():
+                adb_list_df = gr.Dataframe(label="ADB一覧", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
+            with gr.Row():
+                adb_status_md = gr.Markdown(visible=False)
+            with gr.Row():
+                start_btn = gr.Button(value="起動", interactive=False, variant="primary")
+                stop_btn = gr.Button(value="停止", interactive=False, variant="primary")
+        adb_map_state = gr.State({})
+        adb_selected_id = gr.State("")
+
+        def _state_to_val(x):
+            try:
+                if isinstance(x, dict):
+                    return x
+                v = getattr(x, "value", None)
+                if isinstance(v, dict):
+                    return v
+            except Exception:
+                pass
+            return {}
+
+        def _fetch(region):
+            comp = os.environ.get("OCI_COMPARTMENT_OCID", "")
+            region_code = region
+            if not comp:
+                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+                yield gr.Markdown(visible=True, value="❌ OCI_COMPARTMENT_OCIDが見つかりません"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+                return
+            try:
+                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+                items = _list_adb(region_code, comp)
+                rows = []
+                mp = {}
+                for it in items:
+                    name = it.display_name
+                    st = it.lifecycle_state
+                    oid = it.id
+                    rows.append([name, st, oid])
+                    mp[oid] = {"name": name, "state": st}
+                df = pd.DataFrame(rows, columns=["表示名", "状態", "OCID"]) if rows else pd.DataFrame(columns=["表示名", "状態", "OCID"]) 
+                status_lines = []
+                status_lines.append(f"リージョン: {region_code}")
+                status_lines.append(f"コンパートメント: {comp[:16]}…")
+                status_lines.append(f"取得件数: {len(rows)}")
+                status_md = "\n".join(status_lines)
+                yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df), mp, ""
+            except Exception as e:
+                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+
+        def _on_row_select(evt: gr.SelectData, current_df, mp):
+            try:
+                if isinstance(current_df, dict) and "data" in current_df:
+                    headers = current_df.get("headers") or current_df.get("column_names") or []
+                    data = current_df.get("data") or []
+                    df = pd.DataFrame(data, columns=headers if headers else None)
+                elif isinstance(current_df, pd.DataFrame):
+                    df = current_df
+                else:
+                    df = pd.DataFrame(current_df)
+                row_index = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
+                if len(df) > row_index:
+                    # 取得した行からOCID/表示名/状態を抽出
+                    ocid = None
+                    name = None
+                    st_df = None
+                    try:
+                        if "OCID" in df.columns:
+                            ocid = str(df.iloc[row_index]["OCID"])
+                        else:
+                            ocid = str(df.iloc[row_index, 2])
+                    except Exception:
+                        ocid = None
+                    try:
+                        # 優先: 日本語表示名列
+                        name = str(df.iloc[row_index]["表示名"]) if "表示名" in df.columns else (
+                            str(df.iloc[row_index]["名称"]) if "名称" in df.columns else str(df.iloc[row_index, 0])
+                        )
+                    except Exception:
+                        name = None
+                    try:
+                        st_df = str(df.iloc[row_index]["状態"]) if "状態" in df.columns else str(df.iloc[row_index, 1])
+                    except Exception:
+                        st_df = None
+
+                    mpv = _state_to_val(mp)
+                    info = (mpv or {}).get(ocid) or (mpv or {}).get(name)
+                    st = info.get("state") if isinstance(info, dict) else (st_df or "")
+                    if not st:
+                        return gr.Markdown(visible=True, value="ℹ️ 行をクリックしてADBを選択してください"), gr.Button(interactive=False), gr.Button(interactive=False), ""
+                    can_start = st in ("STOPPED", "INACTIVE")
+                    can_stop = st in ("AVAILABLE", "RUNNING", "STARTING")
+                    status_text = f"選択: {name or ''} / 状態: {st}"
+                    return gr.Markdown(visible=True, value=status_text), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), (ocid or "")
+            except Exception as e:
+                logger.error(f"_on_row_select エラー: {e}")
+                return gr.Markdown(visible=True, value="ℹ️ 行をクリックしてADBを選択してください"), gr.Button(interactive=False), gr.Button(interactive=False), ""
+
+        def _mp_to_df(mp):
+            rows = []
+            for ocid, v in (mp or {}).items():
+                rows.append([v.get("name"), v.get("state"), ocid])
+            return pd.DataFrame(rows, columns=["表示名", "状態", "OCID"]) if rows else pd.DataFrame(columns=["表示名", "状態", "OCID"]) 
+
+        def _start(region, selected_id, mp):
+            region_code = region
+            mpv = _state_to_val(mp)
+            if not selected_id:
+                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                return
+            yield gr.Markdown(visible=True, value="⏳ 起動をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+            try:
+                _start_adb(region_code, selected_id)
+                st = "STARTING"
+                if selected_id in mpv:
+                    mpv[selected_id]["state"] = st
+                else:
+                    mpv[selected_id] = {"name": selected_id, "state": st}
+                can_start = False
+                can_stop = True
+                msg = "⏳ 起動リクエストを送信しました。数分後に『ADB一覧を取得』で最新状態を確認してください"
+                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+            except Exception as e:
+                logger.error(f"_start エラー: {e}")
+                yield gr.Markdown(visible=True, value=f"❌ 起動エラー: {e}"), gr.Button(interactive=True), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+
+        def _stop(region, selected_id, mp):
+            region_code = region
+            mpv = _state_to_val(mp)
+            if not selected_id:
+                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                return
+            yield gr.Markdown(visible=True, value="⏳ 停止をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+            try:
+                _stop_adb(region_code, selected_id)
+                st = "STOPPING"
+                if selected_id in mpv:
+                    mpv[selected_id]["state"] = st
+                else:
+                    mpv[selected_id] = {"name": selected_id, "state": st}
+                can_start = False
+                can_stop = False
+                msg = "⏳ 停止リクエストを送信しました。数分後に『ADB一覧を取得』で最新状態を確認してください"
+                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+            except Exception as e:
+                logger.error(f"_stop エラー: {e}")
+                yield gr.Markdown(visible=True, value=f"❌ 停止エラー: {e}"), gr.Button(interactive=False), gr.Button(interactive=True), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+
+        fetch_btn.click(
+            _fetch,
+            inputs=[region_input],
+            outputs=[adb_status_md, adb_list_df, adb_map_state, adb_selected_id],
+        )
+        adb_list_df.select(
+            _on_row_select,
+            inputs=[adb_list_df, adb_map_state],
+            outputs=[adb_status_md, start_btn, stop_btn, adb_selected_id],
+        )
+        start_btn.click(
+            _start,
+            inputs=[region_input, adb_selected_id, adb_map_state],
+            outputs=[adb_status_md, start_btn, stop_btn, adb_map_state, adb_list_df],
+        )
+        stop_btn.click(
+            _stop,
+            inputs=[region_input, adb_selected_id, adb_map_state],
+            outputs=[adb_status_md, start_btn, stop_btn, adb_map_state, adb_list_df],
+        )
+
+    return tab_adb

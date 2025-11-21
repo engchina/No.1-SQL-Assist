@@ -15,7 +15,7 @@ from dotenv import find_dotenv, load_dotenv
 from gradio.themes import Default, GoogleFont
 
 from utils.css_util import custom_css
-from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab
+from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab
 from utils.chat_util import build_oci_chat_test_tab
 from utils.management_util import build_management_tab
 from utils.selectai_util import build_selectai_tab
@@ -87,6 +87,9 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
         with gr.TabItem(label="環境設定"):
             # OCI GenAI設定タブを構築
             build_oci_genai_tab(pool)
+
+            # Oracle AI Database タブを追加
+            build_oracle_ai_database_tab()
 
             # OCI GenAI Embeddingテストタブを構築
             build_oci_embedding_test_tab(pool)
