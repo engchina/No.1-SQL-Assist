@@ -119,6 +119,7 @@ def create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_f
         return gr.Accordion(), gr.Textbox()
 
     compartment_ocid = os.environ.get("OCI_COMPARTMENT_OCID", "")
+    logger.info(f"compartment_ocid: {compartment_ocid}")
     if not compartment_ocid:
         gr.Error("OCI_COMPARTMENT_OCID環境変数が設定されていません")
         return gr.Accordion(), gr.Textbox()
@@ -142,13 +143,13 @@ BEGIN
                        principal_type => xs_acl.ptype_db));
 END;"""
                     )
-                except DatabaseError:
-                    pass
+                except DatabaseError as e:
+                    logger.error(f"ACL append failed: {e}")
 
                 try:
                     cursor.execute("BEGIN dbms_vector.drop_credential('OCI_CRED'); END;")
-                except DatabaseError:
-                    pass
+                except DatabaseError as e:
+                    logger.error(f"Drop credential failed: {e}")
 
                 oci_cred = {
                     "user_ocid": str(user_ocid).strip(),
@@ -511,7 +512,8 @@ def create_oci_db_credential_from_config(pool=None):
         fingerprint = get_key(oci_config_path, "fingerprint")
         key_file_path = get_key(oci_config_path, "key_file")
         region = get_key(oci_config_path, "region")
-        compartment_ocid = get_key(oci_config_path, "compartment_ocid") or os.environ.get("OCI_COMPARTMENT_OCID", "")
+        compartment_ocid = os.environ.get("OCI_COMPARTMENT_OCID", "")
+        logger.info(f"compartment_ocid: {compartment_ocid}")
         if not all([user_ocid, tenancy_ocid, fingerprint, key_file_path, region]):
             yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="❌ OCI設定ファイルが不完全です"), gr.Textbox(value="")
             return
@@ -539,12 +541,27 @@ BEGIN
                        principal_type => xs_acl.ptype_db));
 END;"""
                     )
-                except DatabaseError:
-                    pass
+                except DatabaseError as e:
+                    logger.error(f"ACL append failed: {e}")
+                try:
+                    genai_host = f"inference.generativeai.{region}.oci.oraclecloud.com"
+                    cursor.execute(
+                        """
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+    host => :host,
+    ace  => xs$ace_type(privilege_list => xs$name_list('http'),
+                        principal_name => 'admin',
+                        principal_type => xs_acl.ptype_db));
+END;""",
+                        host=genai_host,
+                    )
+                except DatabaseError as e:
+                    logger.error(f"GenAI ACL append failed: {e}")
                 try:
                     cursor.execute("BEGIN dbms_vector.drop_credential('OCI_CRED'); END;")
-                except DatabaseError:
-                    pass
+                except DatabaseError as e:
+                    logger.error(f"Drop credential failed: {e}")
                 oci_cred = {
                     "user_ocid": str(user_ocid).strip(),
                     "tenancy_ocid": str(tenancy_ocid).strip(),
@@ -570,6 +587,14 @@ BEGIN
     ace => xs$ace_type(privilege_list => xs$name_list('connect'),
                        principal_name => 'admin',
                        principal_type => xs_acl.ptype_db));
+END;
+
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+    host => 'inference.generativeai.{region}.oci.oraclecloud.com',
+    ace  => xs$ace_type(privilege_list => xs$name_list('http'),
+                        principal_name => 'admin',
+                        principal_type => xs_acl.ptype_db));
 END;
 
 BEGIN dbms_vector.drop_credential('OCI_CRED'); END;
@@ -610,7 +635,8 @@ def _start_adb(region: str, adb_id: str):
     client.start_autonomous_database(autonomous_database_id=adb_id)
     try:
         return _get_adb(client, adb_id)
-    except Exception:
+    except Exception as e:
+        logger.error(f"_start_adb status fetch error: {e}")
         return oci.database.models.AutonomousDatabase(lifecycle_state="STARTING")
 
 
@@ -620,11 +646,12 @@ def _stop_adb(region: str, adb_id: str):
     client.stop_autonomous_database(autonomous_database_id=adb_id)
     try:
         return _get_adb(client, adb_id)
-    except Exception:
+    except Exception as e:
+        logger.error(f"_stop_adb status fetch error: {e}")
         return oci.database.models.AutonomousDatabase(lifecycle_state="STOPPING")
 
 
-def build_oracle_ai_database_tab():
+def build_oracle_ai_database_tab(pool=None):
     with gr.TabItem(label="Oracle AI Database") as tab_adb:
         with gr.Accordion(label="Oracle AI Database", open=True):
             with gr.Row():
@@ -678,6 +705,7 @@ def build_oracle_ai_database_tab():
                 status_md = "\n".join(status_lines)
                 yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df), mp, ""
             except Exception as e:
+                logger.error(f"_fetch error: {e}")
                 yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
                 yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
 
@@ -765,7 +793,15 @@ def build_oracle_ai_database_tab():
                 return
             yield gr.Markdown(visible=True, value="⏳ 停止をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
             try:
-                _stop_adb(region_code, selected_id)
+                try:
+                    if pool is not None:
+                        try:
+                            pool.close()
+                        except Exception:
+                            pass
+                    _stop_adb(region_code, selected_id)
+                finally:
+                    pass
                 st = "STOPPING"
                 if selected_id in mpv:
                     mpv[selected_id]["state"] = st

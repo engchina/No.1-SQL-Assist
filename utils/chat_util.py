@@ -29,17 +29,8 @@ def get_oci_region():
     """
     try:
         oci_config_path = find_dotenv("/root/.oci/config")
-        if not oci_config_path:
-            logger.error("OCI config file not found")
-            return None
-
-        region = get_key(oci_config_path, "region")
-        if not region:
-            logger.error("Region not found in OCI config")
-            return None
-
+        region = get_key(oci_config_path, "region") if oci_config_path else None
         return region
-
     except Exception as e:
         logger.error(f"Error reading OCI config: {e}")
         return None

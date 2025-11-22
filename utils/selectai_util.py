@@ -133,7 +133,8 @@ def get_db_profiles(pool) -> pd.DataFrame:
         else:
             df = pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])  
         return df
-    except Exception:
+    except Exception as e:
+        logger.error(f"get_db_profiles error: {e}")
         return pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"]) 
 
 
@@ -164,7 +165,8 @@ def _get_profile_attributes(pool, name: str) -> dict:
 def _generate_create_sql_from_attrs(name: str, attrs: dict) -> str:
     try:
         attr_str = json.dumps(attrs, ensure_ascii=False)
-    except Exception:
+    except Exception as e:
+        logger.error(f"_generate_create_sql_from_attrs serialize error: {e}")
         attr_str = "{}"
     sql = (
         f"BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => '{name}'); EXCEPTION WHEN OTHERS THEN NULL; END;\n"
@@ -436,10 +438,9 @@ def build_selectai_tab(pool):
                             style_value = "<style>" + "\n".join(rules) + "</style>"
                         yield gr.Markdown(visible=False), gr.Dataframe(value=df, visible=True), gr.HTML(visible=bool(style_value), value=style_value)
                     except Exception as e:
+                        logger.error(f"refresh_profiles error: {e}")
                         yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
-
                 
-
                 def on_profile_select(evt: gr.SelectData, current_df, compartment_id):
                     try:
                         if isinstance(current_df, dict):
@@ -456,6 +457,7 @@ def build_selectai_tab(pool):
                             sql = _generate_create_sql_from_attrs(name, attrs)
                             return name, sql
                     except Exception as e:
+                        logger.error(f"on_profile_select error: {e}")
                         return "", f"❌ 読み込みエラー: {str(e)}"
                     return "", ""
 
@@ -467,6 +469,7 @@ def build_selectai_tab(pool):
                                 cursor.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :name); END;", name=name)
                         return gr.Markdown(visible=True, value=f"🗑️ 削除しました: {name}"), gr.Dataframe(value=get_db_profiles(pool)), "", ""
                     except Exception as e:
+                        logger.error(f"delete_selected_profile error: {e}")
                         return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), name, ""
 
                 def refresh_sources():
@@ -524,7 +527,8 @@ def build_selectai_tab(pool):
                         t = _get_table_names(pool)
                         v = _get_view_names(pool)
                         return gr.CheckboxGroup(choices=t), gr.CheckboxGroup(choices=v)
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"refresh_sources_handler error: {e}")
                         return gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
                 refresh_btn.click(
@@ -642,7 +646,7 @@ def build_selectai_tab(pool):
                             label="生成されたSQL文",
                             lines=8,
                             max_lines=15,
-                            interactive=False,
+                            interactive=True,
                             show_copy_button=True,
                         )
 
@@ -653,6 +657,24 @@ def build_selectai_tab(pool):
                             visible=False,
                             value=pd.DataFrame(columns=["Name", "Type"]),
                         )
+
+                        with gr.Row():
+                            dev_analysis_model_input = gr.Dropdown(
+                                label="モデル",
+                                choices=[
+                                    "xai.grok-code-fast-1",
+                                    "xai.grok-3",
+                                    "xai.grok-3-fast",
+                                    "xai.grok-4",
+                                    "xai.grok-4-fast-non-reasoning",
+                                    "meta.llama-4-scout-17b-16e-instruct",
+                                ],
+                                value="xai.grok-code-fast-1",
+                                interactive=True,
+                            )
+
+                        with gr.Row():
+                            dev_ai_analyze_btn = gr.Button("AI分析", variant="primary")
 
                         with gr.Row():
                             dev_join_conditions_text = gr.Textbox(
@@ -669,8 +691,6 @@ def build_selectai_tab(pool):
                                 interactive=False,
                                 show_copy_button=True,
                             )
-
-                        dev_sql_summary = gr.Markdown(visible=False)
 
                     with gr.Accordion(label="4. クエリのフィードバック", open=False):
                         with gr.Row():
@@ -736,22 +756,10 @@ def build_selectai_tab(pool):
                         final = s if not inc or not ep else (ep + "\n\n" + s)
                         if not profile or not str(profile).strip():
                             gr.Warning("Profileを選択してください")
-                            return (
-                                gr.Textbox(value=""),
-                                gr.Markdown(visible=True, value="⚠️ Profileを選択してください"),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Name", "Type"])),
-                                gr.Textbox(value=""),
-                                gr.Textbox(value=""),
-                            )
+                            return gr.Textbox(value="")
                         if not final:
                             gr.Warning("質問を入力してください")
-                            return (
-                                gr.Textbox(value=""),
-                                gr.Markdown(visible=True, value="ℹ️ 質問を入力してください"),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Name", "Type"])),
-                                gr.Textbox(value=""),
-                                gr.Textbox(value=""),
-                            )
+                            return gr.Textbox(value="")
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
@@ -826,103 +834,11 @@ def build_selectai_tab(pool):
                                     gen_sql_display = generated_sql
                                     if gen_sql_display and not gen_sql_display.endswith(";"):
                                         gen_sql_display = gen_sql_display
-                                    def _parse_sql(sql_text: str):
-                                        info = {"tables": [], "views": [], "joins": [], "where": "", "object_names": []}
-                                        if not sql_text:
-                                            return info
-                                        s = sql_text
-                                        s1 = re.sub(r"--.*", "", s)
-                                        s1 = re.sub(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/", "", s1)
-                                        from_match = re.search(r"\bFROM\b([\s\S]*?)(\bWHERE\b|\bGROUP\b|\bORDER\b|$)", s1, flags=re.IGNORECASE)
-                                        if from_match:
-                                            from_part = from_match.group(1)
-                                            toks = re.findall(r"\bJOIN\b\s+([\w\.\$]+)", from_part, flags=re.IGNORECASE)
-                                            base = re.findall(r"\bFROM\b\s+([\w\.\$]+)", s1, flags=re.IGNORECASE)
-                                            names = []
-                                            if base:
-                                                names.append(base[0])
-                                            names.extend(toks)
-                                            all_names = []
-                                            for n in names:
-                                                nn = n.split(".")[-1]
-                                                all_names.append(nn)
-                                            info["object_names"] = list(dict.fromkeys(all_names))
-                                            join_parts = re.findall(r"\bJOIN\b[\s\S]*?\bON\b\s*([\s\S]*?)(?=\bJOIN\b|\bWHERE\b|\bGROUP\b|\bORDER\b|$)", s1, flags=re.IGNORECASE)
-                                            info["joins"] = [jp.strip() for jp in join_parts if jp.strip()]
-                                        where_match = re.search(r"\bWHERE\b([\s\S]*?)(?=\bGROUP\b|\bORDER\b|$)", s1, flags=re.IGNORECASE)
-                                        if where_match:
-                                            info["where"] = where_match.group(1).strip()
-                                        try:
-                                            table_df = _get_table_df_cached(pool)
-                                            view_df = _get_view_df_cached(pool)
-                                            table_set = set([str(x).upper() for x in (table_df["Table Name"].tolist() if "Table Name" in table_df.columns else [])])
-                                            view_set = set([str(x).upper() for x in (view_df["View Name"].tolist() if "View Name" in view_df.columns else [])])
-                                            t_list = []
-                                            v_list = []
-                                            for nm in info.get("object_names", []):
-                                                up = str(nm).upper()
-                                                if up in table_set:
-                                                    t_list.append(nm)
-                                                elif up in view_set:
-                                                    v_list.append(nm)
-                                            info["tables"] = t_list
-                                            info["views"] = v_list
-                                        except Exception:
-                                            pass
-                                        return info
-                                    parsed = _parse_sql(generated_sql)
-                                    if not parsed.get("tables") and not parsed.get("views"):
-                                        try:
-                                            attrs = _get_profile_attributes(pool, profile) or {}
-                                            obj_list = attrs.get("object_list") or []
-                                            names = [o.get("name") for o in obj_list if o.get("name")]
-                                            table_df = _get_table_df_cached(pool)
-                                            view_df = _get_view_df_cached(pool)
-                                            table_set = set([str(x).upper() for x in (table_df["Table Name"].tolist() if "Table Name" in table_df.columns else [])])
-                                            view_set = set([str(x).upper() for x in (view_df["View Name"].tolist() if "View Name" in view_df.columns else [])])
-                                            t_list = []
-                                            v_list = []
-                                            for nm in names:
-                                                up = str(nm).upper()
-                                                if up in table_set:
-                                                    t_list.append(nm)
-                                                elif up in view_set:
-                                                    v_list.append(nm)
-                                            parsed["tables"] = t_list
-                                            parsed["views"] = v_list
-                                        except Exception:
-                                            pass
-                                    used_objs = []
-                                    for n in parsed.get("tables", []):
-                                        used_objs.append((n, "TABLE"))
-                                    for n in parsed.get("views", []):
-                                        used_objs.append((n, "VIEW"))
-                                    used_df = pd.DataFrame(used_objs, columns=["Name", "Type"])
-                                    summary_lines = []
-                                    summary_lines.append(f"生成SQLの有無: {'あり' if bool(generated_sql) else 'なし'}")
-                                    summary_lines.append(f"テーブル数: {len(parsed.get('tables', []))} / ビュー数: {len(parsed.get('views', []))}")
-                                    summary_lines.append(f"JOIN条件数: {len(parsed.get('joins', []))}")
-                                    summary_lines.append(f"Where条件: {'あり' if bool(parsed.get('where')) else 'なし'}")
-                                    src_hint = "SHOWSQL由来" if bool(show_text) else "解析推定"
-                                    summary_lines.append(f"情報ソース: {src_hint}")
-                                    base_md = "\n".join(["### SQL分析", *[f"- {x}" for x in summary_lines]])
-                                    summary_md = base_md
-                                    return (
-                                        gr.Textbox(value=gen_sql_display),
-                                        gr.Markdown(visible=True, value=summary_md),
-                                        gr.Dataframe(visible=True, value=used_df),
-                                        gr.Textbox(value="\n\n".join(parsed.get("joins", []))),
-                                        gr.Textbox(value=parsed.get("where", "")),
-                                    )
+                                    return gr.Textbox(value=gen_sql_display)
                         except Exception as e:
+                            logger.error(f"_dev_step_generate error: {e}")
                             ui_msg = f"❌ エラー: {str(e)}"
-                            return (
-                                gr.Textbox(value=""),
-                                gr.Markdown(visible=True, value=ui_msg),
-                                gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Name", "Type"])),
-                                gr.Textbox(value=""),
-                                gr.Textbox(value=""),
-                            )
+                            return gr.Textbox(value="")
 
                     def _dev_step_run_sql(profile, generated_sql):
                         try:
@@ -985,6 +901,7 @@ def build_selectai_tab(pool):
                                         return
                                     yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                         except Exception as e:
+                            logger.error(f"_dev_step_run_sql error: {e}")
                             ui_msg = f"❌ エラー: {str(e)}"
                             yield gr.Markdown(visible=True, value=ui_msg), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
 
@@ -1006,20 +923,109 @@ def build_selectai_tab(pool):
                                                 for v in r:
                                                     try:
                                                         t = v.read() if hasattr(v, "read") else str(v)
-                                                    except Exception:
+                                                    except Exception as e:
+                                                        logger.error(f"_dev_step_explain value read error: {e}")
                                                         t = str(v)
                                                     if t:
                                                         parts.append(t)
                                             analysis_text = "\n".join(parts)
-                                    except Exception:
+                                    except Exception as e:
+                                        logger.error(f"_dev_step_explain analysis fetch error: {e}")
                                         analysis_text = ""
                                     base = str(current_summary or "")
                                     if analysis_text:
                                         base = base + f"\n\n### EXPLAINSQL\n````\n{analysis_text}\n````"
                                     return gr.Markdown(visible=True, value=base)
                         except Exception as e:
+                            logger.error(f"_dev_step_explain error: {e}")
                             ui_msg = f"❌ エラー: {str(e)}"
                             return gr.Markdown(visible=True, value=ui_msg)
+
+                    async def _dev_ai_analyze_async(model_name, sql_text):
+                        try:
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Textbox(value=""), gr.Textbox(value="")
+                            s = str(sql_text or "").strip()
+                            if not s:
+                                return gr.Textbox(value=""), gr.Textbox(value="")
+                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                            client = AsyncOciOpenAI(
+                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                auth=OciUserPrincipalAuth(),
+                                compartment_id=compartment_id,
+                            )
+                            # prompt = (
+                            #     "次のSQLからJOIN条件とWHERE条件のみを抽出して出力。形式は厳密に:\n"
+                            #     "JOIN:\n<JOIN条件を1行ずつ>\n\nWHERE:\n<WHERE条件を1行ずつ>\n\n"
+                            #     "```sql\n" + s + "\n```"
+                            # )
+                            # messages = [
+                            #     {"role": "system", "content": "追加説明は不要。指定形式のみ。"},
+                            #     {"role": "user", "content": prompt},
+                            # ]
+
+                            prompt = (
+                                "Extract ONLY JOIN and WHERE conditions from the SQL query below.\n"
+                                "Output in STRICT format (no explanations, no markdown, no extra text):\n\n"
+                                "JOIN:\n"
+                                "[JOIN_TYPE] alias1(schema.table1).column1 = alias2(schema.table2).column2\n"
+                                "[JOIN_TYPE] alias3(schema.table3).column3 = alias4(schema.table4).column4\n\n"
+                                "WHERE:\n"
+                                "alias(schema.table).column operator value\n\n"
+                                "Rules:\n"
+                                "- Format: alias(schema.table_name).column or schema.table_name.column (if no alias)\n"
+                                "- JOIN_TYPE must be one of: INNER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN, CROSS JOIN, JOIN\n"
+                                "- Include schema name if present (e.g., ADMIN.USER_ROLE)\n"
+                                "- One condition per line\n"
+                                "- Keep original operators (=, >, <, LIKE, IN, etc.)\n"
+                                "- Preserve exact column names and values with quotes\n"
+                                "- If no JOIN/WHERE exists, output 'JOIN:\\nNone' or 'WHERE:\\nNone'\n\n"
+                                "SQL:\n```sql\n" + s + "\n```"
+                            )
+
+                            messages = [
+                                {
+                                    "role": "system", 
+                                    "content": "You are a SQL parser. Output ONLY the requested format. No explanations."
+                                },
+                                {
+                                    "role": "user", 
+                                    "content": prompt
+                                },
+                            ]
+
+                            resp = await client.chat.completions.create(model=model_name, messages=messages)
+                            join_text = ""
+                            where_text = ""
+                            if getattr(resp, "choices", None):
+                                msg = resp.choices[0].message
+                                out = msg.content if hasattr(msg, "content") else ""
+                                s = str(out or "")
+                                s = re.sub(r"```+\w*", "", s)
+                                m = re.search(r"JOIN:\s*([\s\S]*?)\n\s*WHERE:\s*([\s\S]*)$", s, flags=re.IGNORECASE)
+                                if m:
+                                    join_text = m.group(1).strip()
+                                    where_text = m.group(2).strip()
+                            if not join_text:
+                                join_text = "None"
+                            if not where_text:
+                                where_text = "None"
+                            return gr.Textbox(value=join_text), gr.Textbox(value=where_text)
+                        except Exception as e:
+                            logger.error(f"_dev_ai_analyze_async error: {e}")
+                            return gr.Textbox(value="None"), gr.Textbox(value="None")
+
+                    def _dev_ai_analyze(model_name, sql_text):
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            return loop.run_until_complete(_dev_ai_analyze_async(model_name, sql_text))
+                        finally:
+                            loop.close()
 
                     def _on_dev_chat_clear():
                         return "", gr.Dropdown(choices=_dev_profile_names())
@@ -1029,6 +1035,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
                             yield gr.Markdown(visible=False), gr.Dropdown(choices=_dev_profile_names())
                         except Exception as e:
+                            logger.error(f"_on_dev_profile_refresh error: {e}")
                             yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     def _append_comment(current_text: str, template: str):
@@ -1160,15 +1167,17 @@ def build_selectai_tab(pool):
                     dev_chat_execute_btn.click(
                         fn=_dev_step_generate,
                         inputs=[dev_profile_select, dev_prompt_input, dev_extra_prompt, dev_include_extra_prompt],
-                        outputs=[dev_generated_sql_text, dev_sql_summary, dev_used_objects_df, dev_join_conditions_text, dev_where_conditions_text],
+                        outputs=[dev_generated_sql_text],
                     ).then(
                         fn=_dev_step_run_sql,
                         inputs=[dev_profile_select, dev_generated_sql_text],
                         outputs=[dev_chat_result_info, dev_chat_result_df, dev_chat_result_style],
-                    ).then(
-                        fn=_dev_step_explain,
-                        inputs=[dev_profile_select, dev_generated_sql_text, dev_sql_summary],
-                        outputs=[dev_sql_summary],
+                    )
+
+                    dev_ai_analyze_btn.click(
+                        fn=_dev_ai_analyze,
+                        inputs=[dev_analysis_model_input, dev_generated_sql_text],
+                        outputs=[dev_join_conditions_text, dev_where_conditions_text],
                     )
 
                     dev_chat_clear_btn.click(
@@ -1294,7 +1303,8 @@ def build_selectai_tab(pool):
                                         gr.Info("Indexがありません")
                                         return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
                                     return gr.Dataframe(visible=True, value=df), gr.Markdown(visible=False)
-                        except Exception:
+                        except Exception as e:
+                            logger.error(f"_view_feedback_index_global error: {e}")
                             return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
 
                     def _on_global_profile_refresh():
@@ -1302,6 +1312,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
                             yield gr.Markdown(visible=False), gr.Dropdown(choices=_global_profile_names())
                         except Exception as e:
+                            logger.error(f"_on_global_profile_refresh error: {e}")
                             yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     global_profile_refresh_btn.click(
@@ -2087,6 +2098,274 @@ def build_selectai_tab(pool):
                         fn=_am_execute,
                         inputs=[am_generated_sql],
                         outputs=[am_execute_result],
+                    )
+
+                with gr.TabItem(label="合成データ生成"):
+                    with gr.Accordion(label="1. 対象選択", open=True):
+                        with gr.Row():
+                            with gr.Column():
+                                syn_profile_refresh_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column():
+                                syn_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                        with gr.Row():
+                            with gr.Column():
+                                syn_profile_select = gr.Dropdown(label="Profile", choices=[], interactive=True)
+
+                        with gr.Row():
+                            with gr.Column():
+                                syn_refresh_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column():
+                                syn_refresh_btn = gr.Button("テーブル一覧を更新", variant="primary")
+                        with gr.Row():
+                            with gr.Column():
+                                syn_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
+                            with gr.Column():
+                                syn_rows_per_table = gr.Slider(label="各テーブルの生成件数", minimum=0, maximum=10000, step=100, value=1000, interactive=True)
+                        with gr.Row():
+                            with gr.Column():
+                                syn_prompt_input = gr.Textbox(label="生成の指示(オプション)", placeholder="スキーマ特性や分布、制約などを自然言語で記述", lines=4, max_lines=10)
+                        with gr.Row():
+                            with gr.Column():
+                                syn_sample_rows = gr.Slider(label="サンプル行数(sample_rows)", minimum=0, maximum=1000, step=1, value=5, interactive=True)
+                            with gr.Column():
+                                syn_table_statistics = gr.Checkbox(label="テーブル統計を収集(table_statistics)", value=True)
+                            with gr.Column():
+                                syn_comments = gr.Checkbox(label="コメントを考慮(comments)", value=True)
+
+                        with gr.Row():
+                            syn_generate_btn = gr.Button("生成開始", variant="primary")
+
+                    with gr.Accordion(label="2. 進捗と状態", open=True):
+                        syn_generate_info = gr.Markdown(visible=True, value="ℹ️ Profileと対象テーブルを選択し、生成開始を押下してください")
+                        syn_operation_id_text = gr.Textbox(label="オペレーションID", interactive=False)
+                        syn_status_update_btn = gr.Button("ステータスを更新", variant="secondary")
+                        syn_status_df = gr.Dataframe(label="ステータス", interactive=False, wrap=True, visible=False, value=pd.DataFrame())
+                        syn_status_style = gr.HTML(visible=False)
+
+                    with gr.Accordion(label="3. 結果確認", open=False):
+                        with gr.Row():
+                            syn_result_table_select = gr.Dropdown(label="テーブル", choices=[], interactive=True)
+                            syn_result_limit = gr.Number(label="取得件数", value=50, minimum=0, maximum=10000)
+                        syn_result_btn = gr.Button("データを表示", variant="primary")
+                        syn_result_info = gr.Markdown(visible=True, value="ℹ️ 生成済みテーブルからデータを表示します")
+                        syn_result_df = gr.Dataframe(label="データ表示", interactive=False, wrap=True, visible=False, value=pd.DataFrame(), elem_id="synthetic_data_result_df")
+                        syn_result_style = gr.HTML(visible=False)
+
+                    def _syn_profile_names():
+                        try:
+                            df = get_db_profiles(pool)
+                            if isinstance(df, pd.DataFrame) and not df.empty and df.columns.tolist():
+                                c0 = df.columns[0]
+                                return [str(x) for x in df[c0].tolist()]
+                        except Exception as e:
+                            logger.error(f"_syn_profile_names error: {e}")
+                        return []
+
+                    def _syn_refresh_profiles():
+                        try:
+                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.Dropdown(choices=_syn_profile_names())
+                        except Exception as e:
+                            logger.error(f"_syn_refresh_profiles error: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.Dropdown(choices=[])
+
+                    def _syn_refresh_objects(profile_name):
+                        try:
+                            df_tab = _get_table_df_cached(pool, force=True)
+                            all_table_names = [str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]
+                            table_names = sorted(set(all_table_names))
+                            try:
+                                attrs = _get_profile_attributes(pool, str(profile_name or "")) or {}
+                                obj_list = attrs.get("object_list") or []
+                                prof_tables = sorted(set([str(o.get("name")) for o in obj_list if o and o.get("name")]))
+                                if prof_tables:
+                                    table_names = [t for t in table_names if t in prof_tables]
+                            except Exception:
+                                pass
+                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.Dropdown(choices=table_names)
+                        except Exception as e:
+                            logger.error(f"_syn_refresh_objects error: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
+
+                    def _syn_build_prompt(tables_selected, rows_per_table, extra_text):
+                        tbls = [str(t) for t in (tables_selected or []) if str(t).strip()]
+                        rp = int(rows_per_table or 0)
+                        base = (
+                            "以下のテーブルに対して合成データを生成してください。行数は各テーブルで指定値に近づけ、スキーマの制約と自然な分布を考慮してください。\n"
+                            + f"対象テーブル: {', '.join(tbls)}\n"
+                            + f"行数目安: {rp} 行/テーブル\n"
+                        )
+                        if str(extra_text or "").strip():
+                            base += "\n追加指示:\n" + str(extra_text).strip()
+                        return base
+
+                    def _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, table_statistics, comments):
+                        if not profile_name or not str(profile_name).strip():
+                            gr.Warning("Profileを選択してください")
+                            return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                        if not tables_selected:
+                            gr.Warning("テーブルを選択してください")
+                            return gr.Markdown(visible=True, value="⚠️ テーブルを選択してください"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                        try:
+                            with pool.acquire() as conn:
+                                with conn.cursor() as cursor:
+                                    try:
+                                        p_base = {
+                                            "comments": bool(comments),
+                                        }
+                                    except Exception:
+                                        p_base = {"comments": False}
+                                    op_id = None
+                                    try:
+                                        sel = list(tables_selected or [])
+                                        if len(sel) == 1:
+                                            obj_name = str(sel[0])
+                                            rc = int(rows_per_table or 0)
+                                            p_single = dict(p_base)
+                                            p_single["sample_rows"] = int(sample_rows or 0)
+                                            p_json = json.dumps(p_single, ensure_ascii=False)
+                                            cursor.execute(
+                                                "BEGIN DBMS_CLOUD_AI.GENERATE_SYNTHETIC_DATA(profile_name => :name, object_name => :obj, owner_name => :owner, record_count => :rc, user_prompt => :up, params => :p); END;",
+                                                name=profile_name,
+                                                obj=obj_name,
+                                                owner="ADMIN",
+                                                rc=rc,
+                                                up=str(extra_text or ""),
+                                                p=p_json,
+                                            )
+                                        else:
+                                            rc = int(rows_per_table or 0)
+                                            sr = int(sample_rows or 0)
+                                            obj_list = []
+                                            for t in sel:
+                                                obj_list.append({"owner": "ADMIN", "name": str(t), "record_count": rc, "sample_rows": sr})
+                                            obj_json = json.dumps(obj_list, ensure_ascii=False)
+                                            p_json = json.dumps(p_base, ensure_ascii=False)
+                                            cursor.execute(
+                                                "BEGIN DBMS_CLOUD_AI.GENERATE_SYNTHETIC_DATA(profile_name => :name, object_list => :objlist, params => :p); END;",
+                                                name=profile_name,
+                                                objlist=obj_json,
+                                                p=p_json,
+                                            )
+                                        cursor.execute("SELECT max(id) FROM user_load_operations")
+                                        rid = cursor.fetchall() or []
+                                        if rid and len(rid) > 0:
+                                            try:
+                                                v0 = rid[0][0]
+                                                op_id = str(v0.read() if hasattr(v0, "read") else v0)
+                                            except Exception:
+                                                try:
+                                                    op_id = str(rid[0][0])
+                                                except Exception:
+                                                    op_id = None
+                                    except Exception as e:
+                                        logger.error(f"generate_synthetic_data error: {e}")
+                                        op_id = None
+                                    info_text = "✅ 合成データ生成を開始しました" if op_id else "⚠️ 合成データ生成を開始しました(オペレーションIDの取得に失敗)"
+                                    return gr.Markdown(visible=True, value=info_text), gr.Textbox(value=str(op_id or "")), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                        except Exception as e:
+                            logger.error(f"_syn_generate error: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+
+                    def _syn_update_status(op_id):
+                        op = str(op_id or "").strip()
+                        if not op:
+                            gr.Warning("オペレーションIDを入力/取得してください")
+                            return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                        try:
+                            with pool.acquire() as conn:
+                                with conn.cursor() as cursor:
+                                    tab = f"\"SYNTHETIC_DATA${op.upper()}_STATUS\""
+                                    sql = f"SELECT * FROM ADMIN.{tab} FETCH FIRST 200 ROWS ONLY"
+                                    cursor.execute(sql)
+                                    rows = cursor.fetchall() or []
+                                    cols = [d[0] for d in cursor.description] if cursor.description else []
+                                    df = pd.DataFrame(rows, columns=cols)
+                                    df_component = gr.Dataframe(visible=True, value=df, label=f"ステータス（件数: {len(df)}）", elem_id="synthetic_data_status_df")
+                                    style_value = ""
+                                    if len(cols) > 0:
+                                        sample = df.head(5)
+                                        widths = []
+                                        columns = max(1, len(cols))
+                                        for col in cols:
+                                            series = sample[col].astype(str) if not sample.empty else pd.Series([], dtype=str)
+                                            row_max = series.map(len).max() if len(series) > 0 else 0
+                                            length = max(len(str(col)), row_max)
+                                            widths.append(min(100 / columns, length))
+                                        total = sum(widths) if widths else 0
+                                        if total > 0:
+                                            col_widths = [max(5, int(100 * w / total)) for w in widths]
+                                            diff = 100 - sum(col_widths)
+                                            if diff != 0 and len(col_widths) > 0:
+                                                col_widths[0] = max(5, col_widths[0] + diff)
+                                            rules = ["#synthetic_data_status_df table { table-layout: fixed; width: 100%; }"]
+                                            for idx, pct in enumerate(col_widths, start=1):
+                                                rules.append(f"#synthetic_data_status_df table th:nth-child({idx}), #synthetic_data_status_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                                            style_value = "<style>" + "\n".join(rules) + "</style>"
+                                    return df_component, gr.HTML(visible=bool(style_value), value=style_value)
+                        except Exception as e:
+                            logger.error(f"_syn_update_status error: {e}")
+                            return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+
+                    def _syn_display_result(table_name, limit_value):
+                        try:
+                            from utils.management_util import display_table_data
+                            df = display_table_data(pool, table_name, int(limit_value))
+                            if isinstance(df, pd.DataFrame) and not df.empty:
+                                widths = []
+                                cols = df.columns.tolist()
+                                sample = df.head(5)
+                                columns = max(1, len(cols))
+                                for col in cols:
+                                    series = sample[col].astype(str)
+                                    row_max = series.map(len).max() if len(series) > 0 else 0
+                                    length = max(len(str(col)), row_max)
+                                    widths.append(min(100 / columns, length))
+                                total = sum(widths) if widths else 0
+                                style_value = ""
+                                if total > 0:
+                                    col_widths = [max(5, int(100 * w / total)) for w in widths]
+                                    diff = 100 - sum(col_widths)
+                                    if diff != 0 and len(col_widths) > 0:
+                                        col_widths[0] = max(5, col_widths[0] + diff)
+                                    rules = ["#synthetic_data_result_df table { table-layout: fixed; width: 100%; }"]
+                                    for idx, pct in enumerate(col_widths, start=1):
+                                        rules.append(f"#synthetic_data_result_df table th:nth-child({idx}), #synthetic_data_result_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                                    style_value = "<style>" + "\n".join(rules) + "</style>"
+                                return gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df, label=f"データ表示（件数: {len(df)}）", elem_id="synthetic_data_result_df"), gr.HTML(visible=bool(style_value), value=style_value)
+                            else:
+                                return gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示（件数: 0）", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                        except Exception as e:
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+
+                    syn_profile_refresh_btn.click(
+                        fn=_syn_refresh_profiles,
+                        outputs=[syn_profile_refresh_status, syn_profile_select],
+                    )
+
+                    syn_refresh_btn.click(
+                        fn=_syn_refresh_objects,
+                        inputs=[syn_profile_select],
+                        outputs=[syn_refresh_status, syn_tables_input, syn_result_table_select],
+                    )
+
+                    syn_generate_btn.click(
+                        fn=_syn_generate,
+                        inputs=[syn_profile_select, syn_tables_input, syn_rows_per_table, syn_prompt_input, syn_sample_rows, syn_table_statistics, syn_comments],
+                        outputs=[syn_generate_info, syn_operation_id_text, syn_status_df, syn_status_style],
+                    )
+
+                    syn_status_update_btn.click(
+                        fn=_syn_update_status,
+                        inputs=[syn_operation_id_text],
+                        outputs=[syn_status_df, syn_status_style],
+                    )
+
+                    syn_result_btn.click(
+                        fn=_syn_display_result,
+                        inputs=[syn_result_table_select, syn_result_limit],
+                        outputs=[syn_result_info, syn_result_df, syn_result_style],
                     )
 
         with gr.TabItem(label="ユーザー機能"):

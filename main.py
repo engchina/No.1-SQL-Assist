@@ -50,7 +50,10 @@ class LazyPool:
 
     def close(self):
         if self._pool is not None:
-            self._pool.close()
+            try:
+                self._pool.close()
+            finally:
+                self._pool = None
 
     def __getattr__(self, name):
         self._ensure()
@@ -89,7 +92,7 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
             build_oci_genai_tab(pool)
 
             # Oracle AI Database タブを追加
-            build_oracle_ai_database_tab()
+            build_oracle_ai_database_tab(pool)
 
             # OCI GenAI Embeddingテストタブを構築
             build_oci_embedding_test_tab(pool)
