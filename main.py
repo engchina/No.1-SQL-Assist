@@ -23,6 +23,7 @@ from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, bu
 from utils.chat_util import build_oci_chat_test_tab
 from utils.management_util import build_management_tab
 from utils.selectai_util import build_selectai_tab
+from utils.selectai_agent_util import build_selectai_agent_tab
 from utils.query_util import build_query_tab
 
 # Suppress NumPy warnings about longdouble on certain platforms
@@ -210,6 +211,9 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
 
         with gr.TabItem(label="SelectAI 連携"):
             build_selectai_tab(pool)
+
+        with gr.TabItem(label="SelectAIAgent 連携", visible=False):
+            build_selectai_agent_tab(pool)
 
         build_oci_chat_test_tab(pool)
 
