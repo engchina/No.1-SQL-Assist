@@ -1199,6 +1199,7 @@ def build_management_tab(pool):
             
             def refresh_table_list():
                 try:
+                    logger.info("テーブル一覧を更新ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ テーブル一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
                     df = get_table_list(pool)
                     yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dataframe(value=df, visible=True)
@@ -1557,6 +1558,7 @@ def build_management_tab(pool):
             
             def refresh_view_list():
                 try:
+                    logger.info("ビュー一覧を更新ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ ビュー一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
                     df = get_view_list(pool)
                     yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dataframe(value=df, visible=True)
@@ -1820,6 +1822,7 @@ def build_management_tab(pool):
             # Event Handlers
             def refresh_data_table_list():
                 try:
+                    logger.info("テーブル・ビュー一覧を更新ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ テーブル・ビュー一覧を更新中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
                     data_names = get_table_list_for_data(pool)
                     upload_tables = get_table_list_for_upload(pool)

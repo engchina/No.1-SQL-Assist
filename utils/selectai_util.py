@@ -2129,7 +2129,7 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             with gr.Column():
                                 syn_sample_rows = gr.Slider(label="サンプル行数(sample_rows)", minimum=0, maximum=1000, step=1, value=5, interactive=True)
-                            with gr.Column():
+                            with gr.Column(visible=False):
                                 syn_table_statistics = gr.Checkbox(label="テーブル統計を収集(table_statistics)", value=True)
                             with gr.Column():
                                 syn_comments = gr.Checkbox(label="コメントを考慮(comments)", value=True)
@@ -2282,13 +2282,24 @@ def build_selectai_tab(pool):
                                     rows = cursor.fetchall() or []
                                     cols = [d[0] for d in cursor.description] if cursor.description else []
                                     df = pd.DataFrame(rows, columns=cols)
+                                    keep = [
+                                        "ID",
+                                        "NAME",
+                                        "BYTES",
+                                        "ROWS_LOADED",
+                                        "STATUS",
+                                        "LAST_MODIFIED",
+                                    ]
+                                    show_cols = [c for c in keep if c in df.columns]
+                                    if show_cols:
+                                        df = df[show_cols]
                                     df_component = gr.Dataframe(visible=True, value=df, label=f"ステータス（件数: {len(df)}）", elem_id="synthetic_data_status_df")
                                     style_value = ""
                                     if len(cols) > 0:
                                         sample = df.head(5)
                                         widths = []
-                                        columns = max(1, len(cols))
-                                        for col in cols:
+                                        columns = max(1, len(df.columns))
+                                        for col in df.columns:
                                             series = sample[col].astype(str) if not sample.empty else pd.Series([], dtype=str)
                                             row_max = series.map(len).max() if len(series) > 0 else 0
                                             length = max(len(str(col)), row_max)

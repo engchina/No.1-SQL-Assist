@@ -208,6 +208,8 @@ def test_oci_cred(test_query_text, embed_model, pool):
     """
     logger.info("=" * 50)
     logger.info(f"Starting OCI credential test with text: '{test_query_text}'")
+    logger.info(f"Embedding model: {embed_model}")
+    logger.info(f"Input length: {len(str(test_query_text or ''))}")
     
     test_query_vector = ""
     
@@ -419,7 +421,12 @@ def build_oci_embedding_test_tab(pool):
     
     # ラッパー関数の定義
     def test_oci_cred_wrapper(test_query_text, embed_model):
-        return test_oci_cred(test_query_text, embed_model, pool)
+        logger.info("Embedding test button clicked")
+        logger.info(f"Model selected: {embed_model}")
+        logger.info(f"Text preview: {str(test_query_text)[:80]}")
+        res = test_oci_cred(test_query_text, embed_model, pool)
+        logger.info("Embedding test completed")
+        return res
     
     # UIコンポーネントの構築
     with gr.TabItem(label="テキスト埋め込みテスト") as tab_test_oci_cred:
