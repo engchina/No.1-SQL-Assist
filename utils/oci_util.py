@@ -699,8 +699,10 @@ def build_oracle_ai_database_tab(pool=None):
                 rows = []
                 mp = {}
                 for it in items:
-                    name = it.display_name
                     st = it.lifecycle_state
+                    if str(st).upper() == "TERMINATED":
+                        continue
+                    name = it.display_name
                     oid = it.id
                     rows.append([name, st, oid])
                     mp[oid] = {"name": name, "state": st}

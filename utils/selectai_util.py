@@ -911,7 +911,8 @@ def build_selectai_tab(pool):
                                 with pool.acquire() as conn:
                                     with conn.cursor() as cursor:
                                         try:
-                                            cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=profile)
+                                            prof = _resolve_profile_name(pool, str(profile or ""))
+                                            cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=prof)
                                         except Exception as e:
                                             logger.error(f"set profile error: {e}")
                                         
@@ -920,7 +921,7 @@ def build_selectai_tab(pool):
                                         show_text = ""
                                         show_cells = []
                                         try:
-                                            cursor.execute(gen_stmt, q=showsql_stmt, name=profile, a="showsql")
+                                            cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
                                             rows = cursor.fetchmany(size=200)
                                             if rows:
                                                 for r in rows:
@@ -1243,7 +1244,7 @@ def build_selectai_tab(pool):
                                 yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Textbox(value="")
                                 with pool.acquire() as conn:
                                     with conn.cursor() as cursor:
-                                        # cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=profile_name)
+                                        prof = _resolve_profile_name(pool, str(profile_name or ""))
                                         q = str(prompt_text or "").strip()
                                         if q.endswith(";"):
                                             q = q[:-1]
@@ -1254,7 +1255,7 @@ def build_selectai_tab(pool):
                                         gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
                                         showsql_stmt = _build_showsql_stmt(q)
                                         try:
-                                            cursor.execute(gen_stmt, q=showsql_stmt, name=profile_name, a="showsql")
+                                            cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
                                         except Exception as e:
                                             logger.error(f"_send_feedback generate showsql error: {e}")
                                         try:
@@ -1283,7 +1284,7 @@ def build_selectai_tab(pool):
                                             );
                                             END;
                                             """,
-                                            p=profile_name,
+                                            p=prof,
                                             st=showsql_stmt,
                                             ft=str(fb_type or "").upper(),
                                             resp=resp,
@@ -1295,7 +1296,7 @@ def build_selectai_tab(pool):
                                         plsql = (
                                             "BEGIN\n"
                                             "  DBMS_CLOUD_AI.FEEDBACK(\n"
-                                            f"    profile_name => {_lit(profile_name)},\n"
+                                            f"    profile_name => {_lit(prof)},\n"
                                             f"    sql_text => {_lit(showsql_stmt)},\n"
                                             f"    feedback_type => {_lit(str(fb_type or '').upper())},\n"
                                             "    response => " + ("NULL" if not resp else _lit(resp)) + ",\n"
@@ -1411,7 +1412,8 @@ def build_selectai_tab(pool):
                             try:
                                 with pool.acquire() as conn:
                                     with conn.cursor() as cursor:
-                                        tab = f"{str(profile_name).upper()}_FEEDBACK_VECINDEX$VECTAB"
+                                        prof = _resolve_profile_name(pool, str(profile_name or ""))
+                                        tab = f"{str(prof).upper()}_FEEDBACK_VECINDEX$VECTAB"
                                         q_no_ctx = (
                                             f'SELECT CONTENT, '
                                             f"JSON_VALUE(ATTRIBUTES, '$.sql_id' RETURNING VARCHAR2(128)) AS SQL_ID, "
@@ -1516,6 +1518,7 @@ def build_selectai_tab(pool):
                                     return _view_feedback_index_global(profile_name)[0], "失敗: SQL_IDが選択されていません"
                                 with pool.acquire() as conn:
                                     with conn.cursor() as cursor:
+                                        prof = _resolve_profile_name(pool, str(profile_name or ""))
                                         cursor.execute(
                                             """
                                             BEGIN
@@ -1526,7 +1529,7 @@ def build_selectai_tab(pool):
                                             );
                                             END;
                                             """,
-                                            p=str(profile_name),
+                                            p=str(prof),
                                             sid=str(sql_id),
                                         )
                                 return _view_feedback_index_global(profile_name)[0], "成功"
@@ -1541,8 +1544,9 @@ def build_selectai_tab(pool):
 
                         def _update_vector_index(profile_name: str, similarity_threshold: float, match_limit: int):
                             try:
-                                idx_name = f"{str(profile_name).upper()}_FEEDBACK_VECINDEX"
-                                tab_name = f"{str(profile_name).upper()}_FEEDBACK_VECINDEX$VECTAB"
+                                prof = _resolve_profile_name(pool, str(profile_name or ""))
+                                idx_name = f"{str(prof).upper()}_FEEDBACK_VECINDEX"
+                                tab_name = f"{str(prof).upper()}_FEEDBACK_VECINDEX$VECTAB"
                                 logger.info(f"Update vector index: profile={profile_name}, index={idx_name}, table={tab_name}, threshold={similarity_threshold}, limit={match_limit}")
                                 with pool.acquire() as conn:
                                     with conn.cursor() as cursor:
@@ -2647,7 +2651,8 @@ def build_selectai_tab(pool):
                         with pool.acquire() as conn:
                             with conn.cursor() as cursor:
                                 try:
-                                    cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=profile)
+                                    prof = _resolve_profile_name(pool, str(profile or ""))
+                                    cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=prof)
                                 except Exception as e:
                                     logger.error(f"SET_PROFILE failed: {e}")
                                 gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
@@ -2655,7 +2660,7 @@ def build_selectai_tab(pool):
                                 show_text = ""
                                 show_cells = []
                                 try:
-                                    cursor.execute(gen_stmt, q=q, name=profile, a="showsql")
+                                    cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
                                     rows = cursor.fetchmany(size=200)
                                     if rows:
                                         for r in rows:
