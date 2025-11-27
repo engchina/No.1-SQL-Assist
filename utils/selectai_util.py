@@ -460,21 +460,21 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
                     with gr.Accordion(label="2. 訓練データ一覧", open=True):
-                        td_refresh_btn = gr.Button("訓練データ一覧を更新", variant="primary")
-                        td_refresh_status = gr.Markdown(visible=False)
-                        with gr.Row():
-                            td_download_excel = gr.DownloadButton(visible=False)
                         with gr.Row():
                             with gr.Column():
-                                td_list_df = gr.Dataframe(label="訓練データ一覧", interactive=False, wrap=True, visible=False)
-                            with gr.Column():
-                                td_download_excel_btn = gr.Button("Excelダウンロード", variant="secondary")
+                                td_refresh_btn = gr.Button("訓練データ一覧を更新", variant="primary")
                         with gr.Row():
-                            td_download_template = gr.DownloadButton(value="./templates/training_data.xlsx", visible=True)
+                            td_refresh_status = gr.Markdown(visible=False)
+                        # 削除: 不要な隠しダウンロードボタン
+                        with gr.Row():
+                            td_list_df = gr.Dataframe(label="訓練データ一覧", interactive=False, wrap=True, visible=False)                           
                         with gr.Row():
                             td_upload_excel_file = gr.File(label="Excelファイル", file_types=[".xlsx"], type="filepath")
                         with gr.Row():
-                            td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
+                            with gr.Column():
+                                td_download_excel_btn = gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
+                            with gr.Column():
+                                td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
                         with gr.Row():
                             td_upload_result = gr.Textbox(visible=False)
                     # 訓練データのCRUD機能は削除
@@ -491,15 +491,15 @@ def build_selectai_tab(pool):
                             )
                         with gr.Row():
                             td_model_name = gr.Textbox(label="モデル名", value=f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}", interactive=True)
-                        with gr.Row():
-                            td_max_samples = gr.Slider(label="最大サンプル数", minimum=1, maximum=100, step=1, value=100, interactive=True)
-                            # 重複テキスト除外は不要
+                        # 重複テキスト除外は不要
                     with gr.Accordion(label="5. モデルテスト", open=True):
                         with gr.Row():
                             mt_refresh_models_btn = gr.Button("モデル一覧を更新", variant="primary")
                         with gr.Row():
-                            mt_trained_model_select = gr.Dropdown(label="モデル名", choices=[], interactive=True)
-                            mt_delete_model_btn = gr.Button("選択モデルを削除", variant="stop")
+                            with gr.Column():
+                                mt_trained_model_select = gr.Dropdown(label="モデル名", show_label=False, container=False, choices=[], interactive=True)
+                            with gr.Column():
+                                mt_delete_model_btn = gr.Button("選択モデルを削除", variant="stop")
                         with gr.Row():
                             mt_text_input = gr.Textbox(label="テキスト", lines=4, max_lines=8)
                         with gr.Row():
@@ -790,7 +790,7 @@ def build_selectai_tab(pool):
                         logger.error(f"削除に失敗しました: {e}")
                         return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {e}"), gr.Dataframe(value=_td_list(), visible=True), "", "", ""
 
-                def _td_train(save_path, embed_model, model_name, max_samples):
+                def _td_train(save_path, embed_model, model_name):
                     try:
                         from utils.oci_util import get_region
                         import oracledb
@@ -809,12 +809,6 @@ def build_selectai_tab(pool):
                                     if s_txt:
                                         dataset.append({"text": s_txt, "label": s_bd})
                                         labels.add(s_bd)
-                        try:
-                            n = int(max_samples)
-                        except Exception:
-                            n = 100
-                        if n > 0:
-                            dataset = dataset[:n]
                         sp_root = Path(str(save_path or os.environ.get("MODEL_SAVE_PATH", "models")))
                         sp_root.mkdir(parents=True, exist_ok=True)
                         mname = str(model_name or f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}").strip()
@@ -1086,10 +1080,7 @@ END;"""
                         logger.error(f"Excelアップロードに失敗しました: {e}")
                         return gr.Textbox(visible=True, value=f"❌ エラー: {e}")
 
-                td_download_excel_btn.click(
-                    fn=_td_download_excel,
-                    outputs=[td_download_excel]
-                )
+                # 削除: ダウンロードボタンのクリック処理は不要（直接ファイルを提供）
                 # 直接固定テンプレートをダウンロード（クリック処理不要）
                 td_upload_excel_btn.click(
                     fn=_td_upload_excel,
@@ -1099,7 +1090,7 @@ END;"""
                 # 訓練データの作成・更新・削除機能は削除
                 td_train_btn.click(
                     fn=_td_train,
-                    inputs=[model_save_path_text, td_embed_model, td_model_name, td_max_samples],
+                    inputs=[model_save_path_text, td_embed_model, td_model_name],
                     outputs=[td_train_status],
                 )
                 mt_refresh_models_btn.click(
