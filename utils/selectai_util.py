@@ -293,8 +293,8 @@ def create_db_profile(
         "embedding_model": embedding_model,
         "max_tokens": int(max_tokens) if max_tokens is not None else 1024,
         "enforce_object_list": enforce_object_list,
-        "comments": comments,
-        "annotations": annotations,
+        "comments": "true" if comments else "false",
+        "annotations": "true" if annotations else "false",
         "temperature": 0.0,
         "object_list": [],
     }
@@ -1649,6 +1649,24 @@ def build_selectai_tab(pool):
                             cm_execute_btn = gr.Button("一括実行", variant="primary")
                             cm_execute_result = gr.Textbox(label="実行結果", interactive=False, lines=5, max_lines=8)
 
+                            with gr.Accordion(label="AI分析と処理", open=False):
+                                cm_ai_model_input = gr.Dropdown(
+                                    label="モデル",
+                                    choices=[
+                                        "xai.grok-code-fast-1",
+                                        "xai.grok-3",
+                                        "xai.grok-3-fast",
+                                        "xai.grok-4",
+                                        "xai.grok-4-fast-non-reasoning",
+                                        "meta.llama-4-scout-17b-16e-instruct",
+                                    ],
+                                    value="xai.grok-code-fast-1",
+                                    interactive=True,
+                                )
+                                cm_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                                cm_ai_status_md = gr.Markdown(visible=False)
+                                cm_ai_result_md = gr.Markdown(visible=False)
+
                         def _cm_refresh_objects():
                             try:
                                 df_tab = _get_table_df_cached(pool, force=True)
@@ -1664,55 +1682,6 @@ def build_selectai_tab(pool):
                             except Exception as e:
                                 logger.error(f"_cm_refresh_objects error: {e}")
                                 return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
-
-                        def _cm_load_inputs(tables_selected, views_selected, sample_limit):
-                            try:
-                                tables_selected = tables_selected or []
-                                views_selected = views_selected or []
-                                targets = []
-                                targets.extend([("TABLE", t) for t in tables_selected])
-                                targets.extend([("VIEW", v) for v in views_selected])
-                                if not targets:
-                                    return gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False)
-                                from utils.management_util import get_primary_key_info, get_foreign_key_info, display_table_data
-                                struct_chunks = []
-                                pk_chunks = []
-                                fk_chunks = []
-                                samples_chunks = []
-                                for kind, name in targets:
-                                    if kind == "VIEW":
-                                        cols_df, _ddl = get_view_details(pool, name)
-                                    else:
-                                        cols_df, _ddl = get_table_details(pool, name)
-                                    lines = [f"OBJECT: {name}", "COLUMNS:"]
-                                    if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
-                                        for _, row in cols_df.iterrows():
-                                            lines.append(f"- {row['Column Name']}: {row['Data Type']} NULLABLE={row['Nullable']}")
-                                    struct_chunks.append("\n".join(lines))
-                                    pk_info = get_primary_key_info(pool, name) or ""
-                                    fk_info = get_foreign_key_info(pool, name) or ""
-                                    if pk_info:
-                                        pk_chunks.append(f"OBJECT: {name}\n{pk_info}")
-                                    if fk_info:
-                                        fk_chunks.append(f"OBJECT: {name}\n{fk_info}")
-                                    lim = int(sample_limit)
-                                    if lim > 0:
-                                        df = display_table_data(pool, name, lim)
-                                        if isinstance(df, pd.DataFrame) and not df.empty:
-                                            samples_chunks.append(f"OBJECT: {name}\n" + df.to_csv(index=False))
-                                struct_text = "\n\n".join(struct_chunks)
-                                pk_text = "\n\n".join(pk_chunks) if pk_chunks else ""
-                                fk_text = "\n\n".join(fk_chunks) if fk_chunks else ""
-                                samples_text = "\n\n".join(samples_chunks) if samples_chunks else ""
-                                return (
-                                    gr.Textbox(value=struct_text, interactive=False),
-                                    gr.Textbox(value=pk_text, interactive=False),
-                                    gr.Textbox(value=fk_text, interactive=False),
-                                    gr.Textbox(value=samples_text, interactive=False),
-                                )
-                            except Exception as e:
-                                logger.error(f"_cm_load_inputs error: {e}")
-                                return gr.Textbox(value=str(e), interactive=False), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
 
                         def _cm_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text):
                             try:
@@ -1769,8 +1738,57 @@ def build_selectai_tab(pool):
                                 loop.close()
 
                         def _cm_execute(sql_text):
-                            from utils.management_util import execute_data_sql
-                            return execute_data_sql(pool, sql_text)
+                            from utils.management_util import execute_comment_sql
+                            return execute_comment_sql(pool, sql_text)
+
+                        async def _cm_ai_analyze_async(model_name, sql_text, exec_result_text):
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                            try:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                s = str(sql_text or "").strip()
+                                r = str(exec_result_text or "").strip()
+                                prompt = (
+                                    "以下のCOMMENT文の一括実行内容と実行結果を分析してください。出力は次の3点に限定します。\n"
+                                    "1) エラー原因（該当する場合）\n"
+                                    "2) 解決方法（修正案や具体的手順）\n"
+                                    "3) 簡潔な結論\n\n"
+                                    + ("SQL:\n```sql\n" + s + "\n```\n" if s else "")
+                                    + ("実行結果:\n" + r + "\n" if r else "")
+                                )
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                messages = [
+                                    {"role": "system", "content": "あなたはシニアDBエンジニアです。COMMENT ON TABLE/COLUMN の診断に特化し、必要最小限の要点のみを簡潔に提示してください。"},
+                                    {"role": "user", "content": prompt},
+                                ]
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
+                                return gr.Markdown(visible=True, value=text or "分析結果が空です")
+                            except Exception as e:
+                                return gr.Markdown(visible=True, value=f"エラー: {e}")
+
+                        def _cm_ai_analyze(model_name, sql_text, exec_result_text):
+                            import asyncio
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
+                                result_md = loop.run_until_complete(_cm_ai_analyze_async(model_name, sql_text, exec_result_text))
+                                yield gr.Markdown(visible=True, value="✅ 完了"), result_md
+                            except Exception as e:
+                                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
+                            finally:
+                                loop.close()
 
                         cm_refresh_btn.click(
                             fn=_cm_refresh_objects,
@@ -1882,6 +1900,12 @@ def build_selectai_tab(pool):
                             outputs=[cm_execute_result],
                         )
 
+                        cm_ai_analyze_btn.click(
+                            fn=_cm_ai_analyze,
+                            inputs=[cm_ai_model_input, cm_generated_sql, cm_execute_result],
+                            outputs=[cm_ai_status_md, cm_ai_result_md],
+                        )
+
                         def _on_feedback_type_change(fb_type):
                             t = str(fb_type or "").lower()
                             if t == "positive":
@@ -1956,7 +1980,21 @@ def build_selectai_tab(pool):
                                     am_samples_text = gr.Textbox(label="サンプルデータ", lines=8, max_lines=16, interactive=True, show_copy_button=True)
                             with gr.Row():
                                 with gr.Column():
-                                    am_extra_input = gr.Textbox(label="追加入力(Optional)", placeholder="追加で考慮してほしい説明や条件を記入", lines=3, max_lines=6)
+                                    am_extra_input = gr.Textbox(
+                                        label="追加入力(Optional)",
+                                        placeholder="追加で考慮してほしい説明や条件を記入",
+                                        value=(
+                                            "既存アノテーションを安全に再設定する方針:\n"
+                                            "- 追加前に不要/古いアノテーションをDROP IF EXISTSで事前整理\n"
+                                            "- その後ADDまたはADD IF NOT EXISTSで新規追加\n"
+                                            "- 値内の単一引用符は''へエスケープ\n"
+                                            "例(表レベル): ALTER TABLE USERS ANNOTATIONS (DROP IF EXISTS sample_data);\n"
+                                            "例(列レベル): ALTER TABLE USERS MODIFY (ID ANNOTATIONS (DROP IF EXISTS nullable));\n"
+                                            "再追加例: ALTER TABLE USERS ANNOTATIONS (ADD sample_data 'value');\n"
+                                        ),
+                                        lines=3,
+                                        max_lines=6,
+                                    )
 
                         with gr.Accordion(label="3. アノテーション自動生成", open=False):
                             am_model_input = gr.Dropdown(
@@ -1978,6 +2016,24 @@ def build_selectai_tab(pool):
                         with gr.Accordion(label="4. 実行", open=False):
                             am_execute_btn = gr.Button("一括実行", variant="primary")
                             am_execute_result = gr.Textbox(label="実行結果", interactive=False, lines=5, max_lines=8)
+
+                            with gr.Accordion(label="AI分析と処理", open=False):
+                                am_ai_model_input = gr.Dropdown(
+                                    label="モデル",
+                                    choices=[
+                                        "xai.grok-code-fast-1",
+                                        "xai.grok-3",
+                                        "xai.grok-3-fast",
+                                        "xai.grok-4",
+                                        "xai.grok-4-fast-non-reasoning",
+                                        "meta.llama-4-scout-17b-16e-instruct",
+                                    ],
+                                    value="xai.grok-code-fast-1",
+                                    interactive=True,
+                                )
+                                am_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                                am_ai_status_md = gr.Markdown(visible=False)
+                                am_ai_result_md = gr.Markdown(visible=False)
 
                         def _am_refresh_objects():
                             try:
@@ -2098,6 +2154,7 @@ def build_selectai_tab(pool):
                                 region = get_oci_region()
                                 compartment_id = get_compartment_id()
                                 if not region or not compartment_id:
+                                    logger.error("_am_generate_async missing OCI configuration: region or compartment_id is empty")
                                     return gr.Textbox(value="OCI設定が不足しています")
                                 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                                 client = AsyncOciOpenAI(
@@ -2133,23 +2190,123 @@ def build_selectai_tab(pool):
                                 # サンプルが無い場合は、出力から sample_header / sample_data を除去
                                 if not str(samples_text or "").strip():
                                     try:
-                                        import re
                                         s = str(text or "")
-                                        # 個々の注釈項目を削除
-                                        s = re.sub(r"(?i)(,\s*)?sample_header\s*'[^']*'", "", s)
-                                        s = re.sub(r"(?i)(,\s*)?sample_data\s*'[^']*'", "", s)
-                                        # 余分なカンマを整理
-                                        s = re.sub(r"\(\s*,\s*", "(", s)
-                                        s = re.sub(r",\s*\)", ")", s)
-                                        # ANNOTATIONS () を含む行は削除
-                                        lines = [ln for ln in s.splitlines() if "ANNOTATIONS ()" not in ln.replace(" ", "")]
-                                        text = "\n".join(lines)
+                                        def _split_items(inner):
+                                            items = []
+                                            current = []
+                                            in_quote = False
+                                            quote = ''
+                                            i = 0
+                                            n = len(inner)
+                                            while i < n:
+                                                ch = inner[i]
+                                                if in_quote:
+                                                    current.append(ch)
+                                                    if ch == quote:
+                                                        if quote == "'" and i + 1 < n and inner[i + 1] == "'":
+                                                            current.append("'")
+                                                            i += 1
+                                                        else:
+                                                            in_quote = False
+                                                            quote = ''
+                                                else:
+                                                    if ch == "'" or ch == '"':
+                                                        in_quote = True
+                                                        quote = ch
+                                                        current.append(ch)
+                                                    elif ch == ',':
+                                                        items.append(''.join(current).strip())
+                                                        current = []
+                                                    else:
+                                                        current.append(ch)
+                                                i += 1
+                                            items.append(''.join(current).strip())
+                                            return [it for it in items if it]
+                                        def _extract_name(part):
+                                            m = re.match(r'^\s*("([^"]+)"|([A-Za-z0-9_\$#]+))', part)
+                                            if not m:
+                                                return ''
+                                            return (m.group(2) or m.group(3) or '').strip()
+                                        out_lines = []
+                                        for ln in s.splitlines():
+                                            up = ln.upper()
+                                            if 'ANNOTATIONS' in up:
+                                                m = re.search(r'ANNOTATIONS\s*\((.*)\)', ln, flags=re.IGNORECASE)
+                                                if m:
+                                                    inner = m.group(1)
+                                                    items = _split_items(inner)
+                                                    kept = []
+                                                    for it in items:
+                                                        nm = _extract_name(it)
+                                                        if nm.lower() in ('sample_header', 'sample_data'):
+                                                            continue
+                                                        kept.append(it)
+                                                    if kept:
+                                                        new_inner = ', '.join(kept)
+                                                        new_ln = re.sub(r'(ANNOTATIONS\s*)\((.*)\)', r"\1(" + new_inner + ")", ln, flags=re.IGNORECASE)
+                                                        out_lines.append(new_ln)
+                                                    else:
+                                                        continue
+                                                else:
+                                                    out_lines.append(ln)
+                                            else:
+                                                out_lines.append(ln)
+                                        text = "\n".join(out_lines)
                                     except Exception:
                                         pass
                                 return gr.Textbox(value=text)
                             except Exception as e:
                                 logger.error(f"_am_generate_async error: {e}")
                                 return gr.Textbox(value=f"エラー: {e}")
+
+                        async def _am_ai_analyze_async(model_name, sql_text, exec_result_text):
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                            try:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                s = str(sql_text or "").strip()
+                                r = str(exec_result_text or "").strip()
+                                prompt = (
+                                    "以下のアノテーション文の一括実行内容と実行結果を分析してください。出力は次の3点に限定します。\n"
+                                    "1) エラー原因（該当する場合）\n"
+                                    "2) 解決方法（修正案や具体的手順）\n"
+                                    "3) 簡潔な結論\n\n"
+                                    + ("SQL:\n```sql\n" + s + "\n```\n" if s else "")
+                                    + ("実行結果:\n" + r + "\n" if r else "")
+                                )
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                messages = [
+                                    {"role": "system", "content": "あなたはシニアDBエンジニアです。ALTER ... ANNOTATIONS の診断に特化し、必要最小限の要点のみを簡潔に提示してください。"},
+                                    {"role": "user", "content": prompt},
+                                ]
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
+                                return gr.Markdown(visible=True, value=text or "分析結果が空です")
+                            except Exception as e:
+                                return gr.Markdown(visible=True, value=f"エラー: {e}")
+
+                        def _am_ai_analyze(model_name, sql_text, exec_result_text):
+                            import asyncio
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
+                                result_md = loop.run_until_complete(_am_ai_analyze_async(model_name, sql_text, exec_result_text))
+                                yield gr.Markdown(visible=True, value="✅ 完了"), result_md
+                            except Exception as e:
+                                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
+                            finally:
+                                loop.close()
 
                         def _am_generate(model_name, struct_text, pk_text, fk_text, samples_text, extra_text):
                             loop = asyncio.new_event_loop()
@@ -2162,58 +2319,19 @@ def build_selectai_tab(pool):
 
                         def _am_execute(sql_text):
                             import re
-                            def _extract_names(inner):
-                                names = []
-                                for itm in re.split(r",", inner):
-                                    t = itm.strip()
-                                    if not t:
-                                        continue
-                                    if t.startswith('"'):
-                                        m2 = re.match(r'^"([^"]+)"', t)
-                                        nm = m2.group(1) if m2 else t
-                                    else:
-                                        m2 = re.match(r'^([A-Za-z0-9_\$#]+)', t)
-                                        nm = m2.group(1) if m2 else t
-                                    if nm:
-                                        names.append(nm)
-                                return [n for n in names if n]
                             def _prep(s):
                                 txt = str(s or "")
                                 parts = [p.strip() for p in txt.split(';') if p.strip()]
                                 out = []
                                 for p in parts:
-                                    up = re.sub(r"\s+", " ", p.upper())
-                                    if (up.startswith("ALTER VIEW ") or up.startswith("ALTER TABLE ")) and (" ANNOTATIONS (" in up):
-                                        if " DROP " in up:
-                                            out.append(p)
-                                            continue
-                                        m = re.search(r"(?is)^\s*ALTER\s+(VIEW|TABLE)\s+([A-Za-z0-9_\"\.]+)\s+ANNOTATIONS\s*\(([\s\S]*?)\)\s*$", p)
-                                        if m:
-                                            kind = m.group(1)
-                                            obj = m.group(2)
-                                            inner = m.group(3)
-                                            names = _extract_names(inner)
-                                            if names:
-                                                drop_items = ", ".join([f"DROP IF EXISTS {n}" for n in names])
-                                                drop_stmt = f"ALTER {kind} {obj} ANNOTATIONS ({drop_items})"
-                                                out.append(drop_stmt)
-                                        else:
-                                            m2 = re.search(r"(?is)^\s*ALTER\s+TABLE\s+([A-Za-z0-9_\"\.]+)\s+MODIFY\s*\(\s*([A-Za-z0-9_\"\.]+)\s+ANNOTATIONS\s*\(([\s\S]*?)\)\s*\)\s*$", p)
-                                            if m2:
-                                                obj = m2.group(1)
-                                                col = m2.group(2)
-                                                inner = m2.group(3)
-                                                names = _extract_names(inner)
-                                                if names:
-                                                    drop_items = ", ".join([f"DROP IF EXISTS {n}" for n in names])
-                                                    drop_stmt = f"ALTER TABLE {obj} MODIFY ({col} ANNOTATIONS ({drop_items}))"
-                                                    out.append(drop_stmt)
-                                        out.append(p)
-                                    else:
-                                        out.append(p)
+                                    out.append(p)
                                 return ";\n".join(out)
                             from utils.management_util import execute_annotation_sql
-                            return execute_annotation_sql(pool, _prep(sql_text))
+                            try:
+                                return execute_annotation_sql(pool, _prep(sql_text))
+                            except Exception as e:
+                                logger.error(f"_am_execute error: {e}")
+                                return f"エラー: {str(e)}"
 
                         am_refresh_btn.click(
                             fn=_am_refresh_objects,
@@ -2250,6 +2368,12 @@ def build_selectai_tab(pool):
                             outputs=[am_execute_result],
                         )
 
+                        am_ai_analyze_btn.click(
+                            fn=_am_ai_analyze,
+                            inputs=[am_ai_model_input, am_generated_sql, am_execute_result],
+                            outputs=[am_ai_status_md, am_ai_result_md],
+                        )
+
                     with gr.TabItem(label="合成データ生成"):
                         with gr.Accordion(label="1. 対象選択", open=True):
                             with gr.Row():
@@ -2272,7 +2396,7 @@ def build_selectai_tab(pool):
                                 with gr.Column():
                                     syn_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
                                 with gr.Column():
-                                    syn_rows_per_table = gr.Slider(label="各テーブルの生成件数", minimum=0, maximum=10000, step=100, value=1000, interactive=True)
+                                    syn_rows_per_table = gr.Slider(label="各テーブルの生成件数", minimum=0, maximum=10000, step=1, value=1, interactive=True)
                             with gr.Row():
                                 with gr.Column():
                                     syn_prompt_input = gr.Textbox(label="生成の指示(オプション)", placeholder="スキーマ特性や分布、制約などを自然言語で記述", lines=4, max_lines=10)

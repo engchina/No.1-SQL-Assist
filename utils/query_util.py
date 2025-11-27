@@ -376,7 +376,7 @@ def execute_sql_general(pool, sql: str, limit: int):
                         dur = int((time.perf_counter() - t0) * 1000)
                         is_dml = typ in ('INSERT', 'UPDATE', 'DELETE', 'MERGE')
                         is_plsql = typ == 'PLSQL'
-                        is_comment = typ.startswith('COMMENT ON')
+                        is_comment = (typ == 'COMMENT')
                         msg = _fetch_dbms_output(cursor)
                         if is_dml:
                             msg = msg or f"RowsAffected={rc if rc is not None else 0}"
@@ -424,7 +424,7 @@ def build_query_tab(pool):
         with gr.Accordion(label="1. SQLの入力", open=True):
             sql_input = gr.Textbox(
                 label="SQL文（SELECTは1文のみ、その他は複数文同時実行可）\n注意: 複数実行時はSELECTを含めないでください",
-                placeholder="複数の文はセミコロンで区切って入力できます。\n例: INSERT/UPDATE/DELETE/MERGE/CREATE/BEGIN..END/EXEC など。SELECTは1回に1文のみ",
+                placeholder="複数の文はセミコロンで区切って入力できます。\n例: INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/BEGIN..END/EXEC など。SELECTは1回に1文のみ",
                 lines=8,
                 max_lines=15,
                 show_copy_button=True,
@@ -444,7 +444,7 @@ def build_query_tab(pool):
 
         with gr.Accordion(label="2. 実行結果の表示", open=True):
             result_info = gr.Markdown(
-                value="ℹ️ SELECTは1文のみ実行可能。INSERT/UPDATE/DELETE/MERGE/CREATE/PL/SQL/EXECは複数文をセミコロンで区切って同時実行可能。複数実行時はSELECTを含めないでください",
+                value="ℹ️ SELECTは1文のみ実行可能。INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/PL/SQL/EXECは複数文をセミコロンで区切って同時実行可能。複数実行時はSELECTを含めないでください",
                 visible=True,
             )
 
@@ -458,23 +458,23 @@ def build_query_tab(pool):
             )
             result_style = gr.HTML(visible=False)
 
-        with gr.Accordion(label="3. AI分析と処理", open=False):
-            ai_model_input = gr.Dropdown(
-                label="モデル",
-                choices=[
-                    "xai.grok-code-fast-1",
-                    "xai.grok-3",
-                    "xai.grok-3-fast",
-                    "xai.grok-4",
-                    "xai.grok-4-fast-non-reasoning",
-                    "meta.llama-4-scout-17b-16e-instruct",
-                ],
-                value="xai.grok-code-fast-1",
-                interactive=True,
-            )
-            ai_analyze_btn = gr.Button("AI分析", variant="primary")
-            ai_status_md = gr.Markdown(visible=False)
-            ai_result_md = gr.Markdown(visible=False)
+            with gr.Accordion(label="AI分析と処理", open=False):
+                ai_model_input = gr.Dropdown(
+                    label="モデル",
+                    choices=[
+                        "xai.grok-code-fast-1",
+                        "xai.grok-3",
+                        "xai.grok-3-fast",
+                        "xai.grok-4",
+                        "xai.grok-4-fast-non-reasoning",
+                        "meta.llama-4-scout-17b-16e-instruct",
+                    ],
+                    value="xai.grok-code-fast-1",
+                    interactive=True,
+                )
+                ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                ai_status_md = gr.Markdown(visible=False)
+                ai_result_md = gr.Markdown(visible=False)
 
         async def _ai_analyze_async(model_name, sql_text, result_info_text, result_df_input):
             from utils.chat_util import get_oci_region, get_compartment_id
@@ -526,6 +526,7 @@ def build_query_tab(pool):
 
         def ai_analyze(model_name, sql_text, result_info_text, result_df_input):
             import asyncio
+            logger.info(f"AI分析を開始します: model={model_name}, sql_length={len(str(sql_text or ''))}, result_info_length={len(str(result_info_text or ''))}")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:

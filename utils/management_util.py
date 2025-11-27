@@ -1009,12 +1009,8 @@ def execute_annotation_sql(pool, sql_statements):
                     has_annotations = ' ANNOTATIONS ' in re.sub(r"\s+", ' ', up)
                     is_alter_table = up.startswith('ALTER TABLE ')
                     is_alter_view = up.startswith('ALTER VIEW ')
-                    contains_for_column = ' FOR COLUMN ' in re.sub(r"\s+", ' ', up)
-                    if is_alter_view and contains_for_column:
-                        disallowed.append((idx, sql_stmt))
-                        continue
+                    norm = re.sub(r"\s+", ' ', sql_stmt.strip())
                     if has_annotations and is_alter_table:
-                        norm = re.sub(r"\s+", ' ', sql_stmt.strip())
                         if ' MODIFY ' in norm.upper():
                             m = re.search(r"MODIFY\s*\(([^\)]*)\)", norm, flags=re.IGNORECASE)
                             if m:
@@ -1027,11 +1023,20 @@ def execute_annotation_sql(pool, sql_statements):
                         else:
                             disallowed.append((idx, sql_stmt))
                             continue
+                    elif has_annotations and is_alter_view:
+                        if ' MODIFY ' in norm.upper():
+                            disallowed.append((idx, sql_stmt))
+                            continue
+                        if ' ANNOTATIONS ' in norm.upper():
+                            pass
+                        else:
+                            disallowed.append((idx, sql_stmt))
+                            continue
                     if not (has_annotations and (is_alter_table or is_alter_view)):
                         disallowed.append((idx, sql_stmt))
                 if disallowed:
                     first_idx, first_sql = disallowed[0]
-                    msg = f"禁止された操作: ビュー列のアノテーションや無効な文は実行できません。許可: ALTER TABLE MODIFY ... ANNOTATIONS / ALTER VIEW ANNOTATIONS\n文{first_idx}: {first_sql[:100]}..."
+                    msg = f"禁止された操作: 無効なアノテーション文は実行できません。許可: ALTER TABLE MODIFY ... ANNOTATIONS / ALTER TABLE ANNOTATIONS / ALTER VIEW ANNOTATIONS\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for annotations: {first_sql[:100]}...")
                     gr.Error(msg)
                     return f"エラー: {msg}"
@@ -1093,6 +1098,14 @@ def build_management_tab(pool):
                     label="選択されたテーブル名",
                     interactive=False,
                 )
+
+                table_drop_btn = gr.Button("選択したテーブルを削除", variant="stop")
+                table_drop_result = gr.Textbox(
+                    label="削除結果",
+                    lines=2,
+                    max_lines=5,
+                    interactive=False,
+                )
                 
                 with gr.Row():
                     with gr.Column():
@@ -1114,14 +1127,6 @@ def build_management_tab(pool):
                             interactive=False,
                             show_copy_button=True,
                         )
-                
-                table_drop_btn = gr.Button("選択したテーブルを削除", variant="stop")
-                table_drop_result = gr.Textbox(
-                    label="削除結果",
-                    lines=2,
-                    max_lines=5,
-                    interactive=False,
-                )
             
             # Feature 3: Create Table
             with gr.Accordion(label="3. テーブル作成", open=False):
@@ -1137,12 +1142,31 @@ def build_management_tab(pool):
                     clear_sql_btn = gr.Button("クリア", variant="secondary")
                     create_table_btn = gr.Button("テーブルを作成", variant="primary")
                 
-                create_table_result = gr.Textbox(
-                    label="作成結果",
-                    lines=2,
-                    max_lines=5,
-                    interactive=False,
-                )
+                with gr.Row():
+                    create_table_result = gr.Textbox(
+                        label="作成結果",
+                        lines=2,
+                        max_lines=5,
+                        interactive=False,
+                    )
+
+                with gr.Accordion(label="AI分析と処理", open=False):
+                    table_ai_model_input = gr.Dropdown(
+                        label="モデル",
+                        choices=[
+                            "xai.grok-code-fast-1",
+                            "xai.grok-3",
+                            "xai.grok-3-fast",
+                            "xai.grok-4",
+                            "xai.grok-4-fast-non-reasoning",
+                            "meta.llama-4-scout-17b-16e-instruct",
+                        ],
+                        value="xai.grok-code-fast-1",
+                        interactive=True,
+                    )
+                    table_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                    table_ai_status_md = gr.Markdown(visible=False)
+                    table_ai_result_md = gr.Markdown(visible=False)
             
             # Event handlers
             def on_table_select(evt: gr.SelectData, current_df):
@@ -1252,24 +1276,6 @@ def build_management_tab(pool):
                 outputs=[create_table_sql]
             )
 
-            with gr.Accordion(label="4. AI分析と処理", open=False):
-                table_ai_model_input = gr.Dropdown(
-                    label="モデル",
-                    choices=[
-                        "xai.grok-code-fast-1",
-                        "xai.grok-3",
-                        "xai.grok-3-fast",
-                        "xai.grok-4",
-                        "xai.grok-4-fast-non-reasoning",
-                        "meta.llama-4-scout-17b-16e-instruct",
-                    ],
-                    value="xai.grok-code-fast-1",
-                    interactive=True,
-                )
-                table_ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                table_ai_status_md = gr.Markdown(visible=False)
-                table_ai_result_md = gr.Markdown(visible=False)
-
             async def _table_ai_analyze_async(model_name, table_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
                 from utils.chat_util import get_oci_region, get_compartment_id
                 region = get_oci_region()
@@ -1358,6 +1364,14 @@ def build_management_tab(pool):
                     label="選択されたビュー名",
                     interactive=False,
                 )
+
+                view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
+                view_drop_result = gr.Textbox(
+                    label="削除結果",
+                    lines=2,
+                    max_lines=5,
+                    interactive=False,
+                )
                 
                 with gr.Row():
                     with gr.Column():
@@ -1415,14 +1429,6 @@ def build_management_tab(pool):
                             interactive=False,
                             show_copy_button=True,
                         )
-
-                view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
-                view_drop_result = gr.Textbox(
-                    label="削除結果",
-                    lines=2,
-                    max_lines=5,
-                    interactive=False,
-                )
             
             # Feature 3: Create View
             with gr.Accordion(label="3. ビュー作成", open=False):
@@ -1437,13 +1443,35 @@ def build_management_tab(pool):
                 with gr.Row():
                     clear_view_sql_btn = gr.Button("クリア", variant="secondary")
                     create_view_btn = gr.Button("ビューを作成", variant="primary")
-                
-                create_view_result = gr.Textbox(
-                    label="作成結果",
-                    lines=2,
-                    max_lines=5,
-                    interactive=False,
-                )
+                with gr.Row():                
+                    create_view_result = gr.Textbox(
+                        label="作成結果",
+                        lines=2,
+                        max_lines=5,
+                        interactive=False,
+                    )
+
+                with gr.Accordion(label="AI分析と処理", open=False):
+                    with gr.Row():
+                        view_ai_model_input = gr.Dropdown(
+                            label="モデル",
+                            choices=[
+                                "xai.grok-code-fast-1",
+                                "xai.grok-3",
+                                "xai.grok-3-fast",
+                                "xai.grok-4",
+                                "xai.grok-4-fast-non-reasoning",
+                                "meta.llama-4-scout-17b-16e-instruct",
+                            ],
+                            value="xai.grok-code-fast-1",
+                            interactive=True,
+                        )
+                    with gr.Row():
+                        view_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                    with gr.Row():
+                        view_ai_status_md = gr.Markdown(visible=False)
+                    with gr.Row():
+                        view_ai_result_md = gr.Markdown(visible=False)
             
             # Event handlers
             def on_view_select(evt: gr.SelectData, current_df):
@@ -1488,7 +1516,7 @@ def build_management_tab(pool):
                             view_name = str(current_df.iloc[row_index, 0])
                             logger.info(f"View selected from row {row_index}: {view_name}")
                             col_df, ddl = get_view_details(pool, view_name)
-                            return view_name, col_df, ddl, "", ""
+                            return view_name, col_df, ddl
                         else:
                             logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
@@ -1496,7 +1524,7 @@ def build_management_tab(pool):
                     logger.error(traceback.format_exc())
                     gr.Error(f"ビュー選択エラー: {str(e)}")
                 
-                return "", pd.DataFrame(), "", "", ""
+                return "", pd.DataFrame(), ""
             
             def refresh_view_list():
                 try:
@@ -1532,7 +1560,7 @@ def build_management_tab(pool):
             view_list_df.select(
                 fn=on_view_select,
                 inputs=[view_list_df],
-                outputs=[selected_view_name, view_columns_df, view_ddl_text, view_join_text, view_where_text]
+                outputs=[selected_view_name, view_columns_df, view_ddl_text]
             )
             
             view_drop_btn.click(
@@ -1627,25 +1655,7 @@ def build_management_tab(pool):
                 outputs=[create_view_sql]
             )
 
-            with gr.Accordion(label="4. AI分析と処理", open=False):
-                view_ai_model_input = gr.Dropdown(
-                    label="モデル",
-                    choices=[
-                        "xai.grok-code-fast-1",
-                        "xai.grok-3",
-                        "xai.grok-3-fast",
-                        "xai.grok-4",
-                        "xai.grok-4-fast-non-reasoning",
-                        "meta.llama-4-scout-17b-16e-instruct",
-                    ],
-                    value="xai.grok-code-fast-1",
-                    interactive=True,
-                )
-                view_ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                view_ai_status_md = gr.Markdown(visible=False)
-                view_ai_result_md = gr.Markdown(visible=False)
-
-            async def _view_ai_analyze_async(model_name, view_name, columns_df_input, ddl_text, join_text, where_text, create_sql_text, exec_result_text):
+            async def _view_ai_analyze_async(model_name, view_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
                 from utils.chat_util import get_oci_region, get_compartment_id
                 region = get_oci_region()
                 compartment_id = get_compartment_id()
@@ -1665,8 +1675,6 @@ def build_management_tab(pool):
                     sql_part = str(create_sql_text or "").strip()
                     if not sql_part:
                         sql_part = str(ddl_text or "").strip()
-                    join_part = str(join_text or "").strip()
-                    where_part = str(where_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
                         "以下のSQL/DDLと実行結果を分析してください。出力は次の3点に限定します。\n"
@@ -1674,8 +1682,6 @@ def build_management_tab(pool):
                         "2) 解決方法（修正案や具体的手順）\n"
                         "3) 簡潔な結論（不要な詳細は省略）\n\n"
                         + ("SQL/DDL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
-                        + ("JOIN条件:\n" + join_part + "\n" if join_part else "")
-                        + ("WHERE条件:\n" + where_part + "\n" if where_part else "")
                         + ("実行結果:\n" + result_part + "\n" if result_part else "")
                         + ("列情報プレビュー:\n" + preview + "\n" if preview else "")
                     )
@@ -1697,13 +1703,13 @@ def build_management_tab(pool):
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"エラー: {e}")
 
-            def view_ai_analyze(model_name, view_name, columns_df_input, ddl_text, join_text, where_text, create_sql_text, exec_result_text):
+            def view_ai_analyze(model_name, view_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
                 import asyncio
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                    result_md = loop.run_until_complete(_view_ai_analyze_async(model_name, view_name, columns_df_input, ddl_text, join_text, where_text, create_sql_text, exec_result_text))
+                    result_md = loop.run_until_complete(_view_ai_analyze_async(model_name, view_name, columns_df_input, ddl_text, create_sql_text, exec_result_text))
                     yield gr.Markdown(visible=True, value="✅ 完了"), result_md
                 except Exception as e:
                     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
@@ -1712,7 +1718,7 @@ def build_management_tab(pool):
 
             view_ai_analyze_btn.click(
                 fn=view_ai_analyze,
-                inputs=[view_ai_model_input, selected_view_name, view_columns_df, view_ddl_text, gr.Textbox(value=""), gr.Textbox(value=""), create_view_sql, create_view_result],
+                inputs=[view_ai_model_input, selected_view_name, view_columns_df, view_ddl_text, create_view_sql, create_view_result],
                 outputs=[view_ai_status_md, view_ai_result_md],
             )
         
@@ -1826,14 +1832,32 @@ def build_management_tab(pool):
                 with gr.Row():
                     data_clear_btn = gr.Button("クリア", variant="secondary")
                     data_execute_btn = gr.Button("実行", variant="primary")
-                
-                data_sql_result = gr.Textbox(
-                    label="実行結果",
-                    lines=2,
-                    max_lines=5,
-                    interactive=False,
-                )
 
+                with gr.Row():        
+                    data_sql_result = gr.Textbox(
+                        label="実行結果",
+                        lines=2,
+                        max_lines=5,
+                        interactive=False,
+                    )
+
+                with gr.Accordion(label="AI分析と処理", open=False):
+                    data_ai_model_input = gr.Dropdown(
+                        label="モデル",
+                        choices=[
+                            "xai.grok-code-fast-1",
+                            "xai.grok-3",
+                            "xai.grok-3-fast",
+                            "xai.grok-4",
+                            "xai.grok-4-fast-non-reasoning",
+                            "meta.llama-4-scout-17b-16e-instruct",
+                        ],
+                        value="xai.grok-code-fast-1",
+                        interactive=True,
+                    )
+                    data_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                    data_ai_status_md = gr.Markdown(visible=False)
+                    data_ai_result_md = gr.Markdown(visible=False)
             
             # Event Handlers
             def refresh_data_table_list():
@@ -1967,24 +1991,6 @@ def build_management_tab(pool):
                 inputs=[sql_template_select],
                 outputs=[data_sql_input]
             )
-
-            with gr.Accordion(label="4. AI分析と処理", open=False):
-                data_ai_model_input = gr.Dropdown(
-                    label="モデル",
-                    choices=[
-                        "xai.grok-code-fast-1",
-                        "xai.grok-3",
-                        "xai.grok-3-fast",
-                        "xai.grok-4",
-                        "xai.grok-4-fast-non-reasoning",
-                        "meta.llama-4-scout-17b-16e-instruct",
-                    ],
-                    value="xai.grok-code-fast-1",
-                    interactive=True,
-                )
-                data_ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                data_ai_status_md = gr.Markdown(visible=False)
-                data_ai_result_md = gr.Markdown(visible=False)
 
             async def _data_ai_analyze_async(model_name, obj_name, limit_value, where_text, df_input):
                 from utils.chat_util import get_oci_region, get_compartment_id
