@@ -1626,7 +1626,13 @@ def build_selectai_tab(pool):
                                     cm_samples_text = gr.Textbox(label="サンプルデータ", lines=8, max_lines=16, interactive=True, show_copy_button=True)
                             with gr.Row():
                                 with gr.Column():
-                                    cm_extra_input = gr.Textbox(label="追加入力(Optional)", placeholder="追加で考慮してほしい説明や条件を記入", lines=3, max_lines=6)
+                                    cm_extra_input = gr.Textbox(
+                                        label="追加入力(Optional)",
+                                        placeholder="追加で考慮してほしい説明や条件を記入",
+                                        value=(""),
+                                        lines=8,
+                                        max_lines=16,
+                                    )
 
                         with gr.Accordion(label="3. コメント自動生成", open=False):
                             cm_model_input = gr.Dropdown(
@@ -1984,16 +1990,17 @@ def build_selectai_tab(pool):
                                         label="追加入力(Optional)",
                                         placeholder="追加で考慮してほしい説明や条件を記入",
                                         value=(
-                                            "既存アノテーションを安全に再設定する方針:\n"
-                                            "- 追加前に不要/古いアノテーションをDROP IF EXISTSで事前整理\n"
-                                            "- その後ADDまたはADD IF NOT EXISTSで新規追加\n"
-                                            "- 値内の単一引用符は''へエスケープ\n"
-                                            "例(表レベル): ALTER TABLE USERS ANNOTATIONS (DROP IF EXISTS sample_data);\n"
-                                            "例(列レベル): ALTER TABLE USERS MODIFY (ID ANNOTATIONS (DROP IF EXISTS nullable));\n"
+                                            "ANNOTATIONSの安全な適用ガイド:\n"
+                                            "- DROPとADDは同一文で混在させず、別々のALTER文に分割\n"
+                                            "- 一括実行では重複名(DROP/ADD同時指定)がORA-11562の原因、順次個別に実行\n"
+                                            "- 可能ならDROP後はADD IF NOT EXISTSで再追加、重複を回避\n"
+                                            "- 値の'は''へエスケープ、予約語/空白は注釈名を二重引用符\n"
+                                            "例(表): ALTER TABLE USERS ANNOTATIONS (DROP IF EXISTS sample_header);\n"
+                                            "例(列): ALTER TABLE USERS MODIFY (ID ANNOTATIONS (ADD IF NOT EXISTS ui_display 'ID'));\n"
                                             "再追加例: ALTER TABLE USERS ANNOTATIONS (ADD sample_data 'value');\n"
                                         ),
-                                        lines=3,
-                                        max_lines=6,
+                                        lines=8,
+                                        max_lines=16,
                                     )
 
                         with gr.Accordion(label="3. アノテーション自動生成", open=False):
