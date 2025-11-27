@@ -1381,25 +1381,41 @@ def build_management_tab(pool):
                         )
 
                 with gr.Row():
-                    with gr.Column():
-                        gr.Markdown("### JOIN条件")
-                        view_join_text = gr.Textbox(
-                            label="JOIN条件",
-                            lines=6,
-                            max_lines=15,
-                            interactive=True,
-                            show_copy_button=True,
-                        )
-                    with gr.Column():
-                        gr.Markdown("### WHERE条件")
-                        view_where_text = gr.Textbox(
-                            label="WHERE条件",
-                            lines=6,
-                            max_lines=15,
-                            interactive=True,
-                            show_copy_button=True,
-                        )
+                    view_analysis_model_input = gr.Dropdown(
+                        label="モデル",
+                        choices=[
+                            "xai.grok-code-fast-1",
+                            "xai.grok-3",
+                            "xai.grok-3-fast",
+                            "xai.grok-4",
+                            "xai.grok-4-fast-non-reasoning",
+                            "meta.llama-4-scout-17b-16e-instruct",
+                        ],
+                        value="xai.grok-code-fast-1",
+                        interactive=True,
+                    )
+
+                with gr.Row():
+                    view_ai_extract_btn = gr.Button("AI分析", variant="primary")
                 
+                with gr.Row():
+                    with gr.Column():
+                        view_join_text = gr.Textbox(
+                            label="結合条件",
+                            lines=6,
+                            max_lines=15,
+                            interactive=False,
+                            show_copy_button=True,
+                        )
+                    with gr.Column():
+                        view_where_text = gr.Textbox(
+                            label="Where条件",
+                            lines=6,
+                            max_lines=15,
+                            interactive=False,
+                            show_copy_button=True,
+                        )
+
                 view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
                 view_drop_result = gr.Textbox(
                     label="削除結果",
@@ -1472,81 +1488,7 @@ def build_management_tab(pool):
                             view_name = str(current_df.iloc[row_index, 0])
                             logger.info(f"View selected from row {row_index}: {view_name}")
                             col_df, ddl = get_view_details(pool, view_name)
-                            def _parse_sql(sql_text: str):
-                                info = {"joins": [], "where": "", "alias_map": {}}
-                                if not sql_text:
-                                    return info
-                                s = sql_text
-                                m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", s, flags=re.IGNORECASE)
-                                if m:
-                                    s = m.group(0)
-                                s1 = re.sub(r"--.*", "", s)
-                                s1 = re.sub(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/", "", s1)
-                                s1_select = re.split(r";", s1, maxsplit=1)[0]
-                                join_iter = re.finditer(
-                                    r"\b(?:(LEFT|RIGHT|FULL|INNER|OUTER|CROSS|NATURAL)\s+)?JOIN\s+([A-Za-z0-9_\"\.\$]+)(?:\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?)?\s+ON\s*([\s\S]*?)(?=\bJOIN\b|\bWHERE\b|\bGROUP\b|\bORDER\b|$)",
-                                    s1_select,
-                                    flags=re.IGNORECASE,
-                                )
-                                joins = []
-                                for m2 in join_iter:
-                                    jt = (m2.group(1) or "").strip()
-                                    obj = (m2.group(2) or "").strip()
-                                    alias = (m2.group(3) or "").strip()
-                                    on_txt = (m2.group(4) or "").strip()
-                                    parts_obj = [x for x in obj.split(".")]
-                                    base_tok = parts_obj[-1] if parts_obj else obj
-                                    if alias:
-                                        alias_up = alias.strip('"').upper()
-                                        # base_tok will be replaced later by alias_map if available
-                                    display_join_obj = base_tok
-                                    jt_prefix = (jt + " ") if jt else ""
-                                    joins.append(f"{jt_prefix}JOIN {display_join_obj} ON {on_txt}")
-                                info["joins"] = joins
-                                where_match = re.search(r"\bWHERE\b([\s\S]*?)(?=\bGROUP\b|\bORDER\b|$)", s1_select, flags=re.IGNORECASE)
-                                if where_match:
-                                    info["where"] = where_match.group(1).strip()
-                                fm = re.search(r"\bFROM\b([\s\S]*?)(?=\bWHERE\b|\bGROUP\b|\bORDER\b|$)", s1_select, flags=re.IGNORECASE)
-                                from_part = fm.group(1) if fm else ""
-                                def _pairs(pat):
-                                    try:
-                                        return re.findall(pat, from_part, flags=re.IGNORECASE)
-                                    except Exception:
-                                        return []
-                                base_pair = _pairs(r"\bFROM\b\s+(\"?[A-Za-z0-9_\$]+\"?(?:\.\"?[A-Za-z0-9_\$]+\"?)?)(?:\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?)?")
-                                comma_pairs = _pairs(r",\s*(\"?[A-Za-z0-9_\$]+\"?(?:\.\"?[A-Za-z0-9_\$]+\"?)?)\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?")
-                                join_pairs = _pairs(r"\bJOIN\b\s+(\"?[A-Za-z0-9_\$]+\"?(?:\.\"?[A-Za-z0-9_\$]+\"?)?)\s+(?:AS\s+)?\"?([A-Za-z0-9_]+)\"?")
-                                pairs = []
-                                if base_pair:
-                                    pairs.extend(base_pair)
-                                if comma_pairs:
-                                    pairs.extend(comma_pairs)
-                                if join_pairs:
-                                    pairs.extend(join_pairs)
-                                alias_map = {}
-                                for obj, alias in pairs:
-                                    if not alias:
-                                        continue
-                                    parts = [x for x in str(obj).split('.')]
-                                    base_tok = parts[-1] if parts else str(obj)
-                                    alias_up = str(alias).strip().strip('"').upper()
-                                    alias_map[alias_up] = base_tok
-                                info["alias_map"] = alias_map
-                                return info
-                            p = _parse_sql(ddl)
-                            def _replace_aliases(text, amap):
-                                t = str(text or "")
-                                if not t or not amap:
-                                    return t
-                                for a, b in amap.items():
-                                    t = re.sub(rf'\"{a}\"', b, t, flags=re.IGNORECASE)
-                                    t = re.sub(rf'\b{a}\b(?=\s*\.)', b, t, flags=re.IGNORECASE)
-                                    t = re.sub(rf'(\b(?:LEFT|RIGHT|FULL|INNER|OUTER|CROSS|NATURAL)?\s*JOIN\s+)\b{a}\b', rf'\1{b}', t, flags=re.IGNORECASE)
-                                return t
-                            amap = p.get("alias_map", {})
-                            joins_text = "\n\n".join([_replace_aliases(j, amap) for j in p.get("joins", [])])
-                            where_text = _replace_aliases(p.get("where", ""), amap)
-                            return view_name, col_df, ddl, joins_text, where_text
+                            return view_name, col_df, ddl, "", ""
                         else:
                             logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
@@ -1599,7 +1541,81 @@ def build_management_tab(pool):
                 outputs=[view_drop_result, view_list_df, selected_view_name, 
                         view_columns_df, view_ddl_text, view_join_text, view_where_text]
             )
-            
+
+            async def _view_join_where_ai_extract_async(model_name, ddl_text):
+                from utils.chat_util import get_oci_region, get_compartment_id
+                region = get_oci_region()
+                compartment_id = get_compartment_id()
+                if not region or not compartment_id:
+                    return gr.Textbox(value=""), gr.Textbox(value="")
+                try:
+                    s = str(ddl_text or "").strip()
+                    if not s:
+                        return gr.Textbox(value=""), gr.Textbox(value="")
+                    m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", s, flags=re.IGNORECASE)
+                    if m:
+                        s = m.group(0)
+                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                    client = AsyncOciOpenAI(
+                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                        auth=OciUserPrincipalAuth(),
+                        compartment_id=compartment_id,
+                    )
+                    prompt = (
+                        "Extract ONLY JOIN and WHERE conditions from the SQL query below.\n"
+                        "Output in STRICT format (no explanations, no markdown, no extra text):\n\n"
+                        "JOIN:\n"
+                        "[JOIN_TYPE] alias1(schema.table1).column1 = alias2(schema.table2).column2\n"
+                        "[JOIN_TYPE] alias3(schema.table3).column3 = alias4(schema.table4).column4\n\n"
+                        "WHERE:\n"
+                        "alias(schema.table).column operator value\n\n"
+                        "Rules:\n"
+                        "- Format: alias(schema.table_name).column or schema.table_name.column (if no alias)\n"
+                        "- JOIN_TYPE must be one of: INNER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN, CROSS JOIN, JOIN\n"
+                        "- Include schema name if present (e.g., ADMIN.USER_ROLE)\n"
+                        "- One condition per line\n"
+                        "- Keep original operators (=, >, <, LIKE, IN, etc.)\n"
+                        "- Preserve exact column names and values with quotes\n"
+                        "- If no JOIN/WHERE exists, output 'JOIN:\nNone' or 'WHERE:\nNone'\n\n"
+                        "SQL:\n```sql\n" + s + "\n```"
+                    )
+                    messages = [
+                        {"role": "system", "content": "You are a SQL parser. Output ONLY the requested format. No explanations."},
+                        {"role": "user", "content": prompt},
+                    ]
+                    resp = await client.chat.completions.create(model=model_name, messages=messages)
+                    join_text = ""
+                    where_text = ""
+                    if getattr(resp, "choices", None):
+                        msg = resp.choices[0].message
+                        out = msg.content if hasattr(msg, "content") else ""
+                        s2 = re.sub(r"```+\w*", "", str(out or ""))
+                        m2 = re.search(r"JOIN:\s*([\s\S]*?)\n\s*WHERE:\s*([\s\S]*)$", s2, flags=re.IGNORECASE)
+                        if m2:
+                            join_text = m2.group(1).strip()
+                            where_text = m2.group(2).strip()
+                    if not join_text:
+                        join_text = "None"
+                    if not where_text:
+                        where_text = "None"
+                    return gr.Textbox(value=join_text), gr.Textbox(value=where_text)
+                except Exception:
+                    return gr.Textbox(value="None"), gr.Textbox(value="None")
+
+            def _view_join_where_ai_extract(model_name, ddl_text):
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(_view_join_where_ai_extract_async(model_name, ddl_text))
+                finally:
+                    loop.close()
+
+            view_ai_extract_btn.click(
+                fn=_view_join_where_ai_extract,
+                inputs=[view_analysis_model_input, view_ddl_text],
+                outputs=[view_join_text, view_where_text],
+            )
             create_view_btn.click(
                 fn=execute_create_view_handler,
                 inputs=[create_view_sql],
@@ -1696,7 +1712,7 @@ def build_management_tab(pool):
 
             view_ai_analyze_btn.click(
                 fn=view_ai_analyze,
-                inputs=[view_ai_model_input, selected_view_name, view_columns_df, view_ddl_text, view_join_text, view_where_text, create_view_sql, create_view_result],
+                inputs=[view_ai_model_input, selected_view_name, view_columns_df, view_ddl_text, gr.Textbox(value=""), gr.Textbox(value=""), create_view_sql, create_view_result],
                 outputs=[view_ai_status_md, view_ai_result_md],
             )
         
