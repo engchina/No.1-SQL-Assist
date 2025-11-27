@@ -461,8 +461,7 @@ def build_selectai_tab(pool):
                             model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
                     with gr.Accordion(label="2. 訓練データ一覧", open=True):
                         with gr.Row():
-                            with gr.Column():
-                                td_refresh_btn = gr.Button("訓練データ一覧を更新", variant="primary")
+                            td_refresh_btn = gr.Button("訓練データ一覧を更新", variant="primary")
                         with gr.Row():
                             td_refresh_status = gr.Markdown(visible=False)
                         # 削除: 不要な隠しダウンロードボタン
@@ -472,7 +471,7 @@ def build_selectai_tab(pool):
                             td_upload_excel_file = gr.File(label="Excelファイル", file_types=[".xlsx"], type="filepath")
                         with gr.Row():
                             with gr.Column():
-                                td_download_excel_btn = gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
+                                gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
                             with gr.Column():
                                 td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
                         with gr.Row():
@@ -480,7 +479,6 @@ def build_selectai_tab(pool):
                     # 訓練データのCRUD機能は削除
                     with gr.Accordion(label="4. モデル学習", open=True):
                         with gr.Row():
-                            td_train_btn = gr.Button("学習を実行", variant="primary")
                             td_train_status = gr.Markdown(visible=False)
                         with gr.Row():
                             td_embed_model = gr.Dropdown(
@@ -491,7 +489,10 @@ def build_selectai_tab(pool):
                             )
                         with gr.Row():
                             td_model_name = gr.Textbox(label="モデル名", value=f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}", interactive=True)
-                        # 重複テキスト除外は不要
+                        with gr.Row():
+                            td_train_iterations = gr.Slider(label="学習回数", minimum=1, maximum=10, step=1, value=5, interactive=True)
+                        with gr.Row():
+                            td_train_btn = gr.Button("学習を実行", variant="primary")
                     with gr.Accordion(label="5. モデルテスト", open=True):
                         with gr.Row():
                             mt_refresh_models_btn = gr.Button("モデル一覧を更新", variant="primary")
@@ -790,8 +791,13 @@ def build_selectai_tab(pool):
                         logger.error(f"削除に失敗しました: {e}")
                         return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {e}"), gr.Dataframe(value=_td_list(), visible=True), "", "", ""
 
-                def _td_train(save_path, embed_model, model_name):
+                def _td_train(save_path, embed_model, model_name, iterations):
                     try:
+                        try:
+                            iters = int(iterations or 1)
+                        except Exception:
+                            iters = 1
+                        yield gr.Markdown(visible=True, value="⏳ 学習開始")
                         from utils.oci_util import get_region
                         import oracledb
                         p = Path("uploads") / "training_data.xlsx"
@@ -809,6 +815,10 @@ def build_selectai_tab(pool):
                                     if s_txt:
                                         dataset.append({"text": s_txt, "label": s_bd})
                                         labels.add(s_bd)
+                        if not dataset:
+                            yield gr.Markdown(visible=True, value="⚠️ 訓練データがありません")
+                            return
+                        yield gr.Markdown(visible=True, value=f"⏳ 訓練データ読み込み完了: {len(dataset)}件")
                         sp_root = Path(str(save_path or os.environ.get("MODEL_SAVE_PATH", "models")))
                         sp_root.mkdir(parents=True, exist_ok=True)
                         mname = str(model_name or f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}").strip()
@@ -866,12 +876,19 @@ END;"""
                                     return vec
                         # Build centroids per label
                         by_label = {}
+                        processed = 0
+                        total = len(dataset)
                         for item in dataset:
                             lab = item["label"]
                             txt = item["text"]
                             vec = _embed_one(txt)
+                            processed += 1
+                            if processed == 1 or processed % 10 == 0 or processed == total:
+                                yield gr.Markdown(visible=True, value=f"⏳ ベクトル計算中 {processed}/{total}")
                             if vec:
                                 by_label.setdefault(lab, []).append(vec)
+                        for i in range(max(1, iters)):
+                            yield gr.Markdown(visible=True, value=f"⏳ 学習中 ({i+1}/{max(1, iters)})")
                         centroids = {}
                         for lab, vecs in by_label.items():
                             if vecs:
@@ -890,6 +907,7 @@ END;"""
                                 "embed_model": str(embed_model or "cohere.embed-v4.0"),
                                 "region": str(region),
                                 "model_name": mname,
+                                "iterations": max(1, iters),
                             }, f, ensure_ascii=False, indent=2)
                         emb_path = sp / "model.embeddings.json"
                         with emb_path.open("w", encoding="utf-8") as f:
@@ -909,10 +927,10 @@ END;"""
                                 json.dump(idx, f, ensure_ascii=False, indent=2)
                         except Exception:
                             pass
-                        return gr.Markdown(visible=True, value=f"✅ 学習用データを保存しました（{len(dataset)}件、ラベル: {', '.join(sorted(list(labels)))})")
+                        yield gr.Markdown(visible=True, value=f"✅ 学習用データを保存しました（{len(dataset)}件、ラベル: {', '.join(sorted(list(labels)))})")
                     except Exception as e:
                         logger.error(f"学習に失敗しました: {e}")
-                        return gr.Markdown(visible=True, value=f"❌ 学習に失敗しました: {e}")
+                        yield gr.Markdown(visible=True, value=f"❌ 学習に失敗しました: {e}")
 
                 # ラベル候補の更新は削除
 
@@ -954,7 +972,6 @@ END;"""
                             "url": f"https://inference.generativeai.{region}.oci.oraclecloud.com/20231130/actions/embedText",
                             "model": model_used,
                         }
-                        import asyncio
                         # Use DB embedding path synchronously inside async
                         try:
                             with pool.acquire() as conn:
@@ -1090,7 +1107,7 @@ END;"""
                 # 訓練データの作成・更新・削除機能は削除
                 td_train_btn.click(
                     fn=_td_train,
-                    inputs=[model_save_path_text, td_embed_model, td_model_name],
+                    inputs=[model_save_path_text, td_embed_model, td_model_name, td_train_iterations],
                     outputs=[td_train_status],
                 )
                 mt_refresh_models_btn.click(
@@ -1238,7 +1255,7 @@ END;"""
                             show_copy_button=True,
                         )
 
-                        dev_used_objects_df = gr.Dataframe(
+                        gr.Dataframe(
                             label="使用オブジェクト一覧",
                             interactive=False,
                             wrap=True,
@@ -1426,7 +1443,6 @@ END;"""
                                     return gr.Textbox(value=gen_sql_display)
                         except Exception as e:
                             logger.error(f"_dev_step_generate error: {e}")
-                            ui_msg = f"❌ エラー: {str(e)}"
                             return gr.Textbox(value="")
 
                     def _dev_step_run_sql(profile, generated_sql):
@@ -1491,8 +1507,7 @@ END;"""
                                     yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                         except Exception as e:
                             logger.error(f"_dev_step_run_sql error: {e}")
-                            ui_msg = f"❌ エラー: {str(e)}"
-                            yield gr.Markdown(visible=True, value=ui_msg), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                            yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
 
                     def _dev_step_explain(profile, generated_sql, current_summary):
                         try:
@@ -1527,8 +1542,7 @@ END;"""
                                     return gr.Markdown(visible=True, value=base)
                         except Exception as e:
                             logger.error(f"_dev_step_explain error: {e}")
-                            ui_msg = f"❌ エラー: {str(e)}"
-                            return gr.Markdown(visible=True, value=ui_msg)
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}")
 
                     async def _dev_ai_analyze_async(model_name, sql_text):
                         try:
@@ -3116,10 +3130,6 @@ END;"""
                         with gr.Row():
                             rev_profile_select = gr.Dropdown(label="Profile", choices=[], interactive=True)
                         with gr.Row():
-                            rev_include_samples = gr.Checkbox(label="サンプルを含める", value=False)
-                        with gr.Row():
-                            rev_sample_rows = gr.Slider(label="サンプル件数", minimum=0, maximum=50, step=1, value=5, interactive=True)
-                        with gr.Row():
                             rev_model_input = gr.Dropdown(
                                 label="モデル",
                                 choices=[
@@ -3163,7 +3173,7 @@ END;"""
                             logger.error(f"_rev_on_profile_refresh error: {e}")
                             yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
-                    def _rev_build_context_text(profile_name, include_samples, sample_rows):
+                    def _rev_build_context_text(profile_name):
                         try:
                             prof = _resolve_profile_name(pool, str(profile_name or ""))
                             attrs = _get_profile_attributes(pool, prof) or {}
@@ -3176,7 +3186,6 @@ END;"""
                                 tab_names = set(df_tab["Table Name"].tolist() if (isinstance(df_tab, pd.DataFrame) and "Table Name" in df_tab.columns) else [])
                                 view_names = set(df_view["View Name"].tolist() if (isinstance(df_view, pd.DataFrame) and "View Name" in df_view.columns) else [])
                             except Exception:
-                                tab_names = set()
                                 view_names = set()
                             for o in obj_list:
                                 name = str((o or {}).get("name") or "")
@@ -3186,81 +3195,42 @@ END;"""
                                     views.append(name)
                                 else:
                                     tables.append(name)
-                            include_structure = True
-                            include_comments = True
-                            include_annotations = True
-                            include_samples = bool(include_samples)
                             chunks = []
-                            chunks.append(f"PROFILE: {prof}")
-                            if tables:
-                                chunks.append("TABLES: " + ", ".join(sorted(set(tables))))
-                            if views:
-                                chunks.append("VIEWS: " + ", ".join(sorted(set(views))))
-                            if include_structure:
-                                for t in tables:
-                                    cols_df, _ddl = get_table_details(pool, t)
-                                    lines = [f"[TABLE STRUCTURE] {t}"]
-                                    if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
-                                        for _, row in cols_df.iterrows():
-                                            lines.append(f"- {row.get('Column Name')}: {row.get('Data Type')} NULLABLE={row.get('Nullable')}")
-                                    chunks.append("\n".join(lines))
-                                for v in views:
-                                    cols_df, _ddl = get_view_details(pool, v)
-                                    lines = [f"[VIEW STRUCTURE] {v}"]
-                                    if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
-                                        for _, row in cols_df.iterrows():
-                                            lines.append(f"- {row.get('Column Name')}: {row.get('Data Type')} NULLABLE={row.get('Nullable')}")
-                                    chunks.append("\n".join(lines))
-                            if include_comments:
-                                for t in tables:
-                                    cols_df, _ddl = get_table_details(pool, t)
-                                    lines = [f"[TABLE COMMENTS] {t}"]
-                                    if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
-                                        for _, row in cols_df.iterrows():
-                                            cmt = str(row.get("Comments") or "").strip()
-                                            if cmt:
-                                                lines.append(f"- {row.get('Column Name')}: {cmt}")
-                                    chunks.append("\n".join(lines))
-                                for v in views:
-                                    cols_df, _ddl = get_view_details(pool, v)
-                                    lines = [f"[VIEW COMMENTS] {v}"]
-                                    if isinstance(cols_df, pd.DataFrame) and not cols_df.empty:
-                                        for _, row in cols_df.iterrows():
-                                            cmt = str(row.get("Comments") or "").strip()
-                                            if cmt:
-                                                lines.append(f"- {row.get('Column Name')}: {cmt}")
-                                    chunks.append("\n".join(lines))
-                            if include_annotations:
-                                chunks.append("[ANNOTATIONS] この環境ではアノテーション情報の辞書参照は未実装です")
-                            if include_samples:
-                                lim = int(sample_rows or 0)
-                                if lim > 0:
-                                    from utils.management_util import display_table_data
-                                    for t in tables:
-                                        df = display_table_data(pool, t, lim)
-                                        if isinstance(df, pd.DataFrame) and not df.empty:
-                                            chunks.append(f"[SAMPLES] {t}\n" + df.head(lim).to_csv(index=False))
-                            ctx = "\n\n".join([c for c in chunks if c])
-                            return ctx
+                            # CREATE DDL + COMMENT statements (column level)
+                            for t in sorted(set(tables)):
+                                try:
+                                    cols_df, ddl = get_table_details(pool, t)
+                                except Exception:
+                                    cols_df, ddl = pd.DataFrame(), ""
+                                if ddl:
+                                    chunks.append(str(ddl).strip())
+                            for v in sorted(set(views)):
+                                try:
+                                    cols_df, ddl = get_view_details(pool, v)
+                                except Exception:
+                                    cols_df, ddl = pd.DataFrame(), ""
+                                if ddl:
+                                    chunks.append(str(ddl).strip())
+                            return "\n\n".join([c for c in chunks if c]) or ""
                         except Exception as e:
                             logger.error(f"_rev_build_context error: {e}")
                             return f"エラー: {e}"
 
-                    def _rev_build_context(profile_name, include_samples, sample_rows):
+                    def _rev_build_context(profile_name):
                         try:
-                            txt = _rev_build_context_text(profile_name, include_samples, sample_rows)
+                            txt = _rev_build_context_text(profile_name)
                             return gr.Textbox(value=txt)
                         except Exception as e:
                             return gr.Textbox(value=f"エラー: {e}")
 
-                    async def _rev_generate_async(model_name, profile_name, sql_text, include_samples, sample_rows):
+                    async def _rev_generate_async(model_name, profile_name, sql_text):
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Textbox(value="OCI設定が不足しています"), gr.Textbox(value="")
-                            ctx_comp = _rev_build_context_text(profile_name, include_samples, sample_rows)
+                                return gr.Textbox(value="OCI設定が不足しています")
+                            ctx_comp = _rev_build_context_text(profile_name)
                             s = str(sql_text or "").strip()
                             prompt = (
                                 "与えられたSQLとデータベースの文脈から、そのSQLが生成されるような最適な日本語の質問を1つだけ作成してください。\n"
@@ -3285,17 +3255,17 @@ END;"""
                                 out_text = msg.content if hasattr(msg, "content") else ""
                             import re as _re
                             out_text = _re.sub(r"^```.*?\n|\n```$", "", str(out_text or ""), flags=_re.DOTALL).strip()
-                            return gr.Textbox(value=out_text), gr.Textbox(value=ctx_comp)
+                            return gr.Textbox(value=out_text)
                         except Exception as e:
                             logger.error(f"_rev_generate_async error: {e}")
-                            return gr.Textbox(value=f"エラー: {e}"), gr.Textbox(value="")
+                            return gr.Textbox(value=f"エラー: {e}")
 
-                    def _rev_generate(model_name, profile_name, sql_text, include_samples, sample_rows):
+                    def _rev_generate(model_name, profile_name, sql_text):
                         import asyncio
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            return loop.run_until_complete(_rev_generate_async(model_name, profile_name, sql_text, include_samples, sample_rows))
+                            return loop.run_until_complete(_rev_generate_async(model_name, profile_name, sql_text))
                         finally:
                             loop.close()
 
@@ -3304,29 +3274,19 @@ END;"""
                         outputs=[rev_profile_refresh_status, rev_profile_select],
                     )
 
-                    def _on_profile_change_set_context(p, inc, sr):
-                        return _rev_build_context(p, inc, sr)
+                    def _on_profile_change_set_context(p):
+                        return _rev_build_context(p)
 
                     rev_profile_select.change(
                         fn=_on_profile_change_set_context,
-                        inputs=[rev_profile_select, rev_include_samples, rev_sample_rows],
-                        outputs=[rev_context_text],
-                    )
-                    rev_include_samples.change(
-                        fn=_on_profile_change_set_context,
-                        inputs=[rev_profile_select, rev_include_samples, rev_sample_rows],
-                        outputs=[rev_context_text],
-                    )
-                    rev_sample_rows.change(
-                        fn=_on_profile_change_set_context,
-                        inputs=[rev_profile_select, rev_include_samples, rev_sample_rows],
+                        inputs=[rev_profile_select],
                         outputs=[rev_context_text],
                     )
 
                     rev_generate_btn.click(
                         fn=_rev_generate,
-                        inputs=[rev_model_input, rev_profile_select, rev_sql_input, rev_include_samples, rev_sample_rows],
-                        outputs=[rev_question_output, rev_context_text],
+                        inputs=[rev_model_input, rev_profile_select, rev_sql_input],
+                        outputs=[rev_question_output],
                     )
 
         with gr.TabItem(label="ユーザー機能"):
@@ -3404,30 +3364,29 @@ END;"""
                             chat_clear_btn = gr.Button("クリア", variant="secondary")
                             chat_execute_btn = gr.Button("実行", variant="primary")
 
-                    with gr.Accordion(label="2. 実行結果", open=True):
-                        chat_result_info = gr.Markdown(
-                            value="ℹ️ Profile を選択し、自然言語の質問を入力して「実行」をクリックしてください",
-                            visible=True,
-                        )
+                        with gr.Accordion(label="2. 実行結果", open=True):
+                            chat_result_info = gr.Markdown(
+                                value="ℹ️ Profile を選択し、自然言語の質問を入力して「実行」をクリックしてください",
+                                visible=True,
+                            )
+                            chat_result_df = gr.Dataframe(
+                                label="実行結果",
+                                interactive=False,
+                                wrap=True,
+                                visible=False,
+                                value=pd.DataFrame(),
+                                elem_id="selectai_chat_result_df",
+                            )
+                            chat_result_style = gr.HTML(visible=False)
 
-                        chat_result_df = gr.Dataframe(
-                            label="実行結果",
-                            interactive=False,
-                            wrap=True,
-                            visible=False,
-                            value=pd.DataFrame(),
-                            elem_id="selectai_chat_result_df",
-                        )
-                        chat_result_style = gr.HTML(visible=False)
-
-                    with gr.Accordion(label="3. 生成SQL", open=False):
-                        generated_sql_text = gr.Textbox(
-                            label="生成されたSQL文",
-                            lines=8,
-                            max_lines=15,
-                            interactive=False,
-                            show_copy_button=True,
-                        )
+                        with gr.Accordion(label="3. 生成SQL", open=False):
+                            generated_sql_text = gr.Textbox(
+                                label="生成されたSQL文",
+                                lines=8,
+                                max_lines=15,
+                                interactive=False,
+                                show_copy_button=True,
+                            )
 
             def _user_step_generate(profile, prompt, extra_prompt, include_extra):
                 s = str(prompt or "").strip()
@@ -3581,8 +3540,7 @@ END;"""
                                 return
                             yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
                 except Exception as e:
-                    ui_msg = f"❌ エラー: {str(e)}"
-                    yield gr.Markdown(visible=True, value=ui_msg), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
+                    yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
 
             def _on_chat_clear():
                 return "", gr.Dropdown(choices=_profile_names()), gr.Textbox(value="")
