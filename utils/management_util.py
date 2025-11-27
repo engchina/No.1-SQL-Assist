@@ -645,7 +645,6 @@ def get_table_list_for_data(pool):
     except Exception as e:
         logger.error(f"Error getting table/view list for data: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"テーブル・ビュー一覧の取得に失敗しました: {str(e)}")
         return []
 
 
