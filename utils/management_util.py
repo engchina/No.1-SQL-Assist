@@ -174,7 +174,7 @@ def get_table_details(pool, table_name):
     except Exception as e:
         logger.error(f"Error getting table details: {e}")
         logger.error(traceback.format_exc())
-        gr.Warning(f"テーブル詳細の取得に失敗しました: {str(e)}")
+        logger.error(f"テーブル詳細の取得に失敗しました: {str(e)}")
         return pd.DataFrame(columns=["Column Name", "Data Type", "Nullable", "Comments"]), ""
 
 
@@ -189,8 +189,8 @@ def drop_table(pool, table_name):
         str: Result message
     """
     if not table_name:
-        gr.Warning("テーブル名を指定してください")
-        return "エラー: テーブル名が指定されていません"
+        logger.error("テーブル名が未指定です")
+        return "❌ エラー: テーブル名が指定されていません"
     
     try:
         with pool.acquire() as conn:
@@ -199,7 +199,7 @@ def drop_table(pool, table_name):
                 cursor.execute(sql)
                 conn.commit()
                 logger.info(f"Table dropped: {table_name}")
-                return f"成功: テーブル '{table_name}' を削除しました"
+                return f"✅ 成功: テーブル '{table_name}' を削除しました"
     except Exception as e:
         logger.error(f"Error dropping table: {e}")
         logger.error(traceback.format_exc())
@@ -220,8 +220,8 @@ def execute_create_table(pool, create_sql):
         str: Result message
     """
     if not create_sql or not create_sql.strip():
-        gr.Warning("CREATE TABLE文を入力してください")
-        return "エラー: SQL文が入力されていません"
+        logger.error("CREATE TABLE文が未入力です")
+        return "❌ エラー: SQL文が入力されていません"
     
     try:
         with pool.acquire() as conn:
@@ -230,8 +230,8 @@ def execute_create_table(pool, create_sql):
                 sql_statements = [stmt.strip() for stmt in create_sql.split(';') if stmt.strip()]
                 
                 if not sql_statements:
-                    gr.Warning("SQL文が空です")
-                    return "エラー: SQL文が空です"
+                    logger.error("CREATE TABLEのSQL文が空です")
+                    return "❌ エラー: SQL文が空です"
 
                 disallowed = []
                 for idx, sql_stmt in enumerate(sql_statements, 1):
@@ -267,12 +267,11 @@ def execute_create_table(pool, create_sql):
                     
                 # Prepare result message
                 if error_messages:
-                    result = f"部分的に成功: {executed_count}/{len(sql_statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
-                    gr.Warning(result)
+                    result = f"⚠️ 部分的に成功: {executed_count}/{len(sql_statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
                     logger.warning(f"Partial success: {executed_count}/{len(sql_statements)} statements executed")
                     return result
                 else:
-                    result = f"成功: {executed_count}件の文をすべて実行しました"
+                    result = f"✅ 成功: {executed_count}件の文をすべて実行しました"
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
                     
@@ -433,7 +432,7 @@ def get_view_details(pool, view_name):
     except Exception as e:
         logger.error(f"Error getting view details: {e}")
         logger.error(traceback.format_exc())
-        gr.Warning(f"ビュー詳細の取得に失敗しました: {str(e)}")
+        logger.error(f"ビュー詳細の取得に失敗しました: {str(e)}")
         return pd.DataFrame(columns=["Column Name", "Data Type", "Nullable", "Comments"]), ""
 
 
@@ -509,8 +508,8 @@ def drop_view(pool, view_name):
         str: Result message
     """
     if not view_name:
-        gr.Warning("ビュー名を指定してください")
-        return "エラー: ビュー名が指定されていません"
+        logger.error("ビュー名が未指定です")
+        return "❌ エラー: ビュー名が指定されていません"
     
     try:
         with pool.acquire() as conn:
@@ -519,7 +518,7 @@ def drop_view(pool, view_name):
                 cursor.execute(sql)
                 conn.commit()
                 logger.info(f"View dropped: {view_name}")
-                return f"成功: ビュー '{view_name}' を削除しました"
+                return f"✅ 成功: ビュー '{view_name}' を削除しました"
     except Exception as e:
         logger.error(f"Error dropping view: {e}")
         logger.error(traceback.format_exc())
@@ -540,8 +539,8 @@ def execute_create_view(pool, create_sql):
         str: Result message
     """
     if not create_sql or not create_sql.strip():
-        gr.Warning("CREATE VIEW文を入力してください")
-        return "エラー: SQL文が入力されていません"
+        logger.error("CREATE VIEW文が未入力です")
+        return "❌ エラー: SQL文が入力されていません"
     
     try:
         with pool.acquire() as conn:
@@ -550,8 +549,8 @@ def execute_create_view(pool, create_sql):
                 sql_statements = [stmt.strip() for stmt in create_sql.split(';') if stmt.strip()]
                 
                 if not sql_statements:
-                    gr.Warning("SQL文が空です")
-                    return "エラー: SQL文が空です"
+                    logger.error("CREATE VIEWのSQL文が空です")
+                    return "❌ エラー: SQL文が空です"
 
                 disallowed = []
                 for idx, sql_stmt in enumerate(sql_statements, 1):
@@ -592,12 +591,11 @@ def execute_create_view(pool, create_sql):
                     
                 # Prepare result message
                 if error_messages:
-                    result = f"部分的に成功: {executed_count}/{len(sql_statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
-                    gr.Warning(result)
+                    result = f"⚠️ 部分的に成功: {executed_count}/{len(sql_statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
                     logger.warning(f"Partial success: {executed_count}/{len(sql_statements)} statements executed")
                     return result
                 else:
-                    result = f"成功: {executed_count}件の文をすべて実行しました"
+                    result = f"✅ 成功: {executed_count}件の文をすべて実行しました"
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
                     
@@ -680,7 +678,7 @@ def display_table_data(pool, table_name, limit, where_clause=""):
         pd.DataFrame: DataFrame containing table/view data
     """
     if not table_name:
-        gr.Warning("テーブルまたはビューを選択してください")
+        logger.error("テーブルまたはビューが未選択です")
         return pd.DataFrame()
     
     try:
@@ -725,11 +723,11 @@ def upload_csv_data(pool, file, table_name, upload_mode):
         tuple: (preview_df, result_message)
     """
     if not file:
-        gr.Warning("CSVファイルを選択してください")
+        logger.error("CSVファイルが未選択です")
         return pd.DataFrame(), "エラー: ファイルが選択されていません"
     
     if not table_name:
-        gr.Warning("テーブルを選択してください")
+        logger.error("アップロード先テーブルが未選択です")
         return pd.DataFrame(), "エラー: テーブルが選択されていません"
     
     try:
@@ -738,7 +736,7 @@ def upload_csv_data(pool, file, table_name, upload_mode):
         logger.info(f"CSV file loaded: {len(df)} rows, {len(df.columns)} columns")
         
         if df.empty:
-            gr.Warning("CSVファイルが空です")
+            logger.error("CSVファイルが空です")
             return df, "エラー: CSVファイルにデータがありません"
         
         # Get preview (first 10 rows)
@@ -800,14 +798,11 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                 conn.commit()
                 
                 # Prepare result message
-                result = f"成功: {success_count}件のデータを挿入しました"
+                result = f"✅ 成功: {success_count}件のデータを挿入しました"
                 if error_count > 0:
-                    result += f"\n\n警告: {error_count}件のエラーが発生しました\n" + "\n".join(error_messages)
+                    result += f"\n\n⚠️ 警告: {error_count}件のエラーが発生しました\n" + "\n".join(error_messages)
                     if error_count > 5:
                         result += f"\n... 他 {error_count - 5} 件のエラー"
-                    gr.Warning(result)
-                else:
-                    pass
                 
                 logger.info(f"CSV upload completed: {success_count} success, {error_count} errors")
                 return preview_df, result
@@ -815,7 +810,7 @@ def upload_csv_data(pool, file, table_name, upload_mode):
     except Exception as e:
         logger.error(f"Error uploading CSV: {e}")
         logger.error(traceback.format_exc())
-        return pd.DataFrame(), f"エラー: {str(e)}"
+        return pd.DataFrame(), f"❌ エラー: {str(e)}"
 
 
 def execute_data_sql(pool, sql_statements):
@@ -833,8 +828,8 @@ def execute_data_sql(pool, sql_statements):
         str: Result message
     """
     if not sql_statements or not sql_statements.strip():
-        gr.Warning("SQL文を入力してください")
-        return "エラー: SQL文が入力されていません"
+        logger.error("データSQLが未入力です")
+        return "❌ エラー: SQL文が入力されていません"
     
     try:
         with pool.acquire() as conn:
@@ -843,8 +838,8 @@ def execute_data_sql(pool, sql_statements):
                 statements = [stmt.strip() for stmt in sql_statements.split(';') if stmt.strip()]
                 
                 if not statements:
-                    gr.Warning("SQL文が空です")
-                    return "エラー: SQL文が空です"
+                    logger.error("データSQLの文が空です")
+                    return "❌ エラー: SQL文が空です"
                 
                 disallowed = []
                 for idx, sql_stmt in enumerate(statements, 1):
@@ -886,13 +881,12 @@ def execute_data_sql(pool, sql_statements):
                 # Prepare result message
                 if error_messages:
                     total_rows = sum(affected_rows)
-                    result = f"部分的に成功: {executed_count}/{len(statements)}件の文を実行しました（{total_rows}行に影響）\n\nエラー:\n" + "\n".join(error_messages)
-                    gr.Warning(result)
+                    result = f"⚠️ 部分的に成功: {executed_count}/{len(statements)}件の文を実行しました（{total_rows}行に影響）\n\nエラー:\n" + "\n".join(error_messages)
                     logger.warning(f"Partial success: {executed_count}/{len(statements)} statements executed")
                     return result
                 else:
                     total_rows = sum(affected_rows)
-                    result = f"成功: {executed_count}件の文をすべて実行しました（{total_rows}行に影響）"
+                    result = f"✅ 成功: {executed_count}件の文をすべて実行しました（{total_rows}行に影響）"
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
                     
@@ -916,16 +910,16 @@ def execute_comment_sql(pool, sql_statements):
         str: Result message
     """
     if not sql_statements or not sql_statements.strip():
-        gr.Warning("COMMENT文を入力してください")
-        return "エラー: SQL文が入力されていません"
+        logger.error("COMMENT文が未入力です")
+        return "❌ エラー: SQL文が入力されていません"
     
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
                 statements = [stmt.strip() for stmt in sql_statements.split(';') if stmt.strip()]
                 if not statements:
-                    gr.Warning("SQL文が空です")
-                    return "エラー: SQL文が空です"
+                    logger.error("COMMENTのSQL文が空です")
+                    return "❌ エラー: SQL文が空です"
                 disallowed = []
                 for idx, sql_stmt in enumerate(statements, 1):
                     stmt_upper = sql_stmt.strip().upper()
@@ -953,12 +947,11 @@ def execute_comment_sql(pool, sql_statements):
                 if executed_count > 0:
                     conn.commit()
                 if error_messages:
-                    result = f"部分的に成功: {executed_count}/{len(statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
-                    gr.Warning(result)
+                    result = f"⚠️ 部分的に成功: {executed_count}/{len(statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
                     logger.warning(f"Partial success: {executed_count}/{len(statements)} statements executed")
                     return result
                 else:
-                    result = f"成功: {executed_count}件の文をすべて実行しました"
+                    result = f"✅ 成功: {executed_count}件の文をすべて実行しました"
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
     except Exception as e:
@@ -968,15 +961,15 @@ def execute_comment_sql(pool, sql_statements):
 
 def execute_annotation_sql(pool, sql_statements):
     if not sql_statements or not str(sql_statements).strip():
-        gr.Warning("アノテーション文を入力してください")
-        return "エラー: SQL文が入力されていません"
+        logger.error("アノテーション文が未入力です")
+        return "❌ エラー: SQL文が入力されていません"
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
                 statements = [stmt.strip() for stmt in str(sql_statements).split(';') if stmt.strip()]
                 if not statements:
-                    gr.Warning("SQL文が空です")
-                    return "エラー: SQL文が空です"
+                    logger.error("アノテーションのSQL文が空です")
+                    return "❌ エラー: SQL文が空です"
                 disallowed = []
                 for idx, sql_stmt in enumerate(statements, 1):
                     up = sql_stmt.strip().upper()
@@ -1028,12 +1021,11 @@ def execute_annotation_sql(pool, sql_statements):
                 if executed_count > 0:
                     conn.commit()
                 if errors:
-                    result = f"部分的に成功: {executed_count}/{len(statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(errors)
-                    gr.Warning(result)
+                    result = f"⚠️ 部分的に成功: {executed_count}/{len(statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(errors)
                     logger.warning(f"Partial success: {executed_count}/{len(statements)} statements executed")
                     return result
                 else:
-                    result = f"成功: {executed_count}件の文をすべて実行しました"
+                    result = f"✅ 成功: {executed_count}件の文をすべて実行しました"
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
     except Exception as e:
@@ -1071,12 +1063,7 @@ def build_management_tab(pool):
                 )
 
                 table_drop_btn = gr.Button("選択したテーブルを削除", variant="stop")
-                table_drop_result = gr.Textbox(
-                    label="削除結果",
-                    lines=2,
-                    max_lines=5,
-                    interactive=False,
-                )
+                table_drop_result = gr.Markdown(visible=False)
                 
                 with gr.Row():
                     with gr.Column():
@@ -1114,12 +1101,7 @@ def build_management_tab(pool):
                     create_table_btn = gr.Button("テーブルを作成", variant="primary")
                 
                 with gr.Row():
-                    create_table_result = gr.Textbox(
-                        label="作成結果",
-                        lines=2,
-                        max_lines=5,
-                        interactive=False,
-                    )
+                    create_table_result = gr.Markdown(visible=False)
 
                 with gr.Accordion(label="AI分析と処理", open=False):
                     table_ai_model_input = gr.Dropdown(
@@ -1204,13 +1186,15 @@ def build_management_tab(pool):
                 """Drop the selected table and refresh list."""
                 result = drop_table(pool, table_name)
                 new_list = get_table_list(pool)
-                return result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), ""
+                status_md = gr.Markdown(visible=True, value=result)
+                return status_md, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), ""
             
             def execute_create(sql):
                 """Execute CREATE TABLE and refresh list."""
                 result = execute_create_table(pool, sql)
                 new_list = get_table_list(pool)
-                return result, gr.Dataframe(value=new_list, visible=True)
+                status_md = gr.Markdown(visible=True, value=result)
+                return status_md, gr.Dataframe(value=new_list, visible=True)
             
             def clear_sql():
                 """Clear the SQL input."""
@@ -1251,7 +1235,7 @@ def build_management_tab(pool):
                 region = get_oci_region()
                 compartment_id = get_compartment_id()
                 if not region or not compartment_id:
-                    return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
                     import pandas as pd
                     from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
@@ -1292,7 +1276,7 @@ def build_management_tab(pool):
                         text = msg.content if hasattr(msg, "content") else ""
                     return gr.Markdown(visible=True, value=text or "分析結果が空です")
                 except Exception as e:
-                    return gr.Markdown(visible=True, value=f"エラー: {e}")
+                    return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
             def table_ai_analyze(model_name, table_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
                 import asyncio
@@ -1336,12 +1320,7 @@ def build_management_tab(pool):
                 )
 
                 view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
-                view_drop_result = gr.Textbox(
-                    label="削除結果",
-                    lines=2,
-                    max_lines=5,
-                    interactive=False,
-                )
+                view_drop_result = gr.Markdown(visible=False)
                 
                 with gr.Row():
                     with gr.Column():
@@ -1414,12 +1393,7 @@ def build_management_tab(pool):
                     clear_view_sql_btn = gr.Button("クリア", variant="secondary")
                     create_view_btn = gr.Button("ビューを作成", variant="primary")
                 with gr.Row():                
-                    create_view_result = gr.Textbox(
-                        label="作成結果",
-                        lines=2,
-                        max_lines=5,
-                        interactive=False,
-                    )
+                    create_view_result = gr.Markdown(visible=False)
 
                 with gr.Accordion(label="AI分析と処理", open=False):
                     with gr.Row():
@@ -1514,7 +1488,8 @@ def build_management_tab(pool):
                 """Execute CREATE VIEW and refresh list."""
                 result = execute_create_view(pool, sql)
                 new_list = get_view_list(pool)
-                return result, gr.Dataframe(value=new_list, visible=True)
+                status_md = gr.Markdown(visible=True, value=result)
+                return status_md, gr.Dataframe(value=new_list, visible=True)
             
             def clear_view_sql():
                 """Clear the SQL input."""
@@ -1629,7 +1604,7 @@ def build_management_tab(pool):
                 region = get_oci_region()
                 compartment_id = get_compartment_id()
                 if not region or not compartment_id:
-                    return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
                     import pandas as pd
                     from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
@@ -1670,7 +1645,7 @@ def build_management_tab(pool):
                         text = msg.content if hasattr(msg, "content") else ""
                     return gr.Markdown(visible=True, value=text or "分析結果が空です")
                 except Exception as e:
-                    return gr.Markdown(visible=True, value=f"エラー: {e}")
+                    return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
             def view_ai_analyze(model_name, view_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
                 import asyncio
@@ -1767,12 +1742,7 @@ def build_management_tab(pool):
                 )
                 
                 csv_upload_btn = gr.Button("アップロード", variant="primary")
-                csv_upload_result = gr.Textbox(
-                    label="アップロード結果",
-                    lines=5,
-                    max_lines=5,
-                    interactive=False,
-                )
+                csv_upload_result = gr.Markdown(visible=False)
             
             # Feature 3: SQL Bulk Execution
             with gr.Accordion(label="3. SQL一括実行", open=False):
@@ -1803,12 +1773,7 @@ def build_management_tab(pool):
                     data_execute_btn = gr.Button("実行", variant="primary")
 
                 with gr.Row():        
-                    data_sql_result = gr.Textbox(
-                        label="実行結果",
-                        lines=2,
-                        max_lines=5,
-                        interactive=False,
-                    )
+                    data_sql_result = gr.Markdown(visible=False)
 
                 with gr.Accordion(label="AI分析と処理", open=False):
                     data_ai_model_input = gr.Dropdown(
@@ -1883,11 +1848,13 @@ def build_management_tab(pool):
             def upload_csv(file, table_name, mode):
                 """Upload CSV file."""
                 preview, result = upload_csv_data(pool, file, table_name, mode)
-                return preview, result
+                status_md = gr.Markdown(visible=True, value=result)
+                return preview, status_md
             
             def execute_sql(sql):
                 """Execute SQL statements."""
-                return execute_data_sql(pool, sql)
+                result = execute_data_sql(pool, sql)
+                return gr.Markdown(visible=True, value=result)
             
             def clear_sql():
                 """Clear SQL input."""
@@ -1966,7 +1933,7 @@ def build_management_tab(pool):
                 region = get_oci_region()
                 compartment_id = get_compartment_id()
                 if not region or not compartment_id:
-                    return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
                     import pandas as pd
                     from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
@@ -2004,7 +1971,7 @@ def build_management_tab(pool):
                         text = msg.content if hasattr(msg, "content") else ""
                     return gr.Markdown(visible=True, value=text or "分析結果が空です")
                 except Exception as e:
-                    return gr.Markdown(visible=True, value=f"エラー: {e}")
+                    return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
             def data_ai_analyze(model_name, obj_name, limit_value, where_text, df_input):
                 import asyncio

@@ -67,7 +67,7 @@ async def send_chat_message_async(
     logger.info(f"Message: {message[:100]}..." if len(message) > 100 else f"Message: {message}")
 
     if not message.strip():
-        gr.Warning("メッセージを入力してください")
+        logger.error("メッセージが未入力です")
         logger.warning("Empty message received")
         logger.info("=" * 50)
         yield history, ""

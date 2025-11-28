@@ -88,13 +88,16 @@ class LazyPool:
                     port = int(parts[1])
                 except Exception:
                     port = None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"_precheck_connectivity dsn parse error: {e}")
         t = float(os.environ.get("DB_CONNECT_PRECHECK_TIMEOUT", "3") or "3")
         if host:
             p = port or 1521
-            with socket.create_connection((host, p), timeout=t):
-                pass
+            try:
+                with socket.create_connection((host, p), timeout=t):
+                    _ = True
+            except Exception as e:
+                logger.error(f"DB precheck socket connect failed: {e}")
 
     def acquire(self):
         self._ensure()
@@ -102,16 +105,18 @@ class LazyPool:
             conn = self._pool.acquire()
             try:
                 conn.ping()
-            except Exception:
+            except Exception as e:
+                logger.error(f"conn.ping failed, resetting pool: {e}")
                 try:
                     conn.close()
-                except Exception:
-                    pass
+                except Exception as e2:
+                    logger.error(f"conn.close error: {e2}")
                 self.reset()
                 conn = self._pool.acquire()
                 conn.ping()
             return conn
-        except Exception:
+        except Exception as e:
+            logger.error(f"acquire failed, resetting pool: {e}")
             self.reset()
             conn = self._pool.acquire()
             conn.ping()
@@ -130,8 +135,8 @@ class LazyPool:
             if self._pool is not None:
                 try:
                     self._pool.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"pool.close error: {e}")
             self._pool = None
             logger.info("Recreating DB connection pool")
             self._pool = oracledb.create_pool(**self._kwargs)
@@ -146,7 +151,8 @@ class LazyPool:
                         with conn.cursor() as cursor:
                             cursor.execute(test_query)
                             _ = cursor.fetchmany(size=1)
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"warmup test_query failed: {e}")
                         raise
 
     def healthy(self) -> bool:
@@ -156,7 +162,8 @@ class LazyPool:
                     cursor.execute("SELECT 1 FROM DUAL")
                     _ = cursor.fetchmany(size=1)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"healthy check failed: {e}")
             return False
 
     def __getattr__(self, name):

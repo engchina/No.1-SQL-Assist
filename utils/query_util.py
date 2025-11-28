@@ -39,7 +39,7 @@ def _is_select_sql(sql: str) -> bool:
 
 def execute_select_sql(pool, sql: str, limit: int):
     if not sql or not sql.strip():
-        gr.Warning("SQLを入力してください")
+        logger.error("SQLが未入力です")
         return (
             gr.Markdown(visible=True, value="❌ エラー: SQLを入力してください"),
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果"),
@@ -331,18 +331,18 @@ def _stmt_type(stmt: str) -> str:
 
 def execute_sql_general(pool, sql: str, limit: int):
     if not sql or not str(sql).strip():
-        gr.Warning("SQLを入力してください")
+        logger.error("SQLが未入力です")
         return (
-            gr.Markdown(visible=True),
+            gr.Markdown(visible=True, value="❌ エラー: SQLを入力してください"),
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
             gr.HTML(visible=False, value=""),
         )
     statements = _split_sql_statements(sql)
     statements = [s for s in statements if s and s.strip()]
     if not statements:
-        gr.Warning("SQLを入力してください")
+        logger.error("分割後のSQLが空です")
         return (
-            gr.Markdown(visible=True),
+            gr.Markdown(visible=True, value="❌ エラー: SQLを入力してください"),
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
             gr.HTML(visible=False, value=""),
         )
@@ -364,8 +364,8 @@ def execute_sql_general(pool, sql: str, limit: int):
             with conn.cursor() as cursor:
                 try:
                     cursor.callproc("dbms_output.enable")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"dbms_output.enable failed: {e}")
                 for idx, st in enumerate(statements, start=1):
                     typ = _stmt_type(st)
                     run = _normalize_exec(st)
@@ -488,7 +488,7 @@ def build_query_tab(pool):
             region = get_oci_region()
             compartment_id = get_compartment_id()
             if not region or not compartment_id:
-                return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
             try:
                 import pandas as pd
                 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
@@ -529,7 +529,7 @@ def build_query_tab(pool):
                     text = msg.content if hasattr(msg, "content") else ""
                 return gr.Markdown(visible=True, value=text or "分析結果が空です")
             except Exception as e:
-                return gr.Markdown(visible=True, value=f"エラー: {e}")
+                return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
         def ai_analyze(model_name, sql_text, result_info_text, result_df_input):
             import asyncio

@@ -45,19 +45,19 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
     has_error = False
     if not user_ocid:
         has_error = True
-        gr.Warning("User OCIDを入力してください")
+        logger.error("User OCIDが未入力です")
     if not tenancy_ocid:
         has_error = True
-        gr.Warning("Tenancy OCIDを入力してください")
+        logger.error("Tenancy OCIDが未入力です")
     if not fingerprint:
         has_error = True
-        gr.Warning("Fingerprintを入力してください")
+        logger.error("Fingerprintが未入力です")
     if not private_key_file:
         has_error = True
-        gr.Warning("Private Keyを入力してください")
+        logger.error("Private Keyが未入力です")
     if not region:
         has_error = True
-        gr.Warning("Regionを選択してください")
+        logger.error("Regionが未選択です")
 
     if has_error:
         return gr.Markdown(visible=True, value="❌ 入力不足です")
@@ -105,16 +105,16 @@ def create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_f
     has_error = False
     if not user_ocid:
         has_error = True
-        gr.Warning("User OCIDを入力してください")
+        logger.error("User OCIDが未入力です")
     if not tenancy_ocid:
         has_error = True
-        gr.Warning("Tenancy OCIDを入力してください")
+        logger.error("Tenancy OCIDが未入力です")
     if not fingerprint:
         has_error = True
-        gr.Warning("Fingerprintを入力してください")
+        logger.error("Fingerprintが未入力です")
     if not private_key_file:
         has_error = True
-        gr.Warning("Private Keyを入力してください")
+        logger.error("Private Keyが未入力です")
     if has_error:
         return gr.Accordion(), gr.Textbox()
 
@@ -435,9 +435,6 @@ def build_oci_embedding_test_tab(pool):
     # UIコンポーネントの構築
     with gr.TabItem(label="テキスト埋め込みテスト") as tab_test_oci_cred:
         with gr.Accordion(label="OCI 認証情報の作成", open=True):
-            with gr.Row():
-                with gr.Column():
-                    tab_auto_create_status_md = gr.Markdown(visible=False)
             with gr.Accordion(label="SQL", open=False):
                 with gr.Column():
                     tab_auto_create_sql_text = gr.Textbox(
@@ -451,7 +448,9 @@ def build_oci_embedding_test_tab(pool):
                     )
             with gr.Row():
                 tab_auto_create_btn = gr.Button(value="OCI_CREDを作成", variant="primary")
-
+            with gr.Row():
+                tab_auto_create_status_md = gr.Markdown(visible=False)
+            
         with gr.Accordion(label="埋め込みモデル", open=True):
             with gr.Row():
                 with gr.Column():
@@ -672,12 +671,14 @@ def build_oracle_ai_database_tab(pool=None):
             with gr.Row():
                 fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
             with gr.Row():
-                adb_list_df = gr.Dataframe(label="ADB一覧", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
-            with gr.Row():
                 adb_status_md = gr.Markdown(visible=False)
+            with gr.Row():
+                adb_list_df = gr.Dataframe(label="ADB一覧", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
             with gr.Row():
                 start_btn = gr.Button(value="起動", interactive=False, variant="primary")
                 stop_btn = gr.Button(value="停止", interactive=False, variant="primary")
+            with gr.Row():
+                btn_status_md = gr.Markdown(visible=False)
         adb_map_state = gr.State({})
         adb_selected_id = gr.State("")
 
@@ -688,8 +689,8 @@ def build_oracle_ai_database_tab(pool=None):
                 v = getattr(x, "value", None)
                 if isinstance(v, dict):
                     return v
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"_state_to_val error: {e}")
             return {}
 
         def _fetch(region):
@@ -811,11 +812,11 @@ def build_oracle_ai_database_tab(pool=None):
                     if pool is not None:
                         try:
                             pool.close()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.error(f"pool.close during stop error: {e}")
                     _stop_adb(region_code, selected_id)
                 finally:
-                    pass
+                    _ = True
                 st = "STOPPING"
                 if selected_id in mpv:
                     mpv[selected_id]["state"] = st
@@ -842,12 +843,12 @@ def build_oracle_ai_database_tab(pool=None):
         start_btn.click(
             _start,
             inputs=[region_input, adb_selected_id, adb_map_state],
-            outputs=[adb_status_md, start_btn, stop_btn, adb_map_state, adb_list_df],
+            outputs=[btn_status_md, start_btn, stop_btn, adb_map_state, adb_list_df],
         )
         stop_btn.click(
             _stop,
             inputs=[region_input, adb_selected_id, adb_map_state],
-            outputs=[adb_status_md, start_btn, stop_btn, adb_map_state, adb_list_df],
+            outputs=[btn_status_md, start_btn, stop_btn, adb_map_state, adb_list_df],
         )
 
     return tab_adb

@@ -551,8 +551,8 @@ def build_selectai_tab(pool):
                             with conn.cursor() as cursor:
                                 try:
                                     cursor.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :name); EXCEPTION WHEN OTHERS THEN NULL; END;", name=new)
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.error(f"_am_generate sanitize error: {e}")
                                 cursor.execute("BEGIN DBMS_CLOUD_AI.CREATE_PROFILE(profile_name => :name, attributes => :attrs, description => :desc); END;", name=new, attrs=attr_str, desc=bd)
                                 if new != orig:
                                     cursor.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :name); END;", name=orig)
@@ -664,8 +664,8 @@ def build_selectai_tab(pool):
                         df = get_db_profiles(pool)
                         if isinstance(df, pd.DataFrame) and not df.empty:
                             return [str(x) for x in df["Profile Name"].tolist()]
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"_profile_names error: {e}")
                     return []
 
                 def _td_list():
@@ -696,7 +696,8 @@ def build_selectai_tab(pool):
                         try:
                             df_disp = df.copy()
                             df_disp["TEXT"] = df_disp["TEXT"].astype(str).map(lambda s: s if len(s) <= 200 else (s[:200] + " ..."))
-                        except Exception:
+                        except Exception as e:
+                            logger.error(f"build training data preview failed: {e}")
                             df_disp = df
                         yield gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df_disp)
                     except Exception as e:
@@ -817,8 +818,8 @@ END;"""
                                                     if isinstance(ev, list):
                                                         vec = [float(x) for x in ev]
                                                         break
-                                                except Exception:
-                                                    pass
+                                                except Exception as e:
+                                                    logger.error(f"_embed_one parse error: {e}")
                                     return vec
                         # Build centroids per label
                         by_label = {}
@@ -871,8 +872,8 @@ END;"""
                             idx.append({"model_name": mname, "labels": sorted(list(labels)), "samples": len(dataset), "created_at": datetime.now().isoformat(timespec="seconds")})
                             with index_path.open("w", encoding="utf-8") as f:
                                 json.dump(idx, f, ensure_ascii=False, indent=2)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.error(f"学習用データの保存に失敗しました: {e}")
                         yield gr.Markdown(visible=True, value=f"✅ 学習用データを保存しました（{len(dataset)}件、ラベル: {', '.join(sorted(list(labels)))})")
                     except Exception as e:
                         logger.error(f"学習に失敗しました: {e}")
@@ -889,7 +890,8 @@ END;"""
                                 if p.is_dir() and (p / "model.meta.json").exists():
                                     out.append(p.name)
                         return gr.Dropdown(choices=sorted(out))
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"_list_models error: {e}")
                         return gr.Dropdown(choices=[])
 
                 async def _mt_test_async(text, save_path, trained_model_name):
@@ -900,7 +902,7 @@ END;"""
                     meta_path = sp / "model.meta.json"
                     emb_path = sp / "model.embeddings.json"
                     if not meta_path.exists() or not emb_path.exists():
-                        return gr.Markdown(visible=True, value="モデルが未学習です。まず『学習を実行』してください")
+                        return gr.Markdown(visible=True, value="ℹ️ モデルが未学習です。まず『学習を実行』してください")
                     with meta_path.open("r", encoding="utf-8") as f:
                         meta = json.load(f)
                     with emb_path.open("r", encoding="utf-8") as f:
@@ -910,7 +912,7 @@ END;"""
                     region = meta.get("region", get_region())
                     model_used = str(meta.get("embed_model", "cohere.embed-v4.0"))
                     if not labels or not centroids:
-                        return gr.Markdown(visible=True, value="モデル情報が不足しています（labels/centroids）")
+                        return gr.Markdown(visible=True, value="ℹ️ モデル情報が不足しています（labels/centroids）")
                     def _embed_one(text: str):
                         embed_params = {
                             "provider": "ocigenai",
@@ -954,8 +956,8 @@ END;"""
                                                     if isinstance(ev, list):
                                                         vec = [float(x) for x in ev]
                                                         break
-                                                except Exception:
-                                                    pass
+                                                except Exception as e:
+                                                    logger.error(f"_load_vectors parse error: {e}")
                                     return vec
                         except Exception:
                             return []
@@ -1069,10 +1071,11 @@ END;"""
                                 idx = [x for x in idx if str(x.get("model_name")) != mname]
                                 with index_path.open("w", encoding="utf-8") as f:
                                     json.dump(idx, f, ensure_ascii=False, indent=2)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.error(f"_delete_model_meta error: {e}")
                         return _list_models(save_path)
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"_delete_model error: {e}")
                         return _list_models(save_path)
 
         with gr.TabItem(label="開発者機能"):
@@ -1278,10 +1281,10 @@ END;"""
                         inc = bool(include_extra)
                         final = s if not inc or not ep else (ep + "\n\n" + s)
                         if not profile or not str(profile).strip():
-                            gr.Warning("Profileを選択してください")
+                            logger.error("Profileが未選択です")
                             return gr.Textbox(value="")
                         if not final:
-                            gr.Warning("質問を入力してください")
+                            logger.error("質問が未入力です")
                             return gr.Textbox(value="")
                         q = final
                         if q.endswith(";"):
@@ -1349,8 +1352,8 @@ END;"""
                                                             break
                                                 if generated_sql:
                                                     break
-                                            except Exception:
-                                                pass
+                                            except Exception as e:
+                                                logger.error(f"_to_plain JSON decode error: {e}")
                                             m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", c, flags=re.IGNORECASE)
                                             if m:
                                                 generated_sql = m.group(0).strip()
@@ -2087,7 +2090,7 @@ END;"""
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Textbox(value="OCI設定が不足しています")
+                                return gr.Textbox(value="ℹ️ OCI設定が不足しています")
                             from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             client = AsyncOciOpenAI(
                                 service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -2106,7 +2109,7 @@ END;"""
                             return gr.Textbox(value=text)
                         except Exception as e:
                             logger.error(f"_cm_generate_async error: {e}")
-                            return gr.Textbox(value=f"エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}")
 
                     def _cm_generate(obj_name, model_name, extra_text, struct_text, pk_text, fk_text, samples_text):
                         loop = asyncio.new_event_loop()
@@ -2126,7 +2129,7 @@ END;"""
                         region = get_oci_region()
                         compartment_id = get_compartment_id()
                         if not region or not compartment_id:
-                            return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                            return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                         try:
                             from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             s = str(sql_text or "").strip()
@@ -2155,7 +2158,7 @@ END;"""
                                 text = msg.content if hasattr(msg, "content") else ""
                             return gr.Markdown(visible=True, value=text or "分析結果が空です")
                         except Exception as e:
-                            return gr.Markdown(visible=True, value=f"エラー: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
                     def _cm_ai_analyze(model_name, sql_text, exec_result_text):
                         import asyncio
@@ -2535,7 +2538,7 @@ END;"""
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
                                 logger.error("_am_generate_async missing OCI configuration: region or compartment_id is empty")
-                                return gr.Textbox(value="OCI設定が不足しています")
+                                return gr.Textbox(value="ℹ️ OCI設定が不足しています")
                             from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             client = AsyncOciOpenAI(
                                 service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -2637,14 +2640,14 @@ END;"""
                             return gr.Textbox(value=text)
                         except Exception as e:
                             logger.error(f"_am_generate_async error: {e}")
-                            return gr.Textbox(value=f"エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}")
 
                     async def _am_ai_analyze_async(model_name, sql_text, exec_result_text):
                         from utils.chat_util import get_oci_region, get_compartment_id
                         region = get_oci_region()
                         compartment_id = get_compartment_id()
                         if not region or not compartment_id:
-                            return gr.Markdown(visible=True, value="OCI設定が不足しています")
+                            return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                         try:
                             from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             s = str(sql_text or "").strip()
@@ -2673,7 +2676,7 @@ END;"""
                                 text = msg.content if hasattr(msg, "content") else ""
                             return gr.Markdown(visible=True, value=text or "分析結果が空です")
                         except Exception as e:
-                            return gr.Markdown(visible=True, value=f"エラー: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
                     def _am_ai_analyze(model_name, sql_text, exec_result_text):
                         import asyncio
@@ -2836,8 +2839,8 @@ END;"""
                                 prof_tables = sorted(set([str(o.get("name")) for o in obj_list if o and o.get("name")]))
                                 if prof_tables:
                                     table_names = [t for t in table_names if t in prof_tables]
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.error(f"_syn_refresh_objects filter by profile error: {e}")
                             return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.Dropdown(choices=table_names)
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
@@ -3209,7 +3212,7 @@ END;"""
                             txt = _rev_build_context_text(profile_name)
                             return gr.Textbox(value=txt)
                         except Exception as e:
-                            return gr.Textbox(value=f"エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}")
 
                     async def _rev_generate_async(model_name, profile_name, sql_text):
                         try:
@@ -3217,7 +3220,7 @@ END;"""
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Textbox(value="OCI設定が不足しています")
+                                return gr.Textbox(value="ℹ️ OCI設定が不足しています")
                             ctx_comp = _rev_build_context_text(profile_name)
                             s = str(sql_text or "").strip()
                             prompt = (
@@ -3246,7 +3249,7 @@ END;"""
                             return gr.Textbox(value=out_text)
                         except Exception as e:
                             logger.error(f"_rev_generate_async error: {e}")
-                            return gr.Textbox(value=f"エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}")
 
                     def _rev_generate(model_name, profile_name, sql_text):
                         import asyncio
@@ -3451,8 +3454,8 @@ END;"""
                                                     break
                                         if generated_sql:
                                             break
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        logger.error(f"generated_sql JSON parse error: {e}")
                                     m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", c, flags=re.IGNORECASE)
                                     if m:
                                         generated_sql = m.group(0).strip()
