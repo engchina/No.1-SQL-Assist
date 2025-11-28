@@ -121,11 +121,11 @@ def create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_f
     compartment_ocid = os.environ.get("OCI_COMPARTMENT_OCID", "")
     logger.info(f"compartment_ocid: {compartment_ocid}")
     if not compartment_ocid:
-        gr.Error("OCI_COMPARTMENT_OCID環境変数が設定されていません")
+        logger.error("OCI_COMPARTMENT_OCID環境変数が設定されていません")
         return gr.Accordion(), gr.Textbox()
 
     if pool is None:
-        gr.Error("データベース接続プールが初期化されていません")
+        logger.error("データベース接続プールが初期化されていません")
         return gr.Accordion(), gr.Textbox()
 
     try:
@@ -189,7 +189,6 @@ BEGIN
     );
 END;"""
 
-        gr.Info("OCI_CREDの作成が完了しました")
         return gr.Accordion(), gr.Textbox(value=create_sql_preview.strip())
     except Exception as e:
         logger.error(f"Error creating OCI credential: {e}")
@@ -301,13 +300,13 @@ END;"""
         error_code = de.args[0].code if de.args else 'N/A'
         error_msg = de.args[0].message if de.args else str(de)
         logger.error(f"Database error [{error_code}]: {error_msg}")
-        gr.Error(f"データベースエラー: {error_msg}")
+        test_query_vector = f"エラー: {error_msg}"
         logger.info("=" * 50)
         
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         logger.exception("Full traceback:")
-        gr.Error(f"エラーが発生しました: {e}")
+        test_query_vector = f"エラー: {e}"
         logger.info("=" * 50)
 
     return gr.Textbox(value=test_query_vector)
@@ -424,9 +423,14 @@ def build_oci_embedding_test_tab(pool):
         logger.info("Embedding test button clicked")
         logger.info(f"Model selected: {embed_model}")
         logger.info(f"Text preview: {str(test_query_text)[:80]}")
-        res = test_oci_cred(test_query_text, embed_model, pool)
-        logger.info("Embedding test completed")
-        return res
+        try:
+            yield gr.Markdown(visible=True, value="⏳ テスト中..."), gr.Textbox(value="")
+            res = test_oci_cred(test_query_text, embed_model, pool)
+            logger.info("Embedding test completed")
+            yield gr.Markdown(visible=True, value="✅ 完了"), res
+        except Exception as e:
+            logger.error(f"Embedding test failed: {e}")
+            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
     
     # UIコンポーネントの構築
     with gr.TabItem(label="テキスト埋め込みテスト") as tab_test_oci_cred:
@@ -487,6 +491,8 @@ def build_oci_embedding_test_tab(pool):
                     )
                 with gr.Column():
                     tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
+            with gr.Row():
+                tab_test_status_md = gr.Markdown(visible=False)
 
         # イベントハンドラーの設定
         tab_test_clear_button.add(
@@ -496,7 +502,7 @@ def build_oci_embedding_test_tab(pool):
         tab_test_oci_cred_button.click(
             test_oci_cred_wrapper,
             inputs=[tab_test_oci_cred_query_text, tab_test_oci_cred_model_input],
-            outputs=[tab_test_oci_cred_vector_text],
+            outputs=[tab_test_status_md, tab_test_oci_cred_vector_text],
         )
 
         def create_oci_cred_from_config_wrapper():
@@ -709,7 +715,6 @@ def build_oracle_ai_database_tab(pool=None):
                 df = pd.DataFrame(rows, columns=["表示名", "状態", "OCID"]) if rows else pd.DataFrame(columns=["表示名", "状態", "OCID"]) 
                 status_lines = []
                 status_lines.append(f"リージョン: {region_code}")
-                status_lines.append(f"コンパートメント: {comp[:16]}…")
                 status_lines.append(f"取得件数: {len(rows)}")
                 status_md = "\n".join(status_lines)
                 yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df), mp, ""

@@ -41,15 +41,17 @@ def execute_select_sql(pool, sql: str, limit: int):
     if not sql or not sql.strip():
         gr.Warning("SQLを入力してください")
         return (
-            gr.Markdown(visible=True),
+            gr.Markdown(visible=True, value="❌ エラー: SQLを入力してください"),
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果"),
+            gr.HTML(visible=False, value=""),
         )
 
     if not _is_select_sql(sql):
-        gr.Error("SELECT文のみ実行可能です")
+        ui_msg = "❌ エラー: SELECT文のみ実行可能です"
         return (
-            gr.Markdown(visible=True),
+            gr.Markdown(visible=True, value=ui_msg),
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果"),
+            gr.HTML(visible=False, value=""),
         )
 
     q = sql.strip()
@@ -97,7 +99,6 @@ def execute_select_sql(pool, sql: str, limit: int):
                             row_vals.append(val)
                         cleaned_rows.append(row_vals)
                     df = pd.DataFrame(cleaned_rows, columns=cols)
-                    gr.Info(f"{len(df)}件のデータを取得しました")
                     widths = []
                     if len(df) > 0:
                         sample = df.head(5)
@@ -137,7 +138,7 @@ def execute_select_sql(pool, sql: str, limit: int):
                         style_value = "<style>" + "\n".join(rules) + "</style>"
                     style_component = gr.HTML(visible=bool(style_value), value=style_value)
                     return (
-                        gr.Markdown(visible=False),
+                        gr.Markdown(visible=True, value=f"✅ {len(df)}件のデータを取得しました"),
                         df_component,
                         style_component,
                     )
@@ -166,10 +167,10 @@ def execute_select_sql(pool, sql: str, limit: int):
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"クエリ実行エラー: {str(e)}")
+        ui_msg = f"❌ クエリ実行エラー: {str(e)}"
 
     return (
-        gr.Markdown(visible=True),
+        gr.Markdown(visible=True, value=ui_msg if 'ui_msg' in locals() else "❌ クエリ実行エラー"),
         gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
         gr.HTML(visible=False, value=""),
     )
@@ -350,7 +351,6 @@ def execute_sql_general(pool, sql: str, limit: int):
     if len(statements) == 1 and sel_count == 1:
         return execute_select_sql(pool, statements[0], limit)
     if len(statements) > 1 and sel_count > 0:
-        gr.Error("複数実行時はSELECT文を含めることはできません")
         return (
             gr.Markdown(visible=True, value="❌ エラー: 複数実行にSELECTは含められません"),
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
@@ -391,6 +391,8 @@ def execute_sql_general(pool, sql: str, limit: int):
                         ok = False
                         dur = int((time.perf_counter() - t0) * 1000)
                         msg = str(e)
+                        logger.error(f"Statement #{idx} failed: {e}")
+                        logger.error(traceback.format_exc())
                         rows.append([idx, typ, '失敗', -1, msg, dur])
                         break
                 if ok:
@@ -398,6 +400,8 @@ def execute_sql_general(pool, sql: str, limit: int):
                 else:
                     conn.rollback()
     except Exception as e:
+        logger.error(f"SQL実行に失敗しました: {e}")
+        logger.error(traceback.format_exc())
         s = str(e)
         df = pd.DataFrame(rows, columns=["No", "Type", "Status", "RowsAffected", "Message", "Duration_ms"]) if rows else pd.DataFrame()
         info = f"❌ エラー: {s}"
@@ -410,9 +414,10 @@ def execute_sql_general(pool, sql: str, limit: int):
     succ = sum(1 for r in rows if r[2] == '成功')
     fail = sum(1 for r in rows if r[2] == '失敗')
     tx = "コミット済み" if ok else "ロールバック済み"
-    gr.Info(f"成功: {succ}件 / 失敗: {fail}件 ({tx})")
+    summary = f"成功: {succ}件 / 失敗: {fail}件 ({tx})"
+    icon = "✅" if fail == 0 else "⚠️"
     return (
-        gr.Markdown(visible=False),
+        gr.Markdown(visible=True, value=f"{icon} {summary}"),
         gr.Dataframe(visible=True, value=df, label="実行サマリー", elem_id="query_result_df"),
         gr.HTML(visible=False, value=""),
     )
@@ -441,9 +446,11 @@ def build_query_tab(pool):
             with gr.Row():
                 clear_btn = gr.Button("クリア", variant="secondary")
                 execute_btn = gr.Button("実行", variant="primary")
+            with gr.Row():
+                result_info = gr.Markdown(visible=False)
 
         with gr.Accordion(label="2. 実行結果の表示", open=True):
-            result_info = gr.Markdown(
+            result_help = gr.Markdown(
                 value="ℹ️ SELECTは1文のみ実行可能。INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/PL/SQL/EXECは複数文をセミコロンで区切って同時実行可能。複数実行時はSELECTを含めないでください",
                 visible=True,
             )

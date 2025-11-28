@@ -61,7 +61,6 @@ def get_table_list(pool):
     except Exception as e:
         logger.error(f"Error getting table list: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"テーブル一覧の取得に失敗しました: {str(e)}")
         return pd.DataFrame(columns=["Table Name", "Rows", "Comments"])
 
 
@@ -200,12 +199,10 @@ def drop_table(pool, table_name):
                 cursor.execute(sql)
                 conn.commit()
                 logger.info(f"Table dropped: {table_name}")
-                gr.Info(f"テーブル '{table_name}' を削除しました")
                 return f"成功: テーブル '{table_name}' を削除しました"
     except Exception as e:
         logger.error(f"Error dropping table: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"テーブルの削除に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 
 
@@ -247,7 +244,6 @@ def execute_create_table(pool, create_sql):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: CREATE TABLE / COMMENT ON 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for table creation: {first_sql[:100]}...")
-                    gr.Error(error_msg)
                     return f"エラー: {error_msg}"
                 
                 executed_count = 0
@@ -277,14 +273,12 @@ def execute_create_table(pool, create_sql):
                     return result
                 else:
                     result = f"成功: {executed_count}件の文をすべて実行しました"
-                    gr.Info(result)
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
                     
     except Exception as e:
         logger.error(f"Error executing SQL: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"テーブルの作成に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 
 
@@ -327,7 +321,6 @@ def get_view_list(pool):
     except Exception as e:
         logger.error(f"Error getting view list: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"ビュー一覧の取得に失敗しました: {str(e)}")
         return pd.DataFrame(columns=["View Name", "Comments"])
 
 
@@ -526,12 +519,10 @@ def drop_view(pool, view_name):
                 cursor.execute(sql)
                 conn.commit()
                 logger.info(f"View dropped: {view_name}")
-                gr.Info(f"ビュー '{view_name}' を削除しました")
                 return f"成功: ビュー '{view_name}' を削除しました"
     except Exception as e:
         logger.error(f"Error dropping view: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"ビューの削除に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 
 
@@ -578,7 +569,6 @@ def execute_create_view(pool, create_sql):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: VIEW作成に関係ない文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for view creation: {first_sql[:100]}...")
-                    gr.Error(error_msg)
                     return f"エラー: {error_msg}"
                 
                 executed_count = 0
@@ -608,14 +598,12 @@ def execute_create_view(pool, create_sql):
                     return result
                 else:
                     result = f"成功: {executed_count}件の文をすべて実行しました"
-                    gr.Info(result)
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
                     
     except Exception as e:
         logger.error(f"Error executing SQL: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"ビューの作成に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 
 
@@ -676,7 +664,6 @@ def get_table_list_for_upload(pool):
     except Exception as e:
         logger.error(f"Error getting uploadable table list: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"アップロード可能なテーブル一覧の取得に失敗しました: {str(e)}")
         return []
 
 
@@ -714,17 +701,14 @@ def display_table_data(pool, table_name, limit, where_clause=""):
                     columns = [desc[0] for desc in cursor.description]
                     df = pd.DataFrame(cleaned_rows, columns=columns)
                     logger.info(f"Retrieved {len(df)} rows from {table_name}")
-                    gr.Info(f"{len(df)}件のデータを取得しました")
                     return df
                 else:
                     logger.info(f"No data found in {table_name}")
-                    gr.Info("データが見つかりませんでした")
                     return pd.DataFrame()
                     
     except Exception as e:
         logger.error(f"Error displaying table/view data: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"データの取得に失敗しました: {str(e)}")
         return pd.DataFrame()
 
 
@@ -771,7 +755,6 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                 table_columns = [row[0] for row in cursor.fetchall()]
                 
                 if not table_columns:
-                    gr.Error(f"テーブル '{table_name}' が見つかりません")
                     return preview_df, f"エラー: テーブル '{table_name}' が見つかりません"
                 
                 # Match CSV columns to table columns (case-insensitive)
@@ -784,7 +767,6 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                             break
                 
                 if not column_mapping:
-                    gr.Error("CSVの列名がテーブルの列名と一致しません")
                     return preview_df, "エラー: CSVの列名がテーブルの列名と一致しません"
                 
                 # Truncate if mode is TRUNCATE
@@ -825,7 +807,7 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                         result += f"\n... 他 {error_count - 5} 件のエラー"
                     gr.Warning(result)
                 else:
-                    gr.Info(result)
+                    pass
                 
                 logger.info(f"CSV upload completed: {success_count} success, {error_count} errors")
                 return preview_df, result
@@ -833,7 +815,6 @@ def upload_csv_data(pool, file, table_name, upload_mode):
     except Exception as e:
         logger.error(f"Error uploading CSV: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"CSVアップロードに失敗しました: {str(e)}")
         return pd.DataFrame(), f"エラー: {str(e)}"
 
 
@@ -878,7 +859,6 @@ def execute_data_sql(pool, sql_statements):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: INSERT, UPDATE, DELETE, MERGE 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for data SQL: {first_sql[:100]}...")
-                    gr.Error(error_msg)
                     return f"エラー: {error_msg}"
                 
                 executed_count = 0
@@ -913,14 +893,12 @@ def execute_data_sql(pool, sql_statements):
                 else:
                     total_rows = sum(affected_rows)
                     result = f"成功: {executed_count}件の文をすべて実行しました（{total_rows}行に影響）"
-                    gr.Info(result)
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
                     
     except Exception as e:
         logger.error(f"Error executing data SQL: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"SQL実行に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 
 
@@ -959,7 +937,6 @@ def execute_comment_sql(pool, sql_statements):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: COMMENT ON TABLE/COLUMN 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for comments: {first_sql[:100]}...")
-                    gr.Error(error_msg)
                     return f"エラー: {error_msg}"
                 executed_count = 0
                 error_messages = []
@@ -982,13 +959,11 @@ def execute_comment_sql(pool, sql_statements):
                     return result
                 else:
                     result = f"成功: {executed_count}件の文をすべて実行しました"
-                    gr.Info(result)
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
     except Exception as e:
         logger.error(f"Error executing comment SQL: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"COMMENT文の実行に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 
 def execute_annotation_sql(pool, sql_statements):
@@ -1037,7 +1012,6 @@ def execute_annotation_sql(pool, sql_statements):
                     first_idx, first_sql = disallowed[0]
                     msg = f"禁止された操作: 無効なアノテーション文は実行できません。許可: ALTER TABLE MODIFY ... ANNOTATIONS / ALTER TABLE ANNOTATIONS / ALTER VIEW ANNOTATIONS\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for annotations: {first_sql[:100]}...")
-                    gr.Error(msg)
                     return f"エラー: {msg}"
                 executed_count = 0
                 errors = []
@@ -1060,13 +1034,11 @@ def execute_annotation_sql(pool, sql_statements):
                     return result
                 else:
                     result = f"成功: {executed_count}件の文をすべて実行しました"
-                    gr.Info(result)
                     logger.info(f"All {executed_count} statements executed successfully")
                     return result
     except Exception as e:
         logger.error(f"Error executing annotation SQL: {e}")
         logger.error(traceback.format_exc())
-        gr.Error(f"アノテーション文の実行に失敗しました: {str(e)}")
         return f"エラー: {str(e)}"
 def build_management_tab(pool):
     """Build the Management Function tab with three sub-functions.
@@ -1216,7 +1188,6 @@ def build_management_tab(pool):
                 except Exception as e:
                     logger.error(f"Error in on_table_select: {e}")
                     logger.error(traceback.format_exc())
-                    gr.Error(f"テーブル選択エラー: {str(e)}")
                 
                 return "", pd.DataFrame(), ""
             
@@ -1521,7 +1492,6 @@ def build_management_tab(pool):
                 except Exception as e:
                     logger.error(f"Error in on_view_select: {e}")
                     logger.error(traceback.format_exc())
-                    gr.Error(f"ビュー選択エラー: {str(e)}")
                 
                 return "", pd.DataFrame(), ""
             

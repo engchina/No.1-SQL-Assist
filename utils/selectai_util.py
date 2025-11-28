@@ -453,61 +453,7 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             build_btn = gr.Button("作成", variant="primary")
 
-                        create_info = gr.Markdown(visible=False)
-
-                with gr.TabItem(label="モデル管理"):
-                    with gr.Accordion(label="1. モデル保存パス", open=True):
-                        with gr.Row():
-                            model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
-                    with gr.Accordion(label="2. 訓練データ一覧", open=True):
-                        with gr.Row():
-                            td_refresh_btn = gr.Button("訓練データ一覧を更新", variant="primary")
-                        with gr.Row():
-                            td_refresh_status = gr.Markdown(visible=False)
-                        # 削除: 不要な隠しダウンロードボタン
-                        with gr.Row():
-                            td_list_df = gr.Dataframe(label="訓練データ一覧", interactive=False, wrap=True, visible=False)                           
-                        with gr.Row():
-                            td_upload_excel_file = gr.File(label="Excelファイル", file_types=[".xlsx"], type="filepath")
-                        with gr.Row():
-                            with gr.Column():
-                                gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
-                            with gr.Column():
-                                td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
-                        with gr.Row():
-                            td_upload_result = gr.Textbox(visible=False)
-                    # 訓練データのCRUD機能は削除
-                    with gr.Accordion(label="4. モデル学習", open=True):
-                        with gr.Row():
-                            td_train_status = gr.Markdown(visible=False)
-                        with gr.Row():
-                            td_embed_model = gr.Dropdown(
-                                label="埋め込みモデル",
-                                choices=["cohere.embed-v4.0"],
-                                value="cohere.embed-v4.0",
-                                interactive=True,
-                            )
-                        with gr.Row():
-                            td_model_name = gr.Textbox(label="モデル名", value=f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}", interactive=True)
-                        with gr.Row():
-                            td_train_iterations = gr.Slider(label="学習回数", minimum=1, maximum=10, step=1, value=5, interactive=True)
-                        with gr.Row():
-                            td_train_btn = gr.Button("学習を実行", variant="primary")
-                    with gr.Accordion(label="5. モデルテスト", open=True):
-                        with gr.Row():
-                            mt_refresh_models_btn = gr.Button("モデル一覧を更新", variant="primary")
-                        with gr.Row():
-                            with gr.Column():
-                                mt_trained_model_select = gr.Dropdown(label="モデル名", show_label=False, container=False, choices=[], interactive=True)
-                            with gr.Column():
-                                mt_delete_model_btn = gr.Button("選択モデルを削除", variant="stop")
-                        with gr.Row():
-                            mt_text_input = gr.Textbox(label="テキスト", lines=4, max_lines=8)
-                        with gr.Row():
-                            mt_label_text = gr.Textbox(label="業務ドメイン(=ラベル)", interactive=False)
-                        with gr.Row():
-                            mt_test_btn = gr.Button("テスト", variant="primary")
-                        mt_test_result = gr.Markdown(visible=False)
+                        create_info = gr.Markdown(visible=False)               
 
                 def refresh_profiles():
                     try:
@@ -1052,7 +998,6 @@ END;"""
                     finally:
                         loop.close()
 
-                td_refresh_btn.click(fn=_td_refresh, outputs=[td_refresh_status, td_list_df])
                 # 訓練データ行選択の編集機能は削除
                 def _td_download_excel():
                     try:
@@ -1099,22 +1044,6 @@ END;"""
 
                 # 削除: ダウンロードボタンのクリック処理は不要（直接ファイルを提供）
                 # 直接固定テンプレートをダウンロード（クリック処理不要）
-                td_upload_excel_btn.click(
-                    fn=_td_upload_excel,
-                    inputs=[td_upload_excel_file],
-                    outputs=[td_upload_result]
-                )
-                # 訓練データの作成・更新・削除機能は削除
-                td_train_btn.click(
-                    fn=_td_train,
-                    inputs=[model_save_path_text, td_embed_model, td_model_name, td_train_iterations],
-                    outputs=[td_train_status],
-                )
-                mt_refresh_models_btn.click(
-                    fn=_list_models,
-                    inputs=[model_save_path_text],
-                    outputs=[mt_trained_model_select],
-                )
                 def _delete_model(save_path, trained_model_name):
                     try:
                         sp_root = Path(str(save_path or os.environ.get("MODEL_SAVE_PATH", "models")))
@@ -1145,17 +1074,6 @@ END;"""
                         return _list_models(save_path)
                     except Exception:
                         return _list_models(save_path)
-
-                mt_delete_model_btn.click(
-                    fn=_delete_model,
-                    inputs=[model_save_path_text, mt_trained_model_select],
-                    outputs=[mt_trained_model_select],
-                )
-                mt_test_btn.click(
-                    fn=_mt_test,
-                    inputs=[mt_text_input, model_save_path_text, mt_trained_model_select],
-                    outputs=[mt_test_result, mt_label_text],
-                )
 
         with gr.TabItem(label="開発者機能"):
             with gr.Tabs():
@@ -1465,7 +1383,6 @@ END;"""
                                         for r in exec_rows:
                                             cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
                                         df = pd.DataFrame(cleaned_rows, columns=exec_cols)
-                                        gr.Info(f"{len(df)}件のデータを取得しました")
                                         widths = []
                                         if len(df) > 0:
                                             sample = df.head(5)
@@ -1502,7 +1419,7 @@ END;"""
                                                 )
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
                                         style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                                        yield gr.Markdown(visible=False), df_component, style_component
+                                        yield gr.Markdown(visible=True, value=f"✅ {len(df)}件のデータを取得しました"), df_component, style_component
                                         return
                                     yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                         except Exception as e:
@@ -1906,7 +1823,6 @@ END;"""
                                         cleaned_rows.append([_to_plain(v) for v in r])
                                     df = pd.DataFrame(cleaned_rows, columns=cols)
                                     if df.empty:
-                                        gr.Info("Indexがありません")
                                         return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
                                     return gr.Dataframe(visible=True, value=df), gr.Markdown(visible=False)
                         except Exception as e:
@@ -2508,7 +2424,6 @@ END;"""
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
                             return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
                         except Exception as e:
-                            logger.error(f"_am_refresh_objects error: {e}")
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
                     def _am_fetch_structure(tables_selected, views_selected):
@@ -2907,7 +2822,6 @@ END;"""
                         try:
                             return gr.Markdown(visible=True, value="✅ 更新完了"), gr.Dropdown(choices=_syn_profile_names())
                         except Exception as e:
-                            logger.error(f"_syn_refresh_profiles error: {e}")
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.Dropdown(choices=[])
 
                     def _syn_refresh_objects(profile_name):
@@ -2926,7 +2840,6 @@ END;"""
                                 pass
                             return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.Dropdown(choices=table_names)
                         except Exception as e:
-                            logger.error(f"_syn_refresh_objects error: {e}")
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
 
                     def _syn_build_prompt(tables_selected, rows_per_table, extra_text):
@@ -2943,10 +2856,8 @@ END;"""
 
                     def _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, table_statistics, comments):
                         if not profile_name or not str(profile_name).strip():
-                            gr.Warning("Profileを選択してください")
                             return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                         if not tables_selected:
-                            gr.Warning("テーブルを選択してください")
                             return gr.Markdown(visible=True, value="⚠️ テーブルを選択してください"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                         try:
                             prof = _resolve_profile_name(pool, str(profile_name or ""))
@@ -3002,19 +2913,16 @@ END;"""
                                                 except Exception:
                                                     op_id = None
                                     except Exception as e:
-                                        logger.error(f"generate_synthetic_data error: {e}")
                                         op_id = None
                                     info_text = "✅ 合成データ生成を開始しました" if op_id else "⚠️ 合成データ生成を開始しました(オペレーションIDの取得に失敗)"
                                     return gr.Markdown(visible=True, value=info_text), gr.Textbox(value=str(op_id or "")), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                         except Exception as e:
-                            logger.error(f"_syn_generate error: {e}")
                             return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
 
                     def _syn_update_status(op_id):
                         op = str(op_id or "").strip()
                         if not op:
-                            gr.Warning("オペレーションIDを入力/取得してください")
-                            return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                            return gr.Markdown(visible=True, value="⚠️ オペレーションIDを入力/取得してください"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                         try:
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
@@ -3056,10 +2964,9 @@ END;"""
                                             for idx, pct in enumerate(col_widths, start=1):
                                                 rules.append(f"#synthetic_data_status_df table th:nth-child({idx}), #synthetic_data_status_df table td:nth-child({idx}) {{ width: {pct}%; }}")
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
-                                    return df_component, gr.HTML(visible=bool(style_value), value=style_value)
+                                    return gr.Markdown(visible=True, value="✅ ステータス更新完了"), df_component, gr.HTML(visible=bool(style_value), value=style_value)
                         except Exception as e:
-                            logger.error(f"_syn_update_status error: {e}")
-                            return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
 
                     def _syn_display_result(table_name, limit_value):
                         try:
@@ -3112,13 +3019,95 @@ END;"""
                     syn_status_update_btn.click(
                         fn=_syn_update_status,
                         inputs=[syn_operation_id_text],
-                        outputs=[syn_status_df, syn_status_style],
+                        outputs=[syn_generate_info, syn_status_df, syn_status_style],
                     )
 
                     syn_result_btn.click(
                         fn=_syn_display_result,
                         inputs=[syn_result_table_select, syn_result_limit],
                         outputs=[syn_result_info, syn_result_df, syn_result_style],
+                    )
+
+                with gr.TabItem(label="モデル管理"):
+                    with gr.Accordion(label="1. モデル保存パス", open=True):
+                        with gr.Row():
+                            model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
+                    with gr.Accordion(label="2. 訓練データ一覧", open=True):
+                        with gr.Row():
+                            td_refresh_btn = gr.Button("訓練データ一覧を更新", variant="primary")
+                        with gr.Row():
+                            td_refresh_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            td_list_df = gr.Dataframe(label="訓練データ一覧", interactive=False, wrap=True, visible=False)
+                        with gr.Row():
+                            td_upload_excel_file = gr.File(label="Excelファイル", file_types=[".xlsx"], type="filepath")
+                        with gr.Row():
+                            with gr.Column():
+                                gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
+                            with gr.Column():
+                                td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
+                        with gr.Row():
+                            td_upload_result = gr.Textbox(visible=False)
+                    with gr.Accordion(label="3. モデル学習", open=True):
+                        with gr.Row():
+                            td_train_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            td_embed_model = gr.Dropdown(
+                                label="埋め込みモデル",
+                                choices=["cohere.embed-v4.0"],
+                                value="cohere.embed-v4.0",
+                                interactive=True,
+                            )
+                        with gr.Row():
+                            td_model_name = gr.Textbox(label="モデル名", value=f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}", interactive=True)
+                        with gr.Row():
+                            td_train_iterations = gr.Slider(label="学習回数", minimum=1, maximum=10, step=1, value=5, interactive=True)
+                        with gr.Row():
+                            td_train_btn = gr.Button("学習を実行", variant="primary")
+                    with gr.Accordion(label="4. モデルテスト", open=True):
+                        with gr.Row():
+                            mt_refresh_models_btn = gr.Button("モデル一覧を更新", variant="primary")
+                        with gr.Row():
+                            with gr.Column():
+                                mt_trained_model_select = gr.Dropdown(label="モデル名", show_label=False, container=False, choices=[], interactive=True)
+                            with gr.Column():
+                                mt_delete_model_btn = gr.Button("選択モデルを削除", variant="stop")
+                        with gr.Row():
+                            mt_text_input = gr.Textbox(label="テキスト", lines=4, max_lines=8)
+                        with gr.Row():
+                            mt_label_text = gr.Textbox(label="業務ドメイン(=ラベル)", interactive=False)
+                        with gr.Row():
+                            mt_test_btn = gr.Button("テスト", variant="primary")
+                        mt_test_result = gr.Markdown(visible=False)
+
+                    td_refresh_btn.click(
+                        fn=_td_refresh,
+                        outputs=[td_refresh_status, td_list_df],
+                    )
+                    td_upload_excel_btn.click(
+                        fn=_td_upload_excel,
+                        inputs=[td_upload_excel_file],
+                        outputs=[td_upload_result],
+                    )
+                    td_train_btn.click(
+                        fn=_td_train,
+                        inputs=[model_save_path_text, td_embed_model, td_model_name, td_train_iterations],
+                        outputs=[td_train_status],
+                    )
+                    mt_refresh_models_btn.click(
+                        fn=_list_models,
+                        inputs=[model_save_path_text],
+                        outputs=[mt_trained_model_select],
+                    )
+                    mt_delete_model_btn.click(
+                        fn=_delete_model,
+                        inputs=[model_save_path_text, mt_trained_model_select],
+                        outputs=[mt_trained_model_select],
+                    )
+                    mt_test_btn.click(
+                        fn=_mt_test,
+                        inputs=[mt_text_input, model_save_path_text, mt_trained_model_select],
+                        outputs=[mt_test_result, mt_label_text],
                     )
 
                 with gr.TabItem(label="SQL→質問 逆生成"):
@@ -3170,7 +3159,6 @@ END;"""
                             yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
                             yield gr.Markdown(visible=False), gr.Dropdown(choices=_rev_profile_names())
                         except Exception as e:
-                            logger.error(f"_rev_on_profile_refresh error: {e}")
                             yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     def _rev_build_context_text(profile_name):
@@ -3380,6 +3368,7 @@ END;"""
                             chat_result_style = gr.HTML(visible=False)
 
                         with gr.Accordion(label="3. 生成SQL", open=False):
+                            generated_sql_status = gr.Markdown(visible=False)
                             generated_sql_text = gr.Textbox(
                                 label="生成されたSQL文",
                                 lines=8,
@@ -3394,11 +3383,9 @@ END;"""
                 inc = bool(include_extra)
                 final = s if not inc or not ep else (ep + "\n\n" + s)
                 if not profile or not str(profile).strip():
-                    gr.Warning("Profileを選択してください")
-                    return gr.Textbox(value="")
+                    return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
                 if not final:
-                    gr.Warning("質問を入力してください")
-                    return gr.Textbox(value="")
+                    return gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
                 q = final
                 if q.endswith(";"):
                     q = q[:-1]
@@ -3471,14 +3458,12 @@ END;"""
                                         generated_sql = m.group(0).strip()
                                         break
                             gen_sql_display = generated_sql
-                            return gr.Textbox(value=gen_sql_display)
+                            return gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
                 except Exception as e:
-                    logger.error(f"_user_step_generate error: {e}")
-                    return gr.Textbox(value="")
+                    return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
 
             def _user_step_run_sql(profile, sql_text):
                 if not profile or not str(profile).strip():
-                    gr.Warning("Profileを選択してください")
                     yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
                     return
                 try:
@@ -3499,7 +3484,6 @@ END;"""
                                 for r in exec_rows:
                                     cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
                                 df = pd.DataFrame(cleaned_rows, columns=exec_cols)
-                                gr.Info(f"{len(df)}件のデータを取得しました")
                                 widths = []
                                 if len(df) > 0:
                                     sample = df.head(5)
@@ -3536,7 +3520,7 @@ END;"""
                                         )
                                     style_value = "<style>" + "\n".join(rules) + "</style>"
                                 style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                                yield gr.Markdown(visible=False), df_component, style_component
+                                yield gr.Markdown(visible=True, value=f"✅ {len(df)}件のデータを取得しました"), df_component, style_component
                                 return
                             yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
                 except Exception as e:
@@ -3555,7 +3539,7 @@ END;"""
             chat_execute_btn.click(
                 fn=_user_step_generate,
                 inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt],
-                outputs=[generated_sql_text],
+                outputs=[generated_sql_status, generated_sql_text],
             ).then(
                 fn=_user_step_run_sql,
                 inputs=[profile_select, generated_sql_text],
