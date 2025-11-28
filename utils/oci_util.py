@@ -300,13 +300,13 @@ END;"""
         error_code = de.args[0].code if de.args else 'N/A'
         error_msg = de.args[0].message if de.args else str(de)
         logger.error(f"Database error [{error_code}]: {error_msg}")
-        test_query_vector = f"エラー: {error_msg}"
+        test_query_vector = f"❌ エラー: {error_msg}"
         logger.info("=" * 50)
         
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         logger.exception("Full traceback:")
-        test_query_vector = f"エラー: {e}"
+        test_query_vector = f"❌ エラー: {e}"
         logger.info("=" * 50)
 
     return gr.Textbox(value=test_query_vector)

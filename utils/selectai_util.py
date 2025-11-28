@@ -331,7 +331,7 @@ def build_selectai_tab(pool):
             with gr.Tabs():
                 with gr.TabItem(label="プロファイル管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
-                        profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                        profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
                         profile_refresh_status = gr.Markdown(visible=False)
                         profile_list_df = gr.Dataframe(
                             label="プロファイル一覧(行をクリックして詳細を表示)",
@@ -365,7 +365,7 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="3. プロファイル作成", open=False):
                         with gr.Row():
-                            refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                            refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
 
                         with gr.Row():
                             tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
@@ -457,11 +457,11 @@ def build_selectai_tab(pool):
 
                 def refresh_profiles():
                     try:
-                        yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
+                        yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
                         df = get_db_profiles(pool)
                         if df is None or df.empty:
                             empty_df = pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])
-                            yield gr.Markdown(value="✅ 更新完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True), gr.HTML(visible=False)
+                            yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True), gr.HTML(visible=False)
                             return
                         sample = df.head(5)
                         widths = []
@@ -485,7 +485,7 @@ def build_selectai_tab(pool):
                         yield gr.Markdown(visible=False), gr.Dataframe(value=df, visible=True), gr.HTML(visible=bool(style_value), value=style_value)
                     except Exception as e:
                         logger.error(f"refresh_profiles error: {e}")
-                        yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
+                        yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
                 
                 def on_profile_select(evt: gr.SelectData, current_df, compartment_id):
                     try:
@@ -562,7 +562,7 @@ def build_selectai_tab(pool):
                         logger.error(f"update_selected_profile error: {e}")
                         attrs = _get_profile_attributes(pool, orig or edited_name) or {}
                         sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
-                        return gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
+                        return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
 
                 def refresh_sources():
                     return gr.CheckboxGroup(choices=_get_table_names(pool)), gr.CheckboxGroup(choices=_get_view_names(pool))
@@ -687,10 +687,10 @@ def build_selectai_tab(pool):
 
                 def _td_refresh():
                     try:
-                        yield gr.Markdown(visible=True, value="⏳ 訓練データ一覧を更新中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
+                        yield gr.Markdown(visible=True, value="⏳ 訓練データ一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
                         df = _td_list()
                         if df is None or df.empty:
-                            yield gr.Markdown(visible=True, value="✅ 更新完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"]))
+                            yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"]))
                             return
                         # Display TEXT as a 200-char preview with ellipsis
                         try:
@@ -701,7 +701,7 @@ def build_selectai_tab(pool):
                             df_disp = df
                         yield gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df_disp)
                     except Exception as e:
-                        yield gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
+                        yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
 
                 # 選択時の詳細取得は不要
 
@@ -1095,7 +1095,7 @@ END;"""
                             return []
 
                         with gr.Row():
-                            dev_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                            dev_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
 
                         with gr.Row():                    
                             dev_profile_refresh_status = gr.Markdown(visible=False)
@@ -1555,11 +1555,11 @@ END;"""
 
                     def _on_dev_profile_refresh():
                         try:
-                            yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
                             yield gr.Markdown(visible=False), gr.Dropdown(choices=_dev_profile_names())
                         except Exception as e:
                             logger.error(f"_on_dev_profile_refresh error: {e}")
-                            yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     def _append_comment(current_text: str, template: str):
                         s = str(current_text or "").strip()
@@ -1728,7 +1728,7 @@ END;"""
 
                     with gr.Accordion(label="1. フィードバック一覧", open=True):
                         with gr.Row():
-                            global_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                            global_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
                         
                         with gr.Row():
                             global_profile_refresh_status = gr.Markdown(visible=False)
@@ -1834,11 +1834,11 @@ END;"""
 
                     def _on_global_profile_refresh():
                         try:
-                            yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
                             yield gr.Markdown(visible=False), gr.Dropdown(choices=_global_profile_names())
                         except Exception as e:
                             logger.error(f"_on_global_profile_refresh error: {e}")
-                            yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     global_profile_refresh_btn.click(
                         fn=_on_global_profile_refresh,
@@ -1892,7 +1892,7 @@ END;"""
                     def _delete_by_sql_id(profile_name: str, sql_id: str):
                         try:
                             if not sql_id:
-                                return _view_feedback_index_global(profile_name)[0], "失敗: SQL_IDが選択されていません"
+                                return _view_feedback_index_global(profile_name)[0], "❌ 失敗: SQL_IDが選択されていません"
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     prof = _resolve_profile_name(pool, str(profile_name or ""))
@@ -1909,9 +1909,9 @@ END;"""
                                         p=str(prof),
                                         sid=str(sql_id),
                                     )
-                            return _view_feedback_index_global(profile_name)[0], "成功"
+                            return _view_feedback_index_global(profile_name)[0], "✅ 成功"
                         except Exception as e:
-                            return gr.Dataframe(visible=False, value=pd.DataFrame()), f"失敗: {str(e)}"
+                            return gr.Dataframe(visible=False, value=pd.DataFrame()), f"❌ 失敗: {str(e)}"
 
                     selected_feedback_delete_btn.click(
                         fn=_delete_by_sql_id,
@@ -1975,7 +1975,7 @@ END;"""
                                 cm_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():                        
-                                cm_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                                cm_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 cm_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
@@ -2061,7 +2061,7 @@ END;"""
                                 names.extend([str(x) for x in df_view["View Name"].tolist()])
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
+                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
                         except Exception as e:
                             logger.error(f"_cm_refresh_objects error: {e}")
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
@@ -2335,7 +2335,7 @@ END;"""
                                 am_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
-                                am_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                                am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 am_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
@@ -2425,7 +2425,7 @@ END;"""
                             df_view = _get_view_df_cached(pool, force=True)
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
+                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
@@ -2713,7 +2713,7 @@ END;"""
                             return execute_annotation_sql(pool, _prep(sql_text))
                         except Exception as e:
                             logger.error(f"_am_execute error: {e}")
-                            return f"エラー: {str(e)}"
+                            return f"❌ エラー: {str(e)}"
 
                     am_refresh_btn.click(
                         fn=_am_refresh_objects,
@@ -2763,7 +2763,7 @@ END;"""
                                 syn_profile_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
-                                syn_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                                syn_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 syn_profile_select = gr.Dropdown(label="Profile", choices=[], interactive=True)
@@ -2773,7 +2773,7 @@ END;"""
                                 syn_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
-                                syn_refresh_btn = gr.Button("テーブル一覧を更新", variant="primary")
+                                syn_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 syn_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
@@ -2823,7 +2823,7 @@ END;"""
 
                     def _syn_refresh_profiles():
                         try:
-                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.Dropdown(choices=_syn_profile_names())
+                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dropdown(choices=_syn_profile_names())
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.Dropdown(choices=[])
 
@@ -2841,7 +2841,7 @@ END;"""
                                     table_names = [t for t in table_names if t in prof_tables]
                             except Exception as e:
                                 logger.error(f"_syn_refresh_objects filter by profile error: {e}")
-                            return gr.Markdown(visible=True, value="✅ 更新完了"), gr.CheckboxGroup(choices=table_names), gr.Dropdown(choices=table_names)
+                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names), gr.Dropdown(choices=table_names)
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
 
@@ -3037,7 +3037,7 @@ END;"""
                             model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
                     with gr.Accordion(label="2. 訓練データ一覧", open=True):
                         with gr.Row():
-                            td_refresh_btn = gr.Button("訓練データ一覧を更新", variant="primary")
+                            td_refresh_btn = gr.Button("訓練データ一覧を取得", variant="primary")
                         with gr.Row():
                             td_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
@@ -3069,7 +3069,7 @@ END;"""
                             td_train_btn = gr.Button("学習を実行", variant="primary")
                     with gr.Accordion(label="4. モデルテスト", open=True):
                         with gr.Row():
-                            mt_refresh_models_btn = gr.Button("モデル一覧を更新", variant="primary")
+                            mt_refresh_models_btn = gr.Button("モデル一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 mt_trained_model_select = gr.Dropdown(label="モデル名", show_label=False, container=False, choices=[], interactive=True)
@@ -3116,7 +3116,7 @@ END;"""
                 with gr.TabItem(label="SQL→質問 逆生成"):
                     with gr.Accordion(label="1. 入力", open=True):
                         with gr.Row():
-                            rev_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                            rev_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
                         with gr.Row():
                             rev_profile_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
@@ -3159,10 +3159,10 @@ END;"""
 
                     def _rev_on_profile_refresh():
                         try:
-                            yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
                             yield gr.Markdown(visible=False), gr.Dropdown(choices=_rev_profile_names())
                         except Exception as e:
-                            yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
+                            yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     def _rev_build_context_text(profile_name):
                         try:
@@ -3205,7 +3205,7 @@ END;"""
                             return "\n\n".join([c for c in chunks if c]) or ""
                         except Exception as e:
                             logger.error(f"_rev_build_context error: {e}")
-                            return f"エラー: {e}"
+                            return f"❌ エラー: {e}"
 
                     def _rev_build_context(profile_name):
                         try:
@@ -3298,7 +3298,7 @@ END;"""
 
                         with gr.Row():
                             with gr.Column():
-                                user_profile_refresh_btn = gr.Button("プロファイル一覧を更新", variant="primary")
+                                user_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
 
                         with gr.Row():
                             with gr.Column():
@@ -3534,10 +3534,10 @@ END;"""
 
             def _on_user_profile_refresh():
                 try:
-                    yield gr.Markdown(value="⏳ プロファイル一覧を更新中...", visible=True), gr.Dropdown(choices=[])
+                    yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
                     yield gr.Markdown(visible=False), gr.Dropdown(choices=_profile_names())
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
+                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
             chat_execute_btn.click(
                 fn=_user_step_generate,

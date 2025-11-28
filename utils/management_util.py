@@ -203,7 +203,7 @@ def drop_table(pool, table_name):
     except Exception as e:
         logger.error(f"Error dropping table: {e}")
         logger.error(traceback.format_exc())
-        return f"エラー: {str(e)}"
+        return f"❌ エラー: {str(e)}"
 
 
 def execute_create_table(pool, create_sql):
@@ -244,7 +244,7 @@ def execute_create_table(pool, create_sql):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: CREATE TABLE / COMMENT ON 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for table creation: {first_sql[:100]}...")
-                    return f"エラー: {error_msg}"
+                    return f"❌ エラー: {error_msg}"
                 
                 executed_count = 0
                 error_messages = []
@@ -278,7 +278,7 @@ def execute_create_table(pool, create_sql):
     except Exception as e:
         logger.error(f"Error executing SQL: {e}")
         logger.error(traceback.format_exc())
-        return f"エラー: {str(e)}"
+        return f"❌ エラー: {str(e)}"
 
 
 def get_view_list(pool):
@@ -522,7 +522,7 @@ def drop_view(pool, view_name):
     except Exception as e:
         logger.error(f"Error dropping view: {e}")
         logger.error(traceback.format_exc())
-        return f"エラー: {str(e)}"
+        return f"❌ エラー: {str(e)}"
 
 
 def execute_create_view(pool, create_sql):
@@ -568,7 +568,7 @@ def execute_create_view(pool, create_sql):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: VIEW作成に関係ない文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for view creation: {first_sql[:100]}...")
-                    return f"エラー: {error_msg}"
+                    return f"❌ エラー: {error_msg}"
                 
                 executed_count = 0
                 error_messages = []
@@ -602,7 +602,7 @@ def execute_create_view(pool, create_sql):
     except Exception as e:
         logger.error(f"Error executing SQL: {e}")
         logger.error(traceback.format_exc())
-        return f"エラー: {str(e)}"
+        return f"❌ エラー: {str(e)}"
 
 
 def get_table_list_for_data(pool):
@@ -724,11 +724,11 @@ def upload_csv_data(pool, file, table_name, upload_mode):
     """
     if not file:
         logger.error("CSVファイルが未選択です")
-        return pd.DataFrame(), "エラー: ファイルが選択されていません"
+        return pd.DataFrame(), "❌ エラー: ファイルが選択されていません"
     
     if not table_name:
         logger.error("アップロード先テーブルが未選択です")
-        return pd.DataFrame(), "エラー: テーブルが選択されていません"
+        return pd.DataFrame(), "❌ エラー: テーブルが選択されていません"
     
     try:
         # Read CSV file
@@ -737,7 +737,7 @@ def upload_csv_data(pool, file, table_name, upload_mode):
         
         if df.empty:
             logger.error("CSVファイルが空です")
-            return df, "エラー: CSVファイルにデータがありません"
+            return df, "❌ エラー: CSVファイルにデータがありません"
         
         # Get preview (first 10 rows)
         preview_df = df.head(10)
@@ -753,7 +753,7 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                 table_columns = [row[0] for row in cursor.fetchall()]
                 
                 if not table_columns:
-                    return preview_df, f"エラー: テーブル '{table_name}' が見つかりません"
+                    return preview_df, f"❌ エラー: テーブル '{table_name}' が見つかりません"
                 
                 # Match CSV columns to table columns (case-insensitive)
                 csv_columns = df.columns.tolist()
@@ -765,7 +765,7 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                             break
                 
                 if not column_mapping:
-                    return preview_df, "エラー: CSVの列名がテーブルの列名と一致しません"
+                    return preview_df, "❌ エラー: CSVの列名がテーブルの列名と一致しません"
                 
                 # Truncate if mode is TRUNCATE
                 if upload_mode == "TRUNCATE & INSERT":
@@ -854,7 +854,7 @@ def execute_data_sql(pool, sql_statements):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: INSERT, UPDATE, DELETE, MERGE 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for data SQL: {first_sql[:100]}...")
-                    return f"エラー: {error_msg}"
+                    return f"❌ エラー: {error_msg}"
                 
                 executed_count = 0
                 error_messages = []
@@ -893,7 +893,7 @@ def execute_data_sql(pool, sql_statements):
     except Exception as e:
         logger.error(f"Error executing data SQL: {e}")
         logger.error(traceback.format_exc())
-        return f"エラー: {str(e)}"
+        return f"❌ エラー: {str(e)}"
 
 
 def execute_comment_sql(pool, sql_statements):
@@ -931,7 +931,7 @@ def execute_comment_sql(pool, sql_statements):
                     first_idx, first_sql = disallowed[0]
                     error_msg = f"禁止された操作: COMMENT ON TABLE/COLUMN 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for comments: {first_sql[:100]}...")
-                    return f"エラー: {error_msg}"
+                    return f"❌ エラー: {error_msg}"
                 executed_count = 0
                 error_messages = []
                 for idx, sql_stmt in enumerate(statements, 1):
@@ -957,7 +957,7 @@ def execute_comment_sql(pool, sql_statements):
     except Exception as e:
         logger.error(f"Error executing comment SQL: {e}")
         logger.error(traceback.format_exc())
-        return f"エラー: {str(e)}"
+        return f"❌ エラー: {str(e)}"
 
 def execute_annotation_sql(pool, sql_statements):
     if not sql_statements or not str(sql_statements).strip():
@@ -1005,7 +1005,7 @@ def execute_annotation_sql(pool, sql_statements):
                     first_idx, first_sql = disallowed[0]
                     msg = f"禁止された操作: 無効なアノテーション文は実行できません。許可: ALTER TABLE MODIFY ... ANNOTATIONS / ALTER TABLE ANNOTATIONS / ALTER VIEW ANNOTATIONS\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for annotations: {first_sql[:100]}...")
-                    return f"エラー: {msg}"
+                    return f"❌ エラー: {msg}"
                 executed_count = 0
                 errors = []
                 for idx, sql_stmt in enumerate(statements, 1):
@@ -1031,7 +1031,7 @@ def execute_annotation_sql(pool, sql_statements):
     except Exception as e:
         logger.error(f"Error executing annotation SQL: {e}")
         logger.error(traceback.format_exc())
-        return f"エラー: {str(e)}"
+        return f"❌ エラー: {str(e)}"
 def build_management_tab(pool):
     """Build the Management Function tab with three sub-functions.
     
@@ -1043,7 +1043,7 @@ def build_management_tab(pool):
         with gr.TabItem(label="テーブルの管理"):
             # Feature 1: Table List
             with gr.Accordion(label="1. テーブル一覧", open=True):
-                table_refresh_btn = gr.Button("テーブル一覧を更新", variant="primary")
+                table_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
                 table_refresh_status = gr.Markdown(visible=False)
                 table_list_df = gr.Dataframe(
                     label="テーブル一覧(行をクリックして詳細を表示)",
@@ -1062,8 +1062,10 @@ def build_management_tab(pool):
                     interactive=False,
                 )
 
-                table_drop_btn = gr.Button("選択したテーブルを削除", variant="stop")
-                table_drop_result = gr.Markdown(visible=False)
+                with gr.Row():
+                    table_drop_btn = gr.Button("選択したテーブルを削除", variant="stop")
+                with gr.Row():
+                    table_drop_result = gr.Markdown(visible=False)
                 
                 with gr.Row():
                     with gr.Column():
@@ -1084,6 +1086,7 @@ def build_management_tab(pool):
                             max_lines=15,
                             interactive=False,
                             show_copy_button=True,
+                            autoscroll=False,
                         )
             
             # Feature 3: Create Table
@@ -1097,8 +1100,10 @@ def build_management_tab(pool):
                 )
                 
                 with gr.Row():
-                    clear_sql_btn = gr.Button("クリア", variant="secondary")
-                    create_table_btn = gr.Button("テーブルを作成", variant="primary")
+                    with gr.Column():
+                        clear_sql_btn = gr.Button("クリア", variant="secondary")
+                    with gr.Column():
+                        create_table_btn = gr.Button("テーブルを作成", variant="primary")
                 
                 with gr.Row():
                     create_table_result = gr.Markdown(visible=False)
@@ -1175,26 +1180,40 @@ def build_management_tab(pool):
             
             def refresh_table_list():
                 try:
-                    logger.info("テーブル一覧を更新ボタンがクリックされました")
-                    yield gr.Markdown(value="⏳ テーブル一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
+                    logger.info("テーブル一覧を取得ボタンがクリックされました")
+                    yield gr.Markdown(value="⏳ テーブル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
                     df = get_table_list(pool)
-                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dataframe(value=df, visible=True)
+                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True)
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
+                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
             
             def drop_selected_table(table_name):
                 """Drop the selected table and refresh list."""
+                yield (
+                    gr.Markdown(visible=True, value="⏳ テーブルを削除中..."),
+                    gr.Dataframe(visible=False, value=pd.DataFrame()),
+                    gr.Textbox(value=str(table_name or "")),
+                    gr.Dataframe(visible=False, value=pd.DataFrame()),
+                    gr.Textbox(value=""),
+                )
                 result = drop_table(pool, table_name)
                 new_list = get_table_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
-                return status_md, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), ""
+                yield (
+                    status_md,
+                    gr.Dataframe(value=new_list, visible=True),
+                    gr.Textbox(value=""),
+                    gr.Dataframe(value=pd.DataFrame()),
+                    gr.Textbox(value=""),
+                )
             
             def execute_create(sql):
                 """Execute CREATE TABLE and refresh list."""
+                yield gr.Markdown(visible=True, value="⏳ テーブル作成を実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
                 result = execute_create_table(pool, sql)
                 new_list = get_table_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
-                return status_md, gr.Dataframe(value=new_list, visible=True)
+                yield status_md, gr.Dataframe(value=new_list, visible=True)
             
             def clear_sql():
                 """Clear the SQL input."""
@@ -1301,7 +1320,7 @@ def build_management_tab(pool):
         with gr.TabItem(label="ビューの管理"):
             # Feature 1: View List
             with gr.Accordion(label="1. ビュー一覧", open=True):
-                view_refresh_btn = gr.Button("ビュー一覧を更新", variant="primary")
+                view_refresh_btn = gr.Button("ビュー一覧を取得", variant="primary")
                 view_refresh_status = gr.Markdown(visible=False)
                 view_list_df = gr.Dataframe(
                     label="ビュー一覧(行をクリックして詳細を表示)",
@@ -1319,8 +1338,10 @@ def build_management_tab(pool):
                     interactive=False,
                 )
 
-                view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
-                view_drop_result = gr.Markdown(visible=False)
+                with gr.Row():
+                    view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
+                with gr.Row():
+                    view_drop_result = gr.Markdown(visible=False)
                 
                 with gr.Row():
                     with gr.Column():
@@ -1341,6 +1362,7 @@ def build_management_tab(pool):
                             max_lines=15,
                             interactive=False,
                             show_copy_button=True,
+                            autoscroll=False,
                         )
 
                 with gr.Row():
@@ -1359,7 +1381,9 @@ def build_management_tab(pool):
                     )
 
                 with gr.Row():
-                    view_ai_extract_btn = gr.Button("AI分析", variant="primary")
+                    view_ai_extract_btn = gr.Button("AIでJOIN/WHERE条件を抽出", variant="primary")
+                with gr.Row():
+                    view_ai_extract_status_md = gr.Markdown(visible=False)
                 
                 with gr.Row():
                     with gr.Column():
@@ -1369,6 +1393,7 @@ def build_management_tab(pool):
                             max_lines=15,
                             interactive=False,
                             show_copy_button=True,
+                            autoscroll=False,
                         )
                     with gr.Column():
                         view_where_text = gr.Textbox(
@@ -1377,6 +1402,7 @@ def build_management_tab(pool):
                             max_lines=15,
                             interactive=False,
                             show_copy_button=True,
+                            autoscroll=False,
                         )
             
             # Feature 3: Create View
@@ -1390,8 +1416,10 @@ def build_management_tab(pool):
                 )
                 
                 with gr.Row():
-                    clear_view_sql_btn = gr.Button("クリア", variant="secondary")
-                    create_view_btn = gr.Button("ビューを作成", variant="primary")
+                    with gr.Column():
+                        clear_view_sql_btn = gr.Button("クリア", variant="secondary")
+                    with gr.Column():
+                        create_view_btn = gr.Button("ビューを作成", variant="primary")
                 with gr.Row():                
                     create_view_result = gr.Markdown(visible=False)
 
@@ -1413,7 +1441,7 @@ def build_management_tab(pool):
                     with gr.Row():
                         view_ai_analyze_btn = gr.Button("AI分析", variant="primary")
                     with gr.Row():
-                        view_ai_status_md = gr.Markdown(visible=False)
+                        view_ai_analyze_status_md = gr.Markdown(visible=False)
                     with gr.Row():
                         view_ai_result_md = gr.Markdown(visible=False)
             
@@ -1471,25 +1499,36 @@ def build_management_tab(pool):
             
             def refresh_view_list():
                 try:
-                    logger.info("ビュー一覧を更新ボタンがクリックされました")
-                    yield gr.Markdown(value="⏳ ビュー一覧を更新中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
+                    logger.info("ビュー一覧を取得ボタンがクリックされました")
+                    yield gr.Markdown(value="⏳ ビュー一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
                     df = get_view_list(pool)
-                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dataframe(value=df, visible=True)
+                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True)
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
+                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
             
             def drop_selected_view(view_name):
                 """Drop the selected view and refresh list."""
+                yield (
+                    gr.Markdown(visible=True, value="⏳ ビューを削除中..."),
+                    gr.Dataframe(visible=False, value=pd.DataFrame()),
+                    "",
+                    pd.DataFrame(),
+                    "",
+                    "",
+                    "",
+                )
                 result = drop_view(pool, view_name)
                 new_list = get_view_list(pool)
-                return result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), "", "", ""
+                status_md = gr.Markdown(visible=True, value=result)
+                yield result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), "", "", ""
             
             def execute_create_view_handler(sql):
                 """Execute CREATE VIEW and refresh list."""
+                yield gr.Markdown(visible=True, value="⏳ ビュー作成を実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
                 result = execute_create_view(pool, sql)
                 new_list = get_view_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
-                return status_md, gr.Dataframe(value=new_list, visible=True)
+                yield status_md, gr.Dataframe(value=new_list, visible=True)
             
             def clear_view_sql():
                 """Clear the SQL input."""
@@ -1579,15 +1618,20 @@ def build_management_tab(pool):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    return loop.run_until_complete(_view_join_where_ai_extract_async(model_name, ddl_text))
+                    yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="..."), gr.Textbox(value="...")
+                    join_text, where_text = loop.run_until_complete(_view_join_where_ai_extract_async(model_name, ddl_text))
+                    yield gr.Markdown(visible=True, value="✅ 分析完了"), join_text, where_text
+                except Exception as e:
+                    yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="Error"), gr.Textbox(value=str(e))
                 finally:
                     loop.close()
 
             view_ai_extract_btn.click(
                 fn=_view_join_where_ai_extract,
                 inputs=[view_analysis_model_input, view_ddl_text],
-                outputs=[view_join_text, view_where_text],
+                outputs=[view_ai_extract_status_md,view_join_text, view_where_text],
             )
+
             create_view_btn.click(
                 fn=execute_create_view_handler,
                 inputs=[create_view_sql],
@@ -1663,71 +1707,76 @@ def build_management_tab(pool):
             view_ai_analyze_btn.click(
                 fn=view_ai_analyze,
                 inputs=[view_ai_model_input, selected_view_name, view_columns_df, view_ddl_text, create_view_sql, create_view_result],
-                outputs=[view_ai_status_md, view_ai_result_md],
+                outputs=[view_ai_analyze_status_md, view_ai_result_md],
             )
         
         # Data Management Tab
         with gr.TabItem(label="データの管理"):
             # Feature 1: Table Data Display
             with gr.Accordion(label="1. テーブル・ビューデータの表示", open=True):
-                data_refresh_btn = gr.Button("テーブル・ビュー一覧を更新", variant="primary")
+                data_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
                 data_refresh_status = gr.Markdown(visible=False)
                 
                 with gr.Row():
-                    data_table_select = gr.Dropdown(
-                        label="テーブル・ビュー選択",
-                        choices=[],
-                        interactive=True,
+                    with gr.Column():
+                        data_table_select = gr.Dropdown(
+                            label="テーブル・ビュー選択",
+                            choices=[],
+                            interactive=True,
+                        )
+                    with gr.Column():
+                        data_limit_input = gr.Number(
+                            label="取得件数",
+                            value=100,
+                            minimum=1,
+                            maximum=10000,
+                        )
+                
+                with gr.Row():
+                    data_where_input = gr.Textbox(
+                        label="WHERE条件（オプション）",
+                        placeholder="例: status = 'A' AND created_at > SYSDATE - 7",
+                        lines=2,
+                        max_lines=5,
                     )
-                    data_limit_input = gr.Number(
-                        label="取得件数",
-                        value=100,
-                        minimum=1,
-                        maximum=10000,
+
+                with gr.Row():                
+                    data_display_btn = gr.Button("データを表示", variant="primary")
+                
+                with gr.Row():                
+                    data_display_status = gr.Markdown(visible=False)
+                with gr.Row():
+                    data_display = gr.Dataframe(
+                        label="データ表示",
+                        interactive=False,
+                        wrap=True,
+                        visible=False,
+                        value=pd.DataFrame(),
+                        elem_id="data_result_df",
                     )
-                
-                data_where_input = gr.Textbox(
-                    label="WHERE条件（オプション）",
-                    placeholder="例: status = 'A' AND created_at > SYSDATE - 7",
-                    lines=2,
-                    max_lines=5,
-                )
-                
-                data_display_btn = gr.Button("データを表示", variant="primary")
-                
-                data_display_info = gr.Markdown(
-                    value="ℹ️ テーブルまたはビューを選択して「データを表示」ボタンをクリックしてください ℹ️ 注意: 重いSQLを実行すると、処理が遅くなり画面が一時的に固まる場合があります",
-                    visible=True,
-                )
-                data_display = gr.Dataframe(
-                    label="データ表示",
-                    interactive=False,
-                    wrap=True,
-                    visible=False,
-                    value=pd.DataFrame(),
-                    elem_id="data_result_df",
-                )
-                data_result_style = gr.HTML(visible=False)
             
             # Feature 2: CSV Upload
             with gr.Accordion(label="2. CSVアップロード", open=False):
-                csv_file_input = gr.File(
-                    label="CSVファイル",
-                    file_types=[".csv"],
-                    type="filepath",
-                )
+                with gr.Row():
+                    csv_file_input = gr.File(
+                        label="CSVファイル",
+                        file_types=[".csv"],
+                        type="filepath",
+                    )
                 
                 with gr.Row():
-                    csv_table_select = gr.Dropdown(
-                        label="アップロード先テーブル",
-                        choices=[],
-                        interactive=True,
-                    )
-                    csv_upload_mode = gr.Radio(
-                        label="アップロードモード",
-                        choices=["INSERT", "TRUNCATE & INSERT"],
-                        value="INSERT",
-                    )
+                    with gr.Column():
+                        csv_table_select = gr.Dropdown(
+                            label="アップロード先テーブル",
+                            choices=[],
+                            interactive=True,
+                        )
+                    with gr.Column():
+                        csv_upload_mode = gr.Radio(
+                            label="アップロードモード",
+                            choices=["INSERT", "TRUNCATE & INSERT"],
+                            value="INSERT",
+                        )
                 
                 csv_preview_info = gr.Markdown(
                     value="ℹ️ CSVファイルを選択するとプレビューが表示されます",
@@ -1742,6 +1791,7 @@ def build_management_tab(pool):
                 )
                 
                 csv_upload_btn = gr.Button("アップロード", variant="primary")
+                csv_upload_status_md = gr.Markdown(visible=False)
                 csv_upload_result = gr.Markdown(visible=False)
             
             # Feature 3: SQL Bulk Execution
@@ -1773,6 +1823,7 @@ def build_management_tab(pool):
                     data_execute_btn = gr.Button("実行", variant="primary")
 
                 with gr.Row():        
+                    data_sql_status = gr.Markdown(visible=False)
                     data_sql_result = gr.Markdown(visible=False)
 
                 with gr.Accordion(label="AI分析と処理", open=False):
@@ -1796,20 +1847,20 @@ def build_management_tab(pool):
             # Event Handlers
             def refresh_data_table_list():
                 try:
-                    logger.info("テーブル・ビュー一覧を更新ボタンがクリックされました")
-                    yield gr.Markdown(value="⏳ テーブル・ビュー一覧を更新中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
+                    logger.info("テーブル・ビュー一覧を取得ボタンがクリックされました")
+                    yield gr.Markdown(value="⏳ テーブル・ビュー一覧を取得中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
                     data_names = get_table_list_for_data(pool)
                     upload_tables = get_table_list_for_upload(pool)
-                    yield gr.Markdown(value="✅ 更新完了", visible=True), gr.Dropdown(choices=data_names), gr.Dropdown(choices=upload_tables)
+                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dropdown(choices=data_names), gr.Dropdown(choices=upload_tables)
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ 更新に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
+                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
             
             def display_data(table_name, limit, where_clause):
                 try:
-                    yield gr.Markdown(value="⏳ データを取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                    yield gr.Markdown(value="⏳ データを取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="⏳ データを取得中...")
                     df = display_table_data(pool, table_name, limit, where_clause)
                     if df.empty:
-                        yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                        yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=False)
                         return
                     widths = []
                     sample = df.head(5)
@@ -1840,21 +1891,23 @@ def build_management_tab(pool):
                         value=df,
                         elem_id="data_result_df",
                     )
-                    style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                    yield gr.Markdown(visible=False), df_component, style_component
+                    # style_component is removed
+                    yield gr.Markdown(visible=False), df_component, gr.Markdown(visible=False)
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ データ取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                    yield gr.Markdown(value=f"❌ データ取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=False)
             
             def upload_csv(file, table_name, mode):
                 """Upload CSV file."""
+                yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="⏳ CSVアップロードを実行中..."), gr.Markdown(visible=False)
                 preview, result = upload_csv_data(pool, file, table_name, mode)
                 status_md = gr.Markdown(visible=True, value=result)
-                return preview, status_md
+                yield preview, gr.Markdown(visible=False), status_md
             
             def execute_sql(sql):
                 """Execute SQL statements."""
+                yield gr.Markdown(visible=True, value="⏳ SQL一括実行中..."), gr.Markdown(visible=False)
                 result = execute_data_sql(pool, sql)
-                return gr.Markdown(visible=True, value=result)
+                yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=result)
             
             def clear_sql():
                 """Clear SQL input."""
@@ -1883,7 +1936,7 @@ def build_management_tab(pool):
             data_display_btn.click(
                 fn=display_data,
                 inputs=[data_table_select, data_limit_input, data_where_input],
-                outputs=[data_display_info, data_display, data_result_style]
+                outputs=[data_display, data_display_status]
             )
             
             def preview_csv(file):
@@ -1908,13 +1961,13 @@ def build_management_tab(pool):
             csv_upload_btn.click(
                 fn=upload_csv,
                 inputs=[csv_file_input, csv_table_select, csv_upload_mode],
-                outputs=[csv_preview, csv_upload_result]
+                outputs=[csv_preview, csv_upload_status_md, csv_upload_result]
             )
             
             data_execute_btn.click(
                 fn=execute_sql,
                 inputs=[data_sql_input],
-                outputs=[data_sql_result]
+                outputs=[data_sql_status, data_sql_result]
             )
             
             data_clear_btn.click(
