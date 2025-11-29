@@ -98,8 +98,66 @@ def _sanitize_name(name: str) -> str:
 def _profile_path(name: str) -> Path:
     return _profiles_dir() / f"{_sanitize_name(name)}.json"
 
- 
 
+def _save_profiles_to_json(pool):
+    """プロファイル情報をselectai.jsonファイルに保存する"""
+    try:
+        profiles_data = [
+            {
+                "profile": "",
+                "business_domain": ""
+            }
+        ]
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT PROFILE_NAME, DESCRIPTION FROM USER_CLOUD_AI_PROFILES ORDER BY PROFILE_NAME"
+                )
+                rows = cursor.fetchall() or []
+                for r in rows:
+                    try:
+                        name = r[0]
+                        if str(name).strip().upper() == "OCI_CRED$PROF":
+                            continue
+                        desc_val = r[1]
+                        desc = desc_val.read() if hasattr(desc_val, "read") else str(desc_val or "")
+                        profiles_data.append({
+                            "profile": str(name),
+                            "business_domain": str(desc)
+                        })
+                    except Exception as e:
+                        logger.error(f"_save_profiles_to_json row error: {e}")
+        
+        # profiles/selectai.json に保存
+        json_path = _profiles_dir() / "selectai.json"
+        with json_path.open("w", encoding="utf-8") as f:
+            json.dump(profiles_data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved {len(profiles_data)} profiles to {json_path}")
+    except Exception as e:
+        logger.error(f"_save_profiles_to_json error: {e}")
+
+
+def _load_profiles_from_json():
+    """保存されたselectai.jsonからプロファイル一覧を読み込む"""
+    try:
+        json_path = _profiles_dir() / "selectai.json"
+        if not json_path.exists():
+            return []
+        with json_path.open("r", encoding="utf-8") as f:
+            profiles_data = json.load(f)
+        # business_domainを優先して返す
+        result = []
+        for p in profiles_data:
+            bd = str(p.get("business_domain", "") or "").strip()
+            if bd:
+                result.append(bd)
+            else:
+                result.append(str(p.get("profile", "")))
+        return result
+    except Exception as e:
+        logger.error(f"_load_profiles_from_json error: {e}")
+        return []
+        
 def get_db_profiles(pool) -> pd.DataFrame:
     try:
         with pool.acquire() as conn:
@@ -463,6 +521,8 @@ def build_selectai_tab(pool):
                     try:
                         yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
                         df = get_db_profiles(pool)
+                        # JSONファイルに保存
+                        _save_profiles_to_json(pool)
                         if df is None or df.empty:
                             empty_df = pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])
                             yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True), gr.HTML(visible=False)
@@ -529,10 +589,12 @@ def build_selectai_tab(pool):
                         with pool.acquire() as conn:
                             with conn.cursor() as cursor:
                                 cursor.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :name); END;", name=name)
-                        return gr.Markdown(visible=True, value=f"🗑️ 削除しました: {name}"), gr.Dataframe(value=get_db_profiles(pool)), "", ""
+                        # JSONファイルを更新
+                        _save_profiles_to_json(pool)
+                        return gr.Markdown(visible=True, value=f"🗑️ 削除しました: {name}"), gr.Dataframe(value=get_db_profiles(pool)), "", "", ""
                     except Exception as e:
                         logger.error(f"delete_selected_profile error: {e}")
-                        return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), name, ""
+                        return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), name, "", ""
 
                 def update_selected_profile(original_name, edited_name, business_domain):
                     try:
@@ -560,6 +622,8 @@ def build_selectai_tab(pool):
                                 cursor.execute("BEGIN DBMS_CLOUD_AI.CREATE_PROFILE(profile_name => :name, attributes => :attrs, description => :desc); END;", name=new, attrs=attr_str, desc=bd)
                                 if new != orig:
                                     cursor.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :name); END;", name=orig)
+                        # JSONファイルを更新
+                        _save_profiles_to_json(pool)
                         sql = _generate_create_sql_from_attrs(new, attrs, bd)
                         return gr.Markdown(visible=True, value=f"✅ 更新しました: {new}"), gr.Dataframe(value=get_db_profiles(pool)), new, gr.Textbox(value=bd), sql, new
                     except Exception as e:
@@ -602,10 +666,12 @@ def build_selectai_tab(pool):
                         )
                         attrs = _get_profile_attributes(pool, name) or {}
                         desc = str(bd)
+                        # JSONファイルを更新
+                        _save_profiles_to_json(pool)
                         sql = _generate_create_sql_from_attrs(name, attrs, desc)
-                        yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool)), gr.Textbox(value=str(name or "")), gr.Textbox(value=desc), gr.Textbox(value=sql)
+                        yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool), visible=True), gr.Textbox(value=str(name or "")), gr.Textbox(value=desc), gr.Textbox(value=sql)
                     except Exception as e:
-                        yield gr.Markdown(visible=True, value=f"❌ 作成に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), gr.Textbox(value=str(name or "")), gr.Textbox(value=str(business_domain or "")), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value=f"❌ 作成に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool), visible=False), gr.Textbox(value=str(name or "")), gr.Textbox(value=str(business_domain or "")), gr.Textbox(value="")
 
                 profile_refresh_btn.click(
                     fn=refresh_profiles,
@@ -621,7 +687,7 @@ def build_selectai_tab(pool):
                 profile_delete_btn.click(
                     fn=delete_selected_profile,
                     inputs=[selected_profile_name],
-                    outputs=[create_info, profile_list_df, selected_profile_name, profile_json_text],
+                    outputs=[create_info, profile_list_df, selected_profile_name, business_domain_text, profile_json_text],
                 )
 
                 profile_update_btn.click(
@@ -1280,30 +1346,20 @@ END;"""
                         outputs=[term_upload_result],
                     )
 
-                with gr.TabItem(label="チャット・分析"):
+                with gr.TabItem(label="チャット・分析") as dev_chat_tab:
                     with gr.Accordion(label="1. チャット", open=True):
                         def _dev_profile_names():
                             try:
-                                df = get_db_profiles(pool)
-                                if isinstance(df, pd.DataFrame) and not df.empty:
-                                    if "Business Domain" in df.columns and df["Business Domain"].notna().any():
-                                        return [str(x or "") for x in df["Business Domain"].tolist()]
-                                    c0 = df.columns[0]
-                                    return [str(x) for x in df[c0].tolist()]
+                                # JSONファイルから読み込む
+                                return _load_profiles_from_json()
                             except Exception as e:
                                 logger.error(f"_dev_profile_names error: {e}")
                             return []
 
                         with gr.Row():
-                            dev_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
-
-                        with gr.Row():                    
-                            dev_profile_refresh_status = gr.Markdown(visible=False)
-
-                        with gr.Row():
                             dev_profile_select = gr.Dropdown(
                                 label="Profile",
-                                choices=[],
+                                choices=_dev_profile_names(),
                                 interactive=True,
                             )
 
@@ -1753,14 +1809,6 @@ END;"""
                     def _on_dev_chat_clear():
                         return "", gr.Dropdown(choices=_dev_profile_names())
 
-                    def _on_dev_profile_refresh():
-                        try:
-                            yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
-                            yield gr.Markdown(visible=False), gr.Dropdown(choices=_dev_profile_names())
-                        except Exception as e:
-                            logger.error(f"_on_dev_profile_refresh error: {e}")
-                            yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
-
                     def _append_comment(current_text: str, template: str):
                         s = str(current_text or "").strip()
                         t = str(template or "").strip()
@@ -1908,35 +1956,20 @@ END;"""
                         outputs=[dev_prompt_input, dev_profile_select],
                     )
 
-                    dev_profile_refresh_btn.click(
-                        fn=_on_dev_profile_refresh,
-                        outputs=[dev_profile_refresh_status, dev_profile_select],
-                    )
-
-                with gr.TabItem(label="フィードバック管理"):
+                with gr.TabItem(label="フィードバック管理") as feedback_tab:
                     def _global_profile_names():
                         try:
-                            df = get_db_profiles(pool)
-                            if isinstance(df, pd.DataFrame) and not df.empty:
-                                if "Business Domain" in df.columns and df["Business Domain"].notna().any():
-                                    return [str(x or "") for x in df["Business Domain"].tolist()]
-                                c0 = df.columns[0]
-                                return [str(x) for x in df[c0].tolist()]
+                            # JSONファイルから読み込む
+                            return _load_profiles_from_json()
                         except Exception as e:
                             logger.error(f"_global_profile_names error: {e}")
                         return []
 
                     with gr.Accordion(label="1. フィードバック一覧", open=True):
                         with gr.Row():
-                            global_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
-                        
-                        with gr.Row():
-                            global_profile_refresh_status = gr.Markdown(visible=False)
-
-                        with gr.Row():
                             global_profile_select = gr.Dropdown(
                                 label="Profile",
-                                choices=[],
+                                choices=_global_profile_names(),
                                 interactive=True,
                             )
 
@@ -2031,19 +2064,6 @@ END;"""
                         except Exception as e:
                             logger.error(f"_view_feedback_index_global error: {e}")
                             return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
-
-                    def _on_global_profile_refresh():
-                        try:
-                            yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
-                            yield gr.Markdown(visible=False), gr.Dropdown(choices=_global_profile_names())
-                        except Exception as e:
-                            logger.error(f"_on_global_profile_refresh error: {e}")
-                            yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
-
-                    global_profile_refresh_btn.click(
-                        fn=_on_global_profile_refresh,
-                        outputs=[global_profile_refresh_status, global_profile_select],
-                    )
 
                     def _on_profile_select_change(profile_name: str):
                         try:
@@ -2960,17 +2980,11 @@ END;"""
                         outputs=[am_ai_status_md, am_ai_result_md],
                     )
 
-                with gr.TabItem(label="合成データ生成"):
+                with gr.TabItem(label="合成データ生成") as synthetic_tab:
                     with gr.Accordion(label="1. 対象選択", open=True):
                         with gr.Row():
                             with gr.Column():
-                                syn_profile_refresh_status = gr.Markdown(visible=False)
-                        with gr.Row():
-                            with gr.Column():
-                                syn_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
-                        with gr.Row():
-                            with gr.Column():
-                                syn_profile_select = gr.Dropdown(label="Profile", choices=[], interactive=True)
+                                syn_profile_select = gr.Dropdown(label="Profile", choices=_load_profiles_from_json(), interactive=True)
 
                         with gr.Row():
                             with gr.Column():
@@ -3015,21 +3029,11 @@ END;"""
 
                     def _syn_profile_names():
                         try:
-                            df = get_db_profiles(pool)
-                            if isinstance(df, pd.DataFrame) and not df.empty:
-                                if "Business Domain" in df.columns and df["Business Domain"].notna().any():
-                                    return [str(x or "") for x in df["Business Domain"].tolist()]
-                                c0 = df.columns[0]
-                                return [str(x) for x in df[c0].tolist()]
+                            # JSONファイルから読み込む
+                            return _load_profiles_from_json()
                         except Exception as e:
                             logger.error(f"_syn_profile_names error: {e}")
                         return []
-
-                    def _syn_refresh_profiles():
-                        try:
-                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dropdown(choices=_syn_profile_names())
-                        except Exception as e:
-                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.Dropdown(choices=[])
 
                     def _syn_refresh_objects(profile_name):
                         try:
@@ -3206,11 +3210,6 @@ END;"""
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
 
-                    syn_profile_refresh_btn.click(
-                        fn=_syn_refresh_profiles,
-                        outputs=[syn_profile_refresh_status, syn_profile_select],
-                    )
-
                     syn_refresh_btn.click(
                         fn=_syn_refresh_objects,
                         inputs=[syn_profile_select],
@@ -3237,14 +3236,10 @@ END;"""
 
                 # モデル管理タブは上へ移動しました
 
-                with gr.TabItem(label="SQL→質問 逆生成"):
+                with gr.TabItem(label="SQL→質問 逆生成") as reverse_tab:
                     with gr.Accordion(label="1. 入力", open=True):
                         with gr.Row():
-                            rev_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
-                        with gr.Row():
-                            rev_profile_refresh_status = gr.Markdown(visible=False)
-                        with gr.Row():
-                            rev_profile_select = gr.Dropdown(label="Profile", choices=[], interactive=True)
+                            rev_profile_select = gr.Dropdown(label="Profile", choices=_load_profiles_from_json(), interactive=True)
                         with gr.Row():
                             rev_model_input = gr.Dropdown(
                                 label="モデル",
@@ -3271,22 +3266,11 @@ END;"""
 
                     def _rev_profile_names():
                         try:
-                            df = get_db_profiles(pool)
-                            if isinstance(df, pd.DataFrame) and not df.empty:
-                                if "Business Domain" in df.columns and df["Business Domain"].notna().any():
-                                    return [str(x or "") for x in df["Business Domain"].tolist()]
-                                c0 = df.columns[0]
-                                return [str(x) for x in df[c0].tolist()]
+                            # JSONファイルから読み込む
+                            return _load_profiles_from_json()
                         except Exception as e:
                             logger.error(f"_rev_profile_names error: {e}")
                         return []
-
-                    def _rev_on_profile_refresh():
-                        try:
-                            yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
-                            yield gr.Markdown(visible=False), gr.Dropdown(choices=_rev_profile_names())
-                        except Exception as e:
-                            yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
 
                     def _rev_build_context_text(profile_name):
                         try:
@@ -3384,11 +3368,6 @@ END;"""
                         finally:
                             loop.close()
 
-                    rev_profile_refresh_btn.click(
-                        fn=_rev_on_profile_refresh,
-                        outputs=[rev_profile_refresh_status, rev_profile_select],
-                    )
-
                     def _on_profile_change_set_context(p):
                         return _rev_build_context(p)
 
@@ -3404,34 +3383,22 @@ END;"""
                         outputs=[rev_question_output],
                     )
 
-        with gr.TabItem(label="ユーザー機能"):
+        with gr.TabItem(label="ユーザー機能") as user_function_tab:
             with gr.Tabs():
-                with gr.TabItem(label="基本機能"):
+                with gr.TabItem(label="基本機能") as user_basic_tab:
                     with gr.Accordion(label="1. チャット", open=True):
                         def _profile_names():
                             try:
-                                df = get_db_profiles(pool)
-                                if isinstance(df, pd.DataFrame) and not df.empty:
-                                    if "Business Domain" in df.columns and df["Business Domain"].notna().any():
-                                        return [str(x or "") for x in df["Business Domain"].tolist()]
-                                    c0 = df.columns[0]
-                                    return [str(x) for x in df[c0].tolist()]
+                                # JSONファイルから読み込む
+                                return _load_profiles_from_json()
                             except Exception as e:
                                 logger.error(f"_profile_names error: {e}")
                             return []
 
                         with gr.Row():
-                            with gr.Column():
-                                user_profile_refresh_btn = gr.Button("プロファイル一覧を取得", variant="primary")
-
-                        with gr.Row():
-                            with gr.Column():
-                                user_profile_refresh_status = gr.Markdown(visible=False)
-
-                        with gr.Row():
                             profile_select = gr.Dropdown(
                                 label="Profile",
-                                choices=[],
+                                choices=_profile_names(),
                                 interactive=True,
                             )
 
@@ -3656,13 +3623,6 @@ END;"""
             def _on_chat_clear():
                 return "", gr.Dropdown(choices=_profile_names()), gr.Textbox(value="")
 
-            def _on_user_profile_refresh():
-                try:
-                    yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dropdown(choices=[])
-                    yield gr.Markdown(visible=False), gr.Dropdown(choices=_profile_names())
-                except Exception as e:
-                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[])
-
             chat_execute_btn.click(
                 fn=_user_step_generate,
                 inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt],
@@ -3678,7 +3638,53 @@ END;"""
                 outputs=[prompt_input, profile_select, generated_sql_text],
             )
 
-            user_profile_refresh_btn.click(
-                fn=_on_user_profile_refresh,
-                outputs=[user_profile_refresh_status, profile_select],
-            )
+        # 各タブ選択時のProfileドロップダウン更新イベントハンドラー
+        def _update_dropdown_from_json(current_value):
+            """
+            JSONファイルから読み込んでドロップダウンを更新。
+            現在の値がリストにない場合は空文字列に設定。
+            """
+            choices = _load_profiles_from_json()
+            if not choices:
+                choices = [""]
+            # 現在の値がリストに存在するか確認
+            if current_value and current_value in choices:
+                return gr.Dropdown(choices=choices, value=current_value)
+            else:
+                # リストにない場合は空文字列に設定
+                return gr.Dropdown(choices=choices, value="")
+
+        # チャット・分析タブ
+        dev_chat_tab.select(
+            fn=_update_dropdown_from_json,
+            inputs=[dev_profile_select],
+            outputs=[dev_profile_select],
+        )
+
+        # フィードバック管理タブ
+        feedback_tab.select(
+            fn=_update_dropdown_from_json,
+            inputs=[global_profile_select],
+            outputs=[global_profile_select],
+        )
+
+        # 合成データ生成タブ
+        synthetic_tab.select(
+            fn=_update_dropdown_from_json,
+            inputs=[syn_profile_select],
+            outputs=[syn_profile_select],
+        )
+
+        # SQL→質問 逆生成タブ
+        reverse_tab.select(
+            fn=_update_dropdown_from_json,
+            inputs=[rev_profile_select],
+            outputs=[rev_profile_select],
+        )
+
+        # ユーザー機能 → 基本機能タブ
+        user_basic_tab.select(
+            fn=_update_dropdown_from_json,
+            inputs=[profile_select],
+            outputs=[profile_select],
+        )
