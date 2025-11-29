@@ -1109,22 +1109,26 @@ def build_management_tab(pool):
                     create_table_result = gr.Markdown(visible=False)
 
                 with gr.Accordion(label="AI分析と処理", open=False):
-                    table_ai_model_input = gr.Dropdown(
-                        label="モデル",
-                        choices=[
-                            "xai.grok-code-fast-1",
-                            "xai.grok-3",
-                            "xai.grok-3-fast",
-                            "xai.grok-4",
-                            "xai.grok-4-fast-non-reasoning",
-                            "meta.llama-4-scout-17b-16e-instruct",
-                        ],
-                        value="xai.grok-code-fast-1",
-                        interactive=True,
-                    )
-                    table_ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                    table_ai_status_md = gr.Markdown(visible=False)
-                    table_ai_result_md = gr.Markdown(visible=False)
+                    with gr.Row():
+                        table_ai_model_input = gr.Dropdown(
+                            label="モデル",
+                            choices=[
+                                "xai.grok-code-fast-1",
+                                "xai.grok-3",
+                                "xai.grok-3-fast",
+                                "xai.grok-4",
+                                "xai.grok-4-fast-non-reasoning",
+                                "meta.llama-4-scout-17b-16e-instruct",
+                            ],
+                            value="xai.grok-code-fast-1",
+                            interactive=True,
+                        )
+                    with gr.Row():
+                        table_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                    with gr.Row():
+                        table_ai_status_md = gr.Markdown(visible=False)
+                    with gr.Row():
+                        table_ai_result_md = gr.Markdown(visible=False)
             
             # Event handlers
             def on_table_select(evt: gr.SelectData, current_df):
@@ -1249,7 +1253,7 @@ def build_management_tab(pool):
                 outputs=[create_table_sql]
             )
 
-            async def _table_ai_analyze_async(model_name, table_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
+            async def _table_ai_analyze_async(model_name, create_sql_text, exec_result_text):
                 from utils.chat_util import get_oci_region, get_compartment_id
                 region = get_oci_region()
                 compartment_id = get_compartment_id()
@@ -1258,17 +1262,7 @@ def build_management_tab(pool):
                 try:
                     import pandas as pd
                     from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                    if isinstance(columns_df_input, dict) and "data" in columns_df_input:
-                        headers = columns_df_input.get("headers", [])
-                        columns_df = pd.DataFrame(columns_df_input["data"], columns=headers)
-                    elif isinstance(columns_df_input, pd.DataFrame):
-                        columns_df = columns_df_input
-                    else:
-                        columns_df = pd.DataFrame()
-                    preview = columns_df.head(10).to_markdown(index=False) if not columns_df.empty else ""
                     sql_part = str(create_sql_text or "").strip()
-                    if not sql_part:
-                        sql_part = str(ddl_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
                         "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
@@ -1277,7 +1271,6 @@ def build_management_tab(pool):
                         "3) 簡潔な結論（不要な詳細は省略）\n\n"
                         + ("SQL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
                         + ("実行結果:\n" + result_part + "\n" if result_part else "")
-                        + ("列情報プレビュー:\n" + preview + "\n" if preview else "")
                     )
                     client = AsyncOciOpenAI(
                         service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -1297,13 +1290,24 @@ def build_management_tab(pool):
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-            def table_ai_analyze(model_name, table_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
+            def table_ai_analyze(model_name, create_sql_text, exec_result_text):
                 import asyncio
+                # 必須入力項目のチェック
+                if not model_name or not str(model_name).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
+                    return
+                if not create_sql_text or not str(create_sql_text).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ CREATE TABLE SQL文を入力してください"), gr.Markdown(visible=False)
+                    return
+                if not exec_result_text or not str(exec_result_text).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にテーブル作成を実行してください"), gr.Markdown(visible=False)
+                    return
+                
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                    result_md = loop.run_until_complete(_table_ai_analyze_async(model_name, table_name, columns_df_input, ddl_text, create_sql_text, exec_result_text))
+                    result_md = loop.run_until_complete(_table_ai_analyze_async(model_name, create_sql_text, exec_result_text))
                     yield gr.Markdown(visible=True, value="✅ 完了"), result_md
                 except Exception as e:
                     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
@@ -1312,7 +1316,7 @@ def build_management_tab(pool):
 
             table_ai_analyze_btn.click(
                 fn=table_ai_analyze,
-                inputs=[table_ai_model_input, selected_table_name, table_columns_df, table_ddl_text, create_table_sql, create_table_result],
+                inputs=[table_ai_model_input, create_table_sql, create_table_result],
                 outputs=[table_ai_status_md, table_ai_result_md],
             )
         
@@ -1615,6 +1619,14 @@ def build_management_tab(pool):
 
             def _view_join_where_ai_extract(model_name, ddl_text):
                 import asyncio
+                # 必須入力項目のチェック
+                if not model_name or not str(model_name).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value="")
+                    return
+                if not ddl_text or not str(ddl_text).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ CREATE VIEW SQLのDDLが空です。ビューを選択してください"), gr.Textbox(value=""), gr.Textbox(value="")
+                    return
+                
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
@@ -1643,7 +1655,7 @@ def build_management_tab(pool):
                 outputs=[create_view_sql]
             )
 
-            async def _view_ai_analyze_async(model_name, view_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
+            async def _view_ai_analyze_async(model_name, create_sql_text, exec_result_text):
                 from utils.chat_util import get_oci_region, get_compartment_id
                 region = get_oci_region()
                 compartment_id = get_compartment_id()
@@ -1652,26 +1664,15 @@ def build_management_tab(pool):
                 try:
                     import pandas as pd
                     from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                    if isinstance(columns_df_input, dict) and "data" in columns_df_input:
-                        headers = columns_df_input.get("headers", [])
-                        columns_df = pd.DataFrame(columns_df_input["data"], columns=headers)
-                    elif isinstance(columns_df_input, pd.DataFrame):
-                        columns_df = columns_df_input
-                    else:
-                        columns_df = pd.DataFrame()
-                    preview = columns_df.head(10).to_markdown(index=False) if not columns_df.empty else ""
                     sql_part = str(create_sql_text or "").strip()
-                    if not sql_part:
-                        sql_part = str(ddl_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
                         "以下のSQL/DDLと実行結果を分析してください。出力は次の3点に限定します。\n"
-                        "1) エラー原因（該当する場合）\n"
-                        "2) 解決方法（修正案や具体的手順）\n"
-                        "3) 簡潔な結論（不要な詳細は省略）\n\n"
+                        "1) エラー原因(該当する場合)\n"
+                        "2) 解決方法(修正案や具体的手順)\n"
+                        "3) 簡潔な結論(不要な詳細は省略)\n\n"
                         + ("SQL/DDL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
                         + ("実行結果:\n" + result_part + "\n" if result_part else "")
-                        + ("列情報プレビュー:\n" + preview + "\n" if preview else "")
                     )
                     client = AsyncOciOpenAI(
                         service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -1691,13 +1692,24 @@ def build_management_tab(pool):
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-            def view_ai_analyze(model_name, view_name, columns_df_input, ddl_text, create_sql_text, exec_result_text):
+            def view_ai_analyze(model_name, create_sql_text, exec_result_text):
                 import asyncio
+                # 必須入力項目のチェック
+                if not model_name or not str(model_name).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
+                    return
+                if not create_sql_text or not str(create_sql_text).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ CREATE VIEW SQL文を入力してください"), gr.Markdown(visible=False)
+                    return
+                if not exec_result_text or not str(exec_result_text).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にビュー作成を実行してください"), gr.Markdown(visible=False)
+                    return
+                
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                    result_md = loop.run_until_complete(_view_ai_analyze_async(model_name, view_name, columns_df_input, ddl_text, create_sql_text, exec_result_text))
+                    result_md = loop.run_until_complete(_view_ai_analyze_async(model_name, create_sql_text, exec_result_text))
                     yield gr.Markdown(visible=True, value="✅ 完了"), result_md
                 except Exception as e:
                     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
@@ -1706,7 +1718,7 @@ def build_management_tab(pool):
 
             view_ai_analyze_btn.click(
                 fn=view_ai_analyze,
-                inputs=[view_ai_model_input, selected_view_name, view_columns_df, view_ddl_text, create_view_sql, create_view_result],
+                inputs=[view_ai_model_input, create_view_sql, create_view_result],
                 outputs=[view_ai_analyze_status_md, view_ai_result_md],
             )
         
@@ -1982,7 +1994,7 @@ def build_management_tab(pool):
                 outputs=[data_sql_input]
             )
 
-            async def _data_ai_analyze_async(model_name, obj_name, limit_value, where_text, df_input):
+            async def _data_ai_analyze_async(model_name, create_sql_text, exec_result_text):
                 from utils.chat_util import get_oci_region, get_compartment_id
                 region = get_oci_region()
                 compartment_id = get_compartment_id()
@@ -1991,23 +2003,15 @@ def build_management_tab(pool):
                 try:
                     import pandas as pd
                     from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                    if isinstance(df_input, dict) and "data" in df_input:
-                        headers = df_input.get("headers", [])
-                        df = pd.DataFrame(df_input["data"], columns=headers)
-                    elif isinstance(df_input, pd.DataFrame):
-                        df = df_input
-                    else:
-                        df = pd.DataFrame()
-                    preview = df.head(20).to_markdown(index=False) if not df.empty else ""
-                    where_part = f" WHERE {str(where_text).strip()}" if where_text and str(where_text).strip() else ""
-                    sql_text = f"SELECT * FROM ADMIN.{str(obj_name or '').upper()}{where_part} FETCH FIRST {int(limit_value or 0)} ROWS ONLY" if obj_name else ""
+                    sql_part = str(create_sql_text or "").strip()
+                    result_part = str(exec_result_text or "").strip()
                     prompt = (
                         "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
-                        "1) エラー原因（該当する場合）\n"
-                        "2) 解決方法（修正案や具体的手順）\n"
-                        "3) 簡潔な結論（不要な詳細は省略）\n\n"
-                        + ("SQL:\n```sql\n" + sql_text + "\n```\n" if sql_text else "")
-                        + ("結果プレビュー:\n" + preview + "\n" if preview else "")
+                        "1) エラー原因(該当する場合)\n"
+                        "2) 解決方法(修正案や具体的手順)\n"
+                        "3) 簡潔な結論(不要な詳細は省略)\n\n"
+                        + ("SQL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
+                        + ("実行結果:\n" + result_part + "\n" if result_part else "")
                     )
                     client = AsyncOciOpenAI(
                         service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -2027,13 +2031,24 @@ def build_management_tab(pool):
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-            def data_ai_analyze(model_name, obj_name, limit_value, where_text, df_input):
+            def data_ai_analyze(model_name, create_sql_text, exec_result_text):
                 import asyncio
+                # 必須入力項目のチェック
+                if not model_name or not str(model_name).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
+                    return
+                if not create_sql_text or not str(create_sql_text).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+                    return
+                if not exec_result_text or not str(exec_result_text).strip():
+                    yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQL文を実行してください"), gr.Markdown(visible=False)
+                    return
+                
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                    result_md = loop.run_until_complete(_data_ai_analyze_async(model_name, obj_name, limit_value, where_text, df_input))
+                    result_md = loop.run_until_complete(_data_ai_analyze_async(model_name, create_sql_text, exec_result_text))
                     yield gr.Markdown(visible=True, value="✅ 完了"), result_md
                 except Exception as e:
                     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
@@ -2042,6 +2057,6 @@ def build_management_tab(pool):
 
             data_ai_analyze_btn.click(
                 fn=data_ai_analyze,
-                inputs=[data_ai_model_input, data_table_select, data_limit_input, data_where_input, data_display],
+                inputs=[data_ai_model_input, data_sql_input, data_sql_result],
                 outputs=[data_ai_status_md, data_ai_result_md],
             )

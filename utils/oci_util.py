@@ -445,6 +445,7 @@ def build_oci_embedding_test_tab(pool):
                         autoscroll=False,
                         interactive=False,
                         show_copy_button=True,
+                        container=False,
                     )
             with gr.Row():
                 tab_auto_create_btn = gr.Button(value="OCI_CREDを作成", variant="primary")

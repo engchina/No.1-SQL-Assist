@@ -836,7 +836,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="⚠️ 訓練データがありません")
                             return
                         yield gr.Markdown(visible=True, value=f"⏳ 訓練データ読み込み完了: {len(dataset)}件")
-                        sp_root = Path(str(save_path or os.environ.get("MODEL_SAVE_PATH", "models")))
+                        sp_root = Path(str(save_path or "./models"))
                         sp_root.mkdir(parents=True, exist_ok=True)
                         mname = str(model_name or f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}").strip()
                         sp = sp_root / mname
@@ -953,7 +953,7 @@ END;"""
 
                 def _list_models(save_path):
                     try:
-                        sp_root = Path(str(save_path or os.environ.get("MODEL_SAVE_PATH", "models")))
+                        sp_root = Path(str(save_path or "./models"))
                         out = []
                         if sp_root.exists():
                             for p in sp_root.iterdir():
@@ -966,7 +966,7 @@ END;"""
 
                 async def _mt_test_async(text, save_path, trained_model_name):
                     from utils.oci_util import get_region
-                    sp_root = Path(str(save_path or os.environ.get("MODEL_SAVE_PATH", "models")))
+                    sp_root = Path(str(save_path or "./models"))
                     mname = str(trained_model_name or "").strip()
                     sp = sp_root / mname if mname else sp_root
                     meta_path = sp / "model.meta.json"
@@ -1118,7 +1118,7 @@ END;"""
                 # 直接固定テンプレートをダウンロード（クリック処理不要）
                 def _delete_model(save_path, trained_model_name):
                     try:
-                        sp_root = Path(str(save_path or os.environ.get("MODEL_SAVE_PATH", "models")))
+                        sp_root = Path(str(save_path or "./models"))
                         mname = str(trained_model_name or "").strip()
                         if not mname:
                             return _list_models(save_path)
@@ -1151,7 +1151,7 @@ END;"""
                 with gr.TabItem(label="モデル管理"):
                     with gr.Accordion(label="1. モデル保存パス", open=True):
                         with gr.Row():
-                            model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
+                            model_save_path_text = gr.Textbox(label="保存パス", value="./models", interactive=True)
                     with gr.Accordion(label="2. 訓練データ一覧", open=True):
                         with gr.Row():
                             td_refresh_btn = gr.Button("訓練データ一覧を取得", variant="primary")
@@ -1799,6 +1799,12 @@ END;"""
 
                     def _dev_ai_analyze(model_name, sql_text):
                         import asyncio
+                        # 必須入力項目のチェック
+                        if not model_name or not str(model_name).strip():
+                            return gr.Textbox(value="⚠️ モデルを選択してください"), gr.Textbox(value="")
+                        if not sql_text or not str(sql_text).strip():
+                            return gr.Textbox(value="⚠️ SQL文が空です。先にSQL文を生成してください"), gr.Textbox(value="")
+                        
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
@@ -2248,29 +2254,33 @@ END;"""
                             interactive=True,
                         )
                         cm_generate_btn = gr.Button("生成", variant="primary")
-                        cm_generated_sql = gr.Textbox(label="生成結果SQL", lines=15, max_lines=15, interactive=True, show_copy_button=True)
+                        cm_generated_sql = gr.Textbox(label="生成されたSQL文", lines=15, max_lines=15, interactive=True, show_copy_button=True)
 
                     with gr.Accordion(label="4. 実行", open=False):
                         cm_execute_btn = gr.Button("一括実行", variant="primary")
                         cm_execute_result = gr.Textbox(label="実行結果", interactive=False, lines=5, max_lines=8)
 
                         with gr.Accordion(label="AI分析と処理", open=False):
-                            cm_ai_model_input = gr.Dropdown(
-                                label="モデル",
-                                choices=[
-                                    "xai.grok-code-fast-1",
-                                    "xai.grok-3",
-                                    "xai.grok-3-fast",
-                                    "xai.grok-4",
-                                    "xai.grok-4-fast-non-reasoning",
-                                    "meta.llama-4-scout-17b-16e-instruct",
-                                ],
-                                value="xai.grok-code-fast-1",
-                                interactive=True,
-                            )
-                            cm_ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                            cm_ai_status_md = gr.Markdown(visible=False)
-                            cm_ai_result_md = gr.Markdown(visible=False)
+                            with gr.Row():
+                                cm_ai_model_input = gr.Dropdown(
+                                    label="モデル",
+                                    choices=[
+                                        "xai.grok-code-fast-1",
+                                        "xai.grok-3",
+                                        "xai.grok-3-fast",
+                                        "xai.grok-4",
+                                        "xai.grok-4-fast-non-reasoning",
+                                        "meta.llama-4-scout-17b-16e-instruct",
+                                    ],
+                                    value="xai.grok-code-fast-1",
+                                    interactive=True,
+                                )
+                            with gr.Row():
+                                cm_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                            with gr.Row():
+                                cm_ai_status_md = gr.Markdown(visible=False)
+                            with gr.Row():
+                                cm_ai_result_md = gr.Markdown(visible=False)
 
                     def _cm_refresh_objects():
                         try:
@@ -2384,6 +2394,17 @@ END;"""
 
                     def _cm_ai_analyze(model_name, sql_text, exec_result_text):
                         import asyncio
+                        # 必須入力項目のチェック
+                        if not model_name or not str(model_name).strip():
+                            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
+                            return
+                        if not sql_text or not str(sql_text).strip():
+                            yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+                            return
+                        if not exec_result_text or not str(exec_result_text).strip():
+                            yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先に一括実行を実行してください"), gr.Markdown(visible=False)
+                            return
+                        
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
@@ -2619,7 +2640,7 @@ END;"""
                             interactive=True,
                         )
                         am_generate_btn = gr.Button("生成", variant="primary")
-                        am_generated_sql = gr.Textbox(label="生成結果SQL", lines=15, max_lines=15, interactive=True, show_copy_button=True)
+                        am_generated_sql = gr.Textbox(label="生成されたSQL文", lines=15, max_lines=15, interactive=True, show_copy_button=True)
 
                     with gr.Accordion(label="4. 実行", open=False):
                         am_execute_btn = gr.Button("一括実行", variant="primary")
@@ -2904,6 +2925,17 @@ END;"""
 
                     def _am_ai_analyze(model_name, sql_text, exec_result_text):
                         import asyncio
+                        # 必須入力項目のチェック
+                        if not model_name or not str(model_name).strip():
+                            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
+                            return
+                        if not sql_text or not str(sql_text).strip():
+                            yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+                            return
+                        if not exec_result_text or not str(exec_result_text).strip():
+                            yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先に一括実行を実行してください"), gr.Markdown(visible=False)
+                            return
+                        
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:

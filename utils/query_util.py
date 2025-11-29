@@ -483,7 +483,7 @@ def build_query_tab(pool):
                 ai_status_md = gr.Markdown(visible=False)
                 ai_result_md = gr.Markdown(visible=False)
 
-        async def _ai_analyze_async(model_name, sql_text, result_info_text, result_df_input):
+        async def _ai_analyze_async(model_name, sql_text, result_info_text):
             from utils.chat_util import get_oci_region, get_compartment_id
             region = get_oci_region()
             compartment_id = get_compartment_id()
@@ -492,26 +492,17 @@ def build_query_tab(pool):
             try:
                 import pandas as pd
                 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                if isinstance(result_df_input, dict) and "data" in result_df_input:
-                    headers = result_df_input.get("headers", [])
-                    df = pd.DataFrame(result_df_input["data"], columns=headers)
-                elif isinstance(result_df_input, pd.DataFrame):
-                    df = result_df_input
-                else:
-                    df = pd.DataFrame()
-                preview = df.head(20).to_markdown(index=False) if not df.empty else ""
                 q = (sql_text or "").strip()
                 if q.endswith(";"):
                     q = q[:-1]
                 info_text = str(result_info_text or "").strip()
                 prompt = (
                     "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
-                    "1) エラー原因（該当する場合）\n"
-                    "2) 解決方法（修正案や具体的手順）\n"
-                    "3) 簡潔な結論（不要な詳細は省略）\n\n"
+                    "1) エラー原因(該当する場合)\n"
+                    "2) 解決方法(修正案や具体的手順)\n"
+                    "3) 簡潔な結論(不要な詳細は省略)\n\n"
                     + ("SQL:\n```sql\n" + q + "\n```\n" if q else "")
-                    + ("実行メッセージ:\n" + info_text + "\n" if info_text else "")
-                    + ("結果プレビュー:\n" + preview + "\n" if preview else "")
+                    + ("実行結果:\n" + info_text + "\n" if info_text else "")
                 )
                 client = AsyncOciOpenAI(
                     service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -531,14 +522,25 @@ def build_query_tab(pool):
             except Exception as e:
                 return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-        def ai_analyze(model_name, sql_text, result_info_text, result_df_input):
+        def ai_analyze(model_name, sql_text, result_info_text):
             import asyncio
+            # 必須入力項目のチェック
+            if not model_name or not str(model_name).strip():
+                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
+                return
+            if not sql_text or not str(sql_text).strip():
+                yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+                return
+            if not result_info_text or not str(result_info_text).strip():
+                yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQL文を実行してください"), gr.Markdown(visible=False)
+                return
+            
             logger.info(f"AI分析を開始します: model={model_name}, sql_length={len(str(sql_text or ''))}, result_info_length={len(str(result_info_text or ''))}")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, result_info_text, result_df_input))
+                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, result_info_text))
                 yield gr.Markdown(visible=True, value="✅ 完了"), result_md
             except Exception as e:
                 yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
@@ -564,7 +566,7 @@ def build_query_tab(pool):
 
         ai_analyze_btn.click(
             fn=ai_analyze,
-            inputs=[ai_model_input, sql_input, result_info, result_df],
+            inputs=[ai_model_input, sql_input, result_info],
             outputs=[ai_status_md, ai_result_md],
         )
 
