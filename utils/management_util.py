@@ -1723,6 +1723,7 @@ def build_management_tab(pool):
                             label="テーブル・ビュー選択",
                             choices=[],
                             interactive=True,
+                            visible=False,
                         )
                     with gr.Column():
                         data_limit_input = gr.Number(
@@ -1770,6 +1771,7 @@ def build_management_tab(pool):
                             label="アップロード先テーブル",
                             choices=[],
                             interactive=True,
+                            visible=False,
                         )
                     with gr.Column():
                         csv_upload_mode = gr.Radio(
@@ -1848,12 +1850,12 @@ def build_management_tab(pool):
             def refresh_data_table_list():
                 try:
                     logger.info("テーブル・ビュー一覧を取得ボタンがクリックされました")
-                    yield gr.Markdown(value="⏳ テーブル・ビュー一覧を取得中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
+                    yield gr.Markdown(value="⏳ テーブル・ビュー一覧を取得中...", visible=True), gr.Dropdown(choices=[], visible=False), gr.Dropdown(choices=[], visible=False)
                     data_names = get_table_list_for_data(pool)
                     upload_tables = get_table_list_for_upload(pool)
-                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dropdown(choices=data_names), gr.Dropdown(choices=upload_tables)
+                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dropdown(choices=data_names, visible=True), gr.Dropdown(choices=upload_tables, visible=True)
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[])
+                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[], visible=False), gr.Dropdown(choices=[], visible=False)
             
             def display_data(table_name, limit, where_clause):
                 try:

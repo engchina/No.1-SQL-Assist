@@ -327,7 +327,7 @@ def create_db_profile(
 
 def build_selectai_tab(pool):
     with gr.Tabs():
-        with gr.TabItem(label="管理者機能"):
+        with gr.TabItem(label="開発者機能"):
             with gr.Tabs():
                 with gr.TabItem(label="プロファイル管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
@@ -368,8 +368,12 @@ def build_selectai_tab(pool):
                             refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
 
                         with gr.Row():
-                            tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
-                            views_input = gr.CheckboxGroup(label="ビュー選択", choices=[])
+                            with gr.Column():
+                                gr.Markdown("###### テーブル選択")
+                                tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
+                            with gr.Column():
+                                gr.Markdown("###### ビュー選択")
+                                views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
 
                         with gr.Row():
                             profile_name = gr.Textbox(
@@ -565,7 +569,7 @@ def build_selectai_tab(pool):
                         return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
 
                 def refresh_sources():
-                    return gr.CheckboxGroup(choices=_get_table_names(pool)), gr.CheckboxGroup(choices=_get_view_names(pool))
+                    return gr.CheckboxGroup(choices=_get_table_names(pool), visible=True), gr.CheckboxGroup(choices=_get_view_names(pool), visible=True)
 
                 def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, business_domain):
                     if not tables and not views:
@@ -630,7 +634,7 @@ def build_selectai_tab(pool):
                     try:
                         t = _get_table_names(pool)
                         v = _get_view_names(pool)
-                        return gr.CheckboxGroup(choices=t), gr.CheckboxGroup(choices=v)
+                        return gr.CheckboxGroup(choices=t, visible=True), gr.CheckboxGroup(choices=v, visible=True)
                     except Exception as e:
                         logger.error(f"refresh_sources_handler error: {e}")
                         return gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
@@ -1078,8 +1082,6 @@ END;"""
                         logger.error(f"_delete_model error: {e}")
                         return _list_models(save_path)
 
-        with gr.TabItem(label="開発者機能"):
-            with gr.Tabs():
                 with gr.TabItem(label="チャット・分析"):
                     with gr.Accordion(label="1. チャット", open=True):
                         def _dev_profile_names():
@@ -1978,9 +1980,11 @@ END;"""
                                 cm_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
-                                cm_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
+                                gr.Markdown("###### テーブル選択")
+                                cm_tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
                             with gr.Column():
-                                cm_views_input = gr.CheckboxGroup(label="ビュー選択", choices=[])
+                                gr.Markdown("###### ビュー選択")
+                                cm_views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
                         with gr.Row():
                             with gr.Column():
                                 cm_sample_limit = gr.Slider(label="サンプル件数", minimum=0, maximum=100, step=1, value=10, interactive=True)
@@ -2061,7 +2065,7 @@ END;"""
                                 names.extend([str(x) for x in df_view["View Name"].tolist()])
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
+                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
                             logger.error(f"_cm_refresh_objects error: {e}")
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
@@ -2338,9 +2342,11 @@ END;"""
                                 am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
-                                am_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
+                                gr.Markdown("###### テーブル選択")
+                                am_tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
                             with gr.Column():
-                                am_views_input = gr.CheckboxGroup(label="ビュー選択", choices=[])
+                                gr.Markdown("###### ビュー選択")
+                                am_views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
                         with gr.Row():
                             with gr.Column():
                                 am_sample_limit = gr.Slider(label="サンプル件数", minimum=0, maximum=100, step=1, value=10, interactive=True)
@@ -2425,7 +2431,7 @@ END;"""
                             df_view = _get_view_df_cached(pool, force=True)
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names), gr.CheckboxGroup(choices=view_names)
+                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
@@ -2776,7 +2782,7 @@ END;"""
                                 syn_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
-                                syn_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[])
+                                syn_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[], visible=False)
                             with gr.Column():
                                 syn_rows_per_table = gr.Slider(label="各テーブルの生成件数", minimum=0, maximum=10000, step=1, value=1, interactive=True)
                         with gr.Row():
@@ -2841,7 +2847,7 @@ END;"""
                                     table_names = [t for t in table_names if t in prof_tables]
                             except Exception as e:
                                 logger.error(f"_syn_refresh_objects filter by profile error: {e}")
-                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names), gr.Dropdown(choices=table_names)
+                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.Dropdown(choices=table_names)
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
 
