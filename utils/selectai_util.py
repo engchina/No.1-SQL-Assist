@@ -1082,6 +1082,197 @@ END;"""
                         logger.error(f"_delete_model error: {e}")
                         return _list_models(save_path)
 
+                with gr.TabItem(label="モデル管理"):
+                    with gr.Accordion(label="1. モデル保存パス", open=True):
+                        with gr.Row():
+                            model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
+                    with gr.Accordion(label="2. 訓練データ一覧", open=True):
+                        with gr.Row():
+                            td_refresh_btn = gr.Button("訓練データ一覧を取得", variant="primary")
+                        with gr.Row():
+                            td_refresh_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            td_list_df = gr.Dataframe(label="訓練データ一覧", interactive=False, wrap=True, visible=False)
+                        with gr.Row():
+                            td_upload_excel_file = gr.File(label="Excelファイル", file_types=[".xlsx"], type="filepath")
+                        with gr.Row():
+                            with gr.Column():
+                                gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
+                            with gr.Column():
+                                td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
+                        with gr.Row():
+                            td_upload_result = gr.Textbox(visible=False)
+                    with gr.Accordion(label="3. モデル学習", open=True):
+                        with gr.Row():
+                            td_train_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            td_embed_model = gr.Dropdown(
+                                label="埋め込みモデル",
+                                choices=["cohere.embed-v4.0"],
+                                value="cohere.embed-v4.0",
+                                interactive=True,
+                            )
+                        with gr.Row():
+                            td_model_name = gr.Textbox(label="モデル名", value=f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}", interactive=True)
+                        with gr.Row():
+                            td_train_iterations = gr.Slider(label="学習回数", minimum=1, maximum=10, step=1, value=5, interactive=True)
+                        with gr.Row():
+                            td_train_btn = gr.Button("学習を実行", variant="primary")
+                    with gr.Accordion(label="4. モデルテスト", open=True):
+                        with gr.Row():
+                            mt_refresh_models_btn = gr.Button("モデル一覧を取得", variant="primary")
+                        with gr.Row():
+                            with gr.Column():
+                                mt_trained_model_select = gr.Dropdown(label="モデル名", show_label=False, container=False, choices=[], interactive=True)
+                            with gr.Column():
+                                mt_delete_model_btn = gr.Button("選択モデルを削除", variant="stop")
+                        with gr.Row():
+                            mt_text_input = gr.Textbox(label="テキスト", lines=4, max_lines=8)
+                        with gr.Row():
+                            mt_label_text = gr.Textbox(label="業務ドメイン(=ラベル)", interactive=False)
+                        with gr.Row():
+                            mt_test_btn = gr.Button("テスト", variant="primary")
+                        mt_test_result = gr.Markdown(visible=False)
+
+                    td_refresh_btn.click(
+                        fn=_td_refresh,
+                        outputs=[td_refresh_status, td_list_df],
+                    )
+                    td_upload_excel_btn.click(
+                        fn=_td_upload_excel,
+                        inputs=[td_upload_excel_file],
+                        outputs=[td_upload_result],
+                    )
+                    td_train_btn.click(
+                        fn=_td_train,
+                        inputs=[model_save_path_text, td_embed_model, td_model_name, td_train_iterations],
+                        outputs=[td_train_status],
+                    )
+                    mt_refresh_models_btn.click(
+                        fn=_list_models,
+                        inputs=[model_save_path_text],
+                        outputs=[mt_trained_model_select],
+                    )
+                    mt_delete_model_btn.click(
+                        fn=_delete_model,
+                        inputs=[model_save_path_text, mt_trained_model_select],
+                        outputs=[mt_trained_model_select],
+                    )
+                    mt_test_btn.click(
+                        fn=_mt_test,
+                        inputs=[mt_text_input, model_save_path_text, mt_trained_model_select],
+                        outputs=[mt_test_result, mt_label_text],
+                    )
+
+                with gr.TabItem(label="用語集管理"):
+                    with gr.Accordion(label="1. 用語集", open=True):
+                        term_preview_status = gr.Markdown(visible=False)
+                        term_preview_df = gr.Dataframe(
+                            label="用語集プレビュー",
+                            interactive=False,
+                            wrap=True,
+                            visible=False,
+                            value=pd.DataFrame(columns=["TERM", "DESCRIPTION"]),
+                        )
+                        # テンプレートファイルを事前作成し、そのままダウンロード可能にする
+                        up_dir = Path("uploads")
+                        up_dir.mkdir(parents=True, exist_ok=True)
+                        _p = up_dir / "terms.xlsx"
+                        if not _p.exists():
+                            _df = pd.DataFrame(columns=["Term", "Description", "English"])
+                            with pd.ExcelWriter(_p) as _writer:
+                                _df.to_excel(_writer, sheet_name="terms", index=False)
+                        term_download_btn = gr.DownloadButton(label="テンプレートをダウンロード", value=str(_p), variant="secondary")
+                        term_upload_file = gr.File(label="用語集Excelをアップロード", file_types=[".xlsx"], type="filepath")
+                        term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False)
+
+                    def _term_list():
+                        try:
+                            p = Path("uploads") / "terms.xlsx"
+                            if not p.exists():
+                                return pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+                            df = pd.read_excel(str(p))
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            t_col = cols_map.get("TERM")
+                            d_col = cols_map.get("DESCRIPTION")
+                            if not t_col or not d_col:
+                                return pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+                            out = pd.DataFrame({
+                                "TERM": df[t_col].astype(str),
+                                "DESCRIPTION": df[d_col].astype(str),
+                            })
+                            return out
+                        except Exception as e:
+                            logger.error(f"用語集一覧の取得に失敗しました: {e}")
+                            return pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+
+                    def _term_refresh():
+                        try:
+                            yield gr.Markdown(visible=True, value="⏳ 用語集を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
+                            df = _term_list()
+                            if df is None or df.empty:
+                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["TERM", "DESCRIPTION"]))
+                                return
+                            yield gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df)
+                        except Exception as e:
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
+
+                    def _term_download_excel():
+                        try:
+                            up_dir = Path("uploads")
+                            up_dir.mkdir(parents=True, exist_ok=True)
+                            p = up_dir / "terms.xlsx"
+                            if not p.exists():
+                                df = pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+                                with pd.ExcelWriter(p) as writer:
+                                    df.to_excel(writer, sheet_name="terms", index=False)
+                            return gr.DownloadButton(value=str(p), visible=True)
+                        except Exception:
+                            return gr.DownloadButton(visible=False)
+
+                    def _term_upload_excel(file_path):
+                        try:
+                            if not file_path:
+                                return gr.Textbox(visible=True, value="ファイルを選択してください")
+                            try:
+                                df = pd.read_excel(str(file_path))
+                            except Exception:
+                                return gr.Textbox(visible=True, value="Excel読み込みに失敗しました")
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            required = {"TERM", "DESCRIPTION"}
+                            if not required.issubset(set(cols_map.keys())):
+                                return gr.Textbox(visible=True, value="列名は TERM, DESCRIPTION が必要です")
+                            out_df = pd.DataFrame({
+                                "TERM": df[cols_map["TERM"]],
+                                "DESCRIPTION": df[cols_map["DESCRIPTION"]],
+                            })
+                            up_dir = Path("uploads")
+                            up_dir.mkdir(parents=True, exist_ok=True)
+                            dest = up_dir / "terms.xlsx"
+                            if dest.exists():
+                                dest.unlink()
+                            with pd.ExcelWriter(dest) as writer:
+                                out_df.to_excel(writer, sheet_name="terms", index=False)
+                            return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件")
+                        except Exception as e:
+                            logger.error(f"用語集Excelアップロードに失敗しました: {e}")
+                            return gr.Textbox(visible=True, value=f"❌ エラー: {e}")
+
+                    term_preview_btn = gr.Button("用語集をプレビュー", variant="primary")
+
+                    term_preview_btn.click(
+                        fn=_term_refresh,
+                        outputs=[term_preview_status, term_preview_df],
+                    )
+
+                    # ダウンロードはボタン自体で実行（クリックハンドラ不要）
+
+                    term_upload_file.change(
+                        fn=_term_upload_excel,
+                        inputs=[term_upload_file],
+                        outputs=[term_upload_result],
+                    )
+
                 with gr.TabItem(label="チャット・分析"):
                     with gr.Accordion(label="1. チャット", open=True):
                         def _dev_profile_names():
@@ -3037,87 +3228,7 @@ END;"""
                         outputs=[syn_result_info, syn_result_df, syn_result_style],
                     )
 
-                with gr.TabItem(label="モデル管理"):
-                    with gr.Accordion(label="1. モデル保存パス", open=True):
-                        with gr.Row():
-                            model_save_path_text = gr.Textbox(label="保存パス(.env)", value=os.environ.get("MODEL_SAVE_PATH", "/u01/aipoc/models"), interactive=True)
-                    with gr.Accordion(label="2. 訓練データ一覧", open=True):
-                        with gr.Row():
-                            td_refresh_btn = gr.Button("訓練データ一覧を取得", variant="primary")
-                        with gr.Row():
-                            td_refresh_status = gr.Markdown(visible=False)
-                        with gr.Row():
-                            td_list_df = gr.Dataframe(label="訓練データ一覧", interactive=False, wrap=True, visible=False)
-                        with gr.Row():
-                            td_upload_excel_file = gr.File(label="Excelファイル", file_types=[".xlsx"], type="filepath")
-                        with gr.Row():
-                            with gr.Column():
-                                gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
-                            with gr.Column():
-                                td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
-                        with gr.Row():
-                            td_upload_result = gr.Textbox(visible=False)
-                    with gr.Accordion(label="3. モデル学習", open=True):
-                        with gr.Row():
-                            td_train_status = gr.Markdown(visible=False)
-                        with gr.Row():
-                            td_embed_model = gr.Dropdown(
-                                label="埋め込みモデル",
-                                choices=["cohere.embed-v4.0"],
-                                value="cohere.embed-v4.0",
-                                interactive=True,
-                            )
-                        with gr.Row():
-                            td_model_name = gr.Textbox(label="モデル名", value=f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}", interactive=True)
-                        with gr.Row():
-                            td_train_iterations = gr.Slider(label="学習回数", minimum=1, maximum=10, step=1, value=5, interactive=True)
-                        with gr.Row():
-                            td_train_btn = gr.Button("学習を実行", variant="primary")
-                    with gr.Accordion(label="4. モデルテスト", open=True):
-                        with gr.Row():
-                            mt_refresh_models_btn = gr.Button("モデル一覧を取得", variant="primary")
-                        with gr.Row():
-                            with gr.Column():
-                                mt_trained_model_select = gr.Dropdown(label="モデル名", show_label=False, container=False, choices=[], interactive=True)
-                            with gr.Column():
-                                mt_delete_model_btn = gr.Button("選択モデルを削除", variant="stop")
-                        with gr.Row():
-                            mt_text_input = gr.Textbox(label="テキスト", lines=4, max_lines=8)
-                        with gr.Row():
-                            mt_label_text = gr.Textbox(label="業務ドメイン(=ラベル)", interactive=False)
-                        with gr.Row():
-                            mt_test_btn = gr.Button("テスト", variant="primary")
-                        mt_test_result = gr.Markdown(visible=False)
-
-                    td_refresh_btn.click(
-                        fn=_td_refresh,
-                        outputs=[td_refresh_status, td_list_df],
-                    )
-                    td_upload_excel_btn.click(
-                        fn=_td_upload_excel,
-                        inputs=[td_upload_excel_file],
-                        outputs=[td_upload_result],
-                    )
-                    td_train_btn.click(
-                        fn=_td_train,
-                        inputs=[model_save_path_text, td_embed_model, td_model_name, td_train_iterations],
-                        outputs=[td_train_status],
-                    )
-                    mt_refresh_models_btn.click(
-                        fn=_list_models,
-                        inputs=[model_save_path_text],
-                        outputs=[mt_trained_model_select],
-                    )
-                    mt_delete_model_btn.click(
-                        fn=_delete_model,
-                        inputs=[model_save_path_text, mt_trained_model_select],
-                        outputs=[mt_trained_model_select],
-                    )
-                    mt_test_btn.click(
-                        fn=_mt_test,
-                        inputs=[mt_text_input, model_save_path_text, mt_trained_model_select],
-                        outputs=[mt_test_result, mt_label_text],
-                    )
+                # モデル管理タブは上へ移動しました
 
                 with gr.TabItem(label="SQL→質問 逆生成"):
                     with gr.Accordion(label="1. 入力", open=True):
