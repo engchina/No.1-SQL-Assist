@@ -489,7 +489,7 @@ def build_selectai_tab(pool):
                             profile_update_btn = gr.Button("変更を保存", variant="primary")
                             profile_delete_btn = gr.Button("選択したProfileを削除", variant="stop")
 
-                    with gr.Accordion(label="3. プロファイル作成", open=False):
+                    with gr.Accordion(label="3. プロファイル作成", open=True):
                         with gr.Row():
                             profile_name = gr.Textbox(
                                 label="Profile名",
@@ -1497,7 +1497,7 @@ def build_selectai_tab(pool):
                                             "xai.grok-4-fast-non-reasoning",
                                             "meta.llama-4-scout-17b-16e-instruct",
                                         ],
-                                        value="xai.grok-4-fast-non-reasoning",
+                                        value="xai.grok-code-fast-1",
                                         interactive=True,
                                     )
                                 with gr.Row():
@@ -1728,7 +1728,7 @@ def build_selectai_tab(pool):
                                 obj_name = obj.get("name")
                                 if obj_name in view_names:
                                     try:
-                                        view_df = get_view_details(pool, obj_name)
+                                        view_df, view_ddl = get_view_details(pool, obj_name)
                                         if view_df is not None and not view_df.empty:
                                             schema_parts.append(f"\n--- VIEW: {obj_name} ---")
                                             # カラム情報
@@ -3934,13 +3934,13 @@ def build_selectai_tab(pool):
                                 )
 
                         with gr.Row():
-                            enable_query_rewrite = gr.Checkbox(label="Query転写を有効化", value=False)
+                            enable_query_rewrite = gr.Checkbox(label="クエリ書き換えを有効化", value=False)
                         
                         with gr.Row():
-                            with gr.Accordion(label="Query転写設定", open=False, visible=False) as query_rewrite_section:
+                            with gr.Accordion(label="クエリ書き換え設定", open=False, visible=False) as query_rewrite_section:
                                 with gr.Row():
                                     rewrite_model_select = gr.Dropdown(
-                                        label="転写用モデル",
+                                        label="書き換え用モデル",
                                         choices=[
                                             "xai.grok-code-fast-1",
                                             "xai.grok-3",
@@ -3953,14 +3953,14 @@ def build_selectai_tab(pool):
                                         interactive=True,
                                     )
                                 with gr.Row():
-                                    rewrite_use_schema = gr.Checkbox(label="第2ステップ: スキーマ情報を結合", value=True)
+                                    rewrite_use_schema = gr.Checkbox(label="ステップ2: スキーマ情報を利用", value=True)
                                 with gr.Row():
-                                    rewrite_btn = gr.Button("転写実行", variant="primary")
+                                    rewrite_btn = gr.Button("書き換え実行", variant="primary")
                                 with gr.Row():
                                     rewrite_status = gr.Markdown(visible=False)
                                 with gr.Row():
                                     rewritten_query = gr.Textbox(
-                                        label="転写後の自然言語の質問",
+                                        label="書き換え後の質問",
                                         lines=5,
                                         max_lines=10,
                                         interactive=True,
@@ -3968,12 +3968,12 @@ def build_selectai_tab(pool):
                                     )
 
                         with gr.Row():
-                            include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
+                            include_extra_prompt = gr.Checkbox(label="追加プロンプトを含める", value=False)
 
                         with gr.Row():
                             with gr.Accordion(label="追加プロンプト", open=False, visible=False) as extra_prompt_section:
                                 extra_prompt = gr.Textbox(
-                                label="追加のPrompt",
+                                label="追加プロンプト",
                                 show_label=False,
                                 value=(
                                     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
