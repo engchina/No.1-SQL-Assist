@@ -876,9 +876,13 @@ def build_selectai_tab(pool):
                         logger.error(f"削除に失敗しました: {e}")
                         return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {e}"), gr.Dataframe(value=_td_list(), visible=True), "", "", ""
 
-                def _td_train(embed_model, model_name, iterations):
+                def _td_train(embed_model):
                     """参照コード(No.1-Classifier)に基づいた分類器訓練関数"""
                     try:
+                        # 固定のモデル名を使用
+                        model_name = "business_domain"
+                        iterations = 1000  # デフォルト値
+                        
                         logger.info("="*50)
                         logger.info("Starting classifier training...")
                         logger.info(f"Embed model: {embed_model}")
@@ -1083,6 +1087,9 @@ def build_selectai_tab(pool):
                 async def _mt_test_async(text, trained_model_name):
                     """参照コード(No.1-Classifier)に基づいた予測関数"""
                     try:
+                        # 固定のモデル名を使用
+                        trained_model_name = "business_domain"
+                                        
                         logger.info("="*50)
                         logger.info("Starting model prediction...")
                         logger.info(f"Model name: {trained_model_name}")
@@ -1177,12 +1184,13 @@ def build_selectai_tab(pool):
                         logger.info("="*50)
                         return gr.Markdown(visible=True, value=f"❌ {error_msg}"), gr.Textbox(value="")
 
-                def _mt_test(text, trained_model_name):
+                def _mt_test(text):
                     import asyncio
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
-                        return loop.run_until_complete(_mt_test_async(text, trained_model_name))
+                        # 固定のモデル名を渡す
+                        return loop.run_until_complete(_mt_test_async(text, "business_domain"))
                     finally:
                         loop.close()
 
@@ -1294,21 +1302,10 @@ def build_selectai_tab(pool):
                                 interactive=True,
                             )
                         with gr.Row():
-                            td_model_name = gr.Textbox(label="モデル名", value=f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}", interactive=True)
-                        with gr.Row():
-                            td_train_iterations = gr.Slider(label="学習回数", minimum=1, maximum=10, step=1, value=5, interactive=True)
-                        with gr.Row():
                             td_train_btn = gr.Button("学習を実行", variant="primary")
                         with gr.Row():
                             td_train_status = gr.Markdown(visible=False)
                     with gr.Accordion(label="3. モデルテスト", open=True):
-                        with gr.Row():
-                            mt_refresh_models_btn = gr.Button("モデル一覧を取得", variant="primary")
-                        with gr.Row():
-                            with gr.Column():
-                                mt_trained_model_select = gr.Dropdown(label="モデル名", show_label=False, container=False, choices=[], interactive=True)
-                            with gr.Column():
-                                mt_delete_model_btn = gr.Button("選択モデルを削除", variant="stop")
                         with gr.Row():
                             mt_text_input = gr.Textbox(label="テキスト", lines=4, max_lines=8)
                         with gr.Row():
@@ -1328,22 +1325,12 @@ def build_selectai_tab(pool):
                     )
                     td_train_btn.click(
                         fn=_td_train,
-                        inputs=[td_embed_model, td_model_name, td_train_iterations],
+                        inputs=[td_embed_model],
                         outputs=[td_train_status],
-                    )
-                    mt_refresh_models_btn.click(
-                        fn=_list_models,
-                        inputs=[],
-                        outputs=[mt_trained_model_select],
-                    )
-                    mt_delete_model_btn.click(
-                        fn=_delete_model,
-                        inputs=[mt_trained_model_select],
-                        outputs=[mt_trained_model_select],
                     )
                     mt_test_btn.click(
                         fn=_mt_test,
-                        inputs=[mt_text_input, mt_trained_model_select],
+                        inputs=[mt_text_input],
                         outputs=[mt_test_result, mt_label_text],
                     )
 
@@ -1474,17 +1461,31 @@ def build_selectai_tab(pool):
                             return []
 
                         with gr.Row():
-                            dev_profile_select = gr.Dropdown(
-                                label="Profile",
-                                choices=_dev_profile_names(),
-                                interactive=True,
+                            dev_prompt_input = gr.Textbox(
+                                label="自然言語の質問",
+                                placeholder="例: 東京の顧客数を教えて",
+                                lines=3,
+                                max_lines=10,
+                                show_copy_button=True,
                             )
+
+                        with gr.Row():
+                            with gr.Column():
+                                dev_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="secondary")
+                            with gr.Column():
+                                dev_profile_select = gr.Dropdown(
+                                    label="Profile",
+                                    show_label=False,
+                                    choices=_dev_profile_names(),
+                                    interactive=True,
+                                    container=False,
+                                )
 
                         with gr.Row():
                             dev_include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
 
                         with gr.Row():
-                            with gr.Accordion(label="追加プロンプト", open=False):
+                            with gr.Accordion(label="追加プロンプト", open=False, visible=False) as dev_extra_prompt_section:
                                 dev_extra_prompt = gr.Textbox(
                                     label="追加のPrompt",
                                     show_label=False,
@@ -1510,19 +1511,13 @@ def build_selectai_tab(pool):
                                     autoscroll=True,
                                     container=False,
                                 )
+                            dev_include_extra_prompt.change(lambda v: gr.Accordion(visible=v), inputs=dev_include_extra_prompt, outputs=dev_extra_prompt_section)
 
                         with gr.Row():
-                            dev_prompt_input = gr.Textbox(
-                                label="自然言語の質問",
-                                placeholder="例: 東京の顧客数を教えて",
-                                lines=3,
-                                max_lines=10,
-                                show_copy_button=True,
-                            )
-
-                        with gr.Row():
-                            dev_chat_clear_btn = gr.Button("クリア", variant="secondary")
-                            dev_chat_execute_btn = gr.Button("実行", variant="primary")
+                            with gr.Column():
+                                dev_chat_clear_btn = gr.Button("クリア", variant="secondary")
+                            with gr.Column():
+                                dev_chat_execute_btn = gr.Button("実行", variant="primary")
 
                     with gr.Accordion(label="2. 実行結果", open=True):
                         dev_chat_result_info = gr.Markdown(
@@ -1574,6 +1569,9 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             dev_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+
+                        with gr.Row():
+                            dev_ai_analyze_status = gr.Markdown(visible=False)
 
                         with gr.Row():
                             dev_join_conditions_text = gr.Textbox(
@@ -1843,10 +1841,10 @@ def build_selectai_tab(pool):
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Textbox(value=""), gr.Textbox(value="")
+                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value=""), gr.Textbox(value="")
                             s = str(sql_text or "").strip()
                             if not s:
-                                return gr.Textbox(value=""), gr.Textbox(value="")
+                                return gr.Markdown(visible=True, value="⚠️ SQL文が空です"), gr.Textbox(value=""), gr.Textbox(value="")
                             from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             client = AsyncOciOpenAI(
                                 service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -1909,18 +1907,18 @@ def build_selectai_tab(pool):
                                 join_text = "None"
                             if not where_text:
                                 where_text = "None"
-                            return gr.Textbox(value=join_text), gr.Textbox(value=where_text)
+                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=join_text), gr.Textbox(value=where_text)
                         except Exception as e:
                             logger.error(f"_dev_ai_analyze_async error: {e}")
-                            return gr.Textbox(value="None"), gr.Textbox(value="None")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="None"), gr.Textbox(value="None")
 
                     def _dev_ai_analyze(model_name, sql_text):
                         import asyncio
                         # 必須入力項目のチェック
                         if not model_name or not str(model_name).strip():
-                            return gr.Textbox(value="⚠️ モデルを選択してください"), gr.Textbox(value="")
+                            return gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value="")
                         if not sql_text or not str(sql_text).strip():
-                            return gr.Textbox(value="⚠️ SQL文が空です。先にSQL文を生成してください"), gr.Textbox(value="")
+                            return gr.Markdown(visible=True, value="⚠️ SQL文が空です。先にSQL文を生成してください"), gr.Textbox(value=""), gr.Textbox(value="")
                         
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
@@ -1931,6 +1929,84 @@ def build_selectai_tab(pool):
 
                     def _on_dev_chat_clear():
                         return "", gr.Dropdown(choices=_dev_profile_names())
+
+                    def _predict_domain_and_set_profile(text):
+                        """自然言語の質問から業務ドメインを予測し、対応するProfileを設定する"""
+                        try:
+                            # 固定のモデル名を使用
+                            mname = "business_domain"
+                            sp_root = Path("./models")
+                            
+                            logger.info(f"Using model: {mname}")
+                            
+                            model_path = sp_root / f"{mname}.joblib"
+                            meta_path = sp_root / f"{mname}.meta.json"
+                            
+                            if not model_path.exists() or not meta_path.exists():
+                                logger.error(f"モデルファイルが見つかりません")
+                                return gr.Dropdown(value="")
+                            
+                            # メタ情報を読み込み
+                            with meta_path.open("r", encoding="utf-8") as f:
+                                meta = json.load(f)
+                            
+                            embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
+                            
+                            # モデルを読み込み
+                            classifier = joblib.load(model_path)
+                            
+                            # テキストの埋め込みベクトルを取得
+                            embed_text_detail = EmbedTextDetails(
+                                compartment_id=_COMPARTMENT_ID,
+                                inputs=[str(text or "")],
+                                serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(
+                                    model_id=embed_model
+                                ),
+                                truncate="END",
+                                input_type="CLASSIFICATION"
+                            )
+                            
+                            embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
+                            embedding = np.array(embed_text_response.data.embeddings[0])
+                            
+                            # 予測を実行
+                            prediction = classifier.predict([embedding])
+                            predicted_domain = prediction[0]
+                            
+                            logger.info(f"Predicted domain: {predicted_domain}")
+                            
+                            # selectai.jsonから業務ドメインに対応するprofileを取得
+                            profile_json_path = Path("./profiles/selectai.json")
+                            if not profile_json_path.exists():
+                                logger.error("selectai.json not found")
+                                return gr.Dropdown(value="")
+                            
+                            with profile_json_path.open("r", encoding="utf-8") as f:
+                                profiles = json.load(f)
+                            
+                            # 業務ドメインからprofileを検索
+                            matched_profile = ""
+                            for item in profiles:
+                                if str(item.get("business_domain", "")).strip() == str(predicted_domain).strip():
+                                    matched_profile = str(item.get("profile", "")).strip()
+                                    break
+                            
+                            # プロフィール選択肢を取得
+                            profile_choices = _dev_profile_names()
+                            
+                            # マッチしたprofileが選択肢に存在するか確認
+                            if matched_profile and matched_profile in profile_choices:
+                                logger.info(f"Setting profile to: {matched_profile}")
+                                return gr.Dropdown(value=matched_profile)
+                            else:
+                                logger.warning(f"Profile '{matched_profile}' not found in choices, setting to empty")
+                                return gr.Dropdown(value="")
+                            
+                        except Exception as e:
+                            logger.error(f"_predict_domain_and_set_profile error: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            return gr.Dropdown(value="")
 
                     def _append_comment(current_text: str, template: str):
                         s = str(current_text or "").strip()
@@ -2071,12 +2147,18 @@ def build_selectai_tab(pool):
                     dev_ai_analyze_btn.click(
                         fn=_dev_ai_analyze,
                         inputs=[dev_analysis_model_input, dev_generated_sql_text],
-                        outputs=[dev_join_conditions_text, dev_where_conditions_text],
+                        outputs=[dev_ai_analyze_status, dev_join_conditions_text, dev_where_conditions_text],
                     )
 
                     dev_chat_clear_btn.click(
                         fn=_on_dev_chat_clear,
                         outputs=[dev_prompt_input, dev_profile_select],
+                    )
+
+                    dev_predict_domain_btn.click(
+                        fn=_predict_domain_and_set_profile,
+                        inputs=[dev_prompt_input],
+                        outputs=[dev_profile_select],
                     )
 
                 with gr.TabItem(label="フィードバック管理") as feedback_tab:
@@ -3545,17 +3627,31 @@ def build_selectai_tab(pool):
                             return []
 
                         with gr.Row():
-                            profile_select = gr.Dropdown(
-                                label="Profile",
-                                choices=_profile_names(),
-                                interactive=True,
+                            prompt_input = gr.Textbox(
+                                label="自然言語の質問",
+                                placeholder="例: 大阪の顧客数を教えて",
+                                lines=3,
+                                max_lines=10,
+                                show_copy_button=True,
                             )
+
+                        with gr.Row():
+                            with gr.Column():
+                                user_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="primary")
+                            with gr.Column():
+                                profile_select = gr.Dropdown(
+                                    label="Profile",
+                                    show_label=False,
+                                    choices=_profile_names(),
+                                    interactive=True,
+                                    container=False,
+                                )
 
                         with gr.Row():
                             include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
 
                         with gr.Row():
-                            with gr.Accordion(label="追加プロンプト", open=False):
+                            with gr.Accordion(label="追加プロンプト", open=False, visible=False) as extra_prompt_section:
                                 extra_prompt = gr.Textbox(
                                 label="追加のPrompt",
                                 show_label=False,
@@ -3581,19 +3677,13 @@ def build_selectai_tab(pool):
                                 autoscroll=True,
                                 container=False,
                             )
+                            include_extra_prompt.change(lambda v: gr.Accordion(visible=v), inputs=include_extra_prompt, outputs=extra_prompt_section)
 
                         with gr.Row():
-                            prompt_input = gr.Textbox(
-                                label="自然言語の質問",
-                                placeholder="例: 大阪の顧客数を教えて",
-                                lines=3,
-                                max_lines=10,
-                                show_copy_button=True,
-                            )
-
-                        with gr.Row():
-                            chat_clear_btn = gr.Button("クリア", variant="secondary")
-                            chat_execute_btn = gr.Button("実行", variant="primary")
+                            with gr.Column():
+                                chat_clear_btn = gr.Button("クリア", variant="secondary")
+                            with gr.Column():
+                                chat_execute_btn = gr.Button("実行", variant="primary")
 
                         with gr.Accordion(label="2. 実行結果", open=True):
                             chat_result_info = gr.Markdown(
@@ -3772,6 +3862,94 @@ def build_selectai_tab(pool):
             def _on_chat_clear():
                 return "", gr.Dropdown(choices=_profile_names()), gr.Textbox(value="")
 
+            def _user_predict_domain_and_set_profile(text):
+                """ユーザータブ用: 自然言語の質問から業務ドメインを予測し、対応するProfileを設定する"""
+                try:
+                    sp_root = Path("./models")
+                    
+                    # モデル一覧を取得
+                    models = _list_models()
+                    if not models:
+                        logger.warning("利用可能なモデルがありません")
+                        return gr.Dropdown(value="")
+                    
+                    # 最初のモデルを使用
+                    mname = str(models[0]).strip()
+                    if not mname:
+                        logger.warning("モデルが選択されていません")
+                        return gr.Dropdown(value="")
+                    
+                    logger.info(f"Using model: {mname}")
+                    
+                    model_path = sp_root / f"{mname}.joblib"
+                    meta_path = sp_root / f"{mname}.meta.json"
+                    
+                    if not model_path.exists() or not meta_path.exists():
+                        logger.error(f"モデルファイルが見つかりません")
+                        return gr.Dropdown(value="")
+                    
+                    # メタ情報を読み込み
+                    with meta_path.open("r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                    
+                    embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
+                    
+                    # モデルを読み込み
+                    classifier = joblib.load(model_path)
+                    
+                    # テキストの埋め込みベクトルを取得
+                    embed_text_detail = EmbedTextDetails(
+                        compartment_id=_COMPARTMENT_ID,
+                        inputs=[str(text or "")],
+                        serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(
+                            model_id=embed_model
+                        ),
+                        truncate="END",
+                        input_type="CLASSIFICATION"
+                    )
+                    
+                    embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
+                    embedding = np.array(embed_text_response.data.embeddings[0])
+                    
+                    # 予測を実行
+                    prediction = classifier.predict([embedding])
+                    predicted_domain = prediction[0]
+                    
+                    logger.info(f"Predicted domain: {predicted_domain}")
+                    
+                    # selectai.jsonから業務ドメインに対応するprofileを取得
+                    profile_json_path = Path("./profiles/selectai.json")
+                    if not profile_json_path.exists():
+                        logger.error("selectai.json not found")
+                        return gr.Dropdown(value="")
+                    
+                    with profile_json_path.open("r", encoding="utf-8") as f:
+                        profiles = json.load(f)
+                    
+                    # 業務ドメインからprofileを検索
+                    matched_profile = ""
+                    for item in profiles:
+                        if str(item.get("business_domain", "")).strip() == str(predicted_domain).strip():
+                            matched_profile = str(item.get("profile", "")).strip()
+                            break
+                    
+                    # プロフィール選択肢を取得
+                    profile_choices = _profile_names()
+                    
+                    # マッチしたprofileが選択肢に存在するか確認
+                    if matched_profile and matched_profile in profile_choices:
+                        logger.info(f"Setting profile to: {matched_profile}")
+                        return gr.Dropdown(value=matched_profile)
+                    else:
+                        logger.warning(f"Profile '{matched_profile}' not found in choices, setting to empty")
+                        return gr.Dropdown(value="")
+                    
+                except Exception as e:
+                    logger.error(f"_user_predict_domain_and_set_profile error: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    return gr.Dropdown(value="")
+
             chat_execute_btn.click(
                 fn=_user_step_generate,
                 inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt],
@@ -3785,6 +3963,12 @@ def build_selectai_tab(pool):
             chat_clear_btn.click(
                 fn=_on_chat_clear,
                 outputs=[prompt_input, profile_select, generated_sql_text],
+            )
+
+            user_predict_domain_btn.click(
+                fn=_user_predict_domain_and_set_profile,
+                inputs=[prompt_input],
+                outputs=[profile_select],
             )
 
         # 各タブ選択時のProfileドロップダウン更新イベントハンドラー
