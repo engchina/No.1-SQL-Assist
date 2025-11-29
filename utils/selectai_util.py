@@ -365,6 +365,13 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="3. プロファイル作成", open=False):
                         with gr.Row():
+                            profile_name = gr.Textbox(
+                                label="Profile名",
+                                value=f"profile_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                            )
+                            business_domain_input = gr.Textbox(label="業務ドメイン名", placeholder="例: 顧客管理、売上分析 等")
+
+                        with gr.Row():
                             refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
 
                         with gr.Row():
@@ -374,13 +381,6 @@ def build_selectai_tab(pool):
                             with gr.Column():
                                 gr.Markdown("###### ビュー選択")
                                 views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
-
-                        with gr.Row():
-                            profile_name = gr.Textbox(
-                                label="Profile名",
-                                value=f"profile_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                            )
-                            business_domain_input = gr.Textbox(label="業務ドメイン名", placeholder="例: 顧客管理、売上分析 等")
 
                         with gr.Row():
                             compartment_id_input = gr.Textbox(label="OCI Compartment OCID", placeholder="ocid1.compartment.oc1...", value=os.environ.get("OCI_COMPARTMENT_OCID", ""))
