@@ -16,6 +16,12 @@ from time import time
 import gradio as gr
 import pandas as pd
 import oracledb
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+import joblib
+import oci
+from oci.generative_ai_inference import GenerativeAiInferenceClient
+from oci.generative_ai_inference.models import EmbedTextDetails
 
 from utils.management_util import (
     get_table_list,
@@ -32,6 +38,68 @@ logging.basicConfig(
 
 # Load environment variables
 load_dotenv(find_dotenv())
+
+# Initialize OCI GenAI client for classifier training
+_generative_ai_inference_client = None
+_COMPARTMENT_ID = None
+
+try:
+    logger.info("Initializing OCI GenAI client for classifier...")
+    
+    # Get compartment ID from environment
+    _COMPARTMENT_ID = os.getenv("OCI_COMPARTMENT_OCID")
+    if not _COMPARTMENT_ID:
+        logger.error("OCI_COMPARTMENT_OCID environment variable is not set")
+        raise ValueError("OCI_COMPARTMENT_OCID is required")
+    
+    logger.info(f"Compartment ID: {_COMPARTMENT_ID[:20]}...")
+    
+    # Get OCI config
+    CONFIG_PROFILE = os.getenv("OCI_CONFIG_PROFILE", "DEFAULT")
+    oci_config_file = os.path.expanduser("~/.oci/config")
+    
+    if not os.path.exists(oci_config_file):
+        logger.error(f"OCI config file not found: {oci_config_file}")
+        raise FileNotFoundError(f"OCI config file not found: {oci_config_file}")
+    
+    logger.info(f"Loading OCI config from: {oci_config_file}, profile: {CONFIG_PROFILE}")
+    config = oci.config.from_file(oci_config_file, CONFIG_PROFILE)
+    
+    # Get region from config or environment
+    region = config.get("region")
+    if not region:
+        from utils.oci_util import get_region
+        region = get_region()
+    
+    logger.info(f"Using region: {region}")
+    
+    # Construct endpoint
+    endpoint = os.getenv(
+        "OCI_GENAI_ENDPOINT",
+        f"https://inference.generativeai.{region}.oci.oraclecloud.com"
+    )
+    logger.info(f"GenAI endpoint: {endpoint}")
+    
+    # Initialize client
+    _generative_ai_inference_client = GenerativeAiInferenceClient(
+        config=config,
+        service_endpoint=endpoint,
+        retry_strategy=oci.retry.NoneRetryStrategy(),
+        timeout=(10, 240)
+    )
+    
+    logger.info("OCI GenAI client initialized successfully")
+    
+except Exception as e:
+    logger.error(f"Failed to initialize OCI GenAI client for classifier: {e}")
+    logger.error("Please ensure the following:")
+    logger.error("  1. OCI_COMPARTMENT_OCID environment variable is set")
+    logger.error("  2. ~/.oci/config file exists with valid credentials")
+    logger.error("  3. OCI credentials have proper permissions")
+    import traceback
+    logger.error(traceback.format_exc())
+    _generative_ai_inference_client = None
+    _COMPARTMENT_ID = None
 
 _TABLE_DF_CACHE = {"df": None, "ts": 0.0}
 _VIEW_DF_CACHE = {"df": None, "ts": 0.0}
@@ -808,265 +876,313 @@ def build_selectai_tab(pool):
                         logger.error(f"削除に失敗しました: {e}")
                         return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {e}"), gr.Dataframe(value=_td_list(), visible=True), "", "", ""
 
-                def _td_train(save_path, embed_model, model_name, iterations):
+                def _td_train(embed_model, model_name, iterations):
+                    """参照コード(No.1-Classifier)に基づいた分類器訓練関数"""
                     try:
+                        logger.info("="*50)
+                        logger.info("Starting classifier training...")
+                        logger.info(f"Embed model: {embed_model}")
+                        logger.info(f"Model name: {model_name}")
+                        logger.info(f"Iterations: {iterations}")
+                        
+                        # OCI GenAI クライアントの確認
+                        if not _generative_ai_inference_client or not _COMPARTMENT_ID:
+                            error_msg = "OCI GenAI クライアントが初期化されていません。環境変数を確認してください"
+                            logger.error(error_msg)
+                            logger.error(f"Client initialized: {_generative_ai_inference_client is not None}")
+                            logger.error(f"Compartment ID set: {_COMPARTMENT_ID is not None}")
+                            yield gr.Markdown(visible=True, value=f"❌ {error_msg}")
+                            return
+                        
+                        logger.info("OCI GenAI client check passed")
+                        yield gr.Markdown(visible=True, value="⏳ 学習開始")
+                        
+                        # 訓練データの読み込み
+                        p = Path("uploads") / "training_data.xlsx"
+                        logger.info(f"Loading training data from: {p}")
+                        
+                        if not p.exists():
+                            error_msg = "訓練データファイルが存在しません"
+                            logger.error(f"{error_msg}: {p}")
+                            yield gr.Markdown(visible=True, value=f"⚠️ {error_msg}")
+                            return
+                        
+                        logger.info("Reading Excel file...")
+                        df = pd.read_excel(str(p))
+                        logger.info(f"Excel file loaded, shape: {df.shape}")
+                        
+                        cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                        logger.info(f"Columns found: {list(cols_map.keys())}")
+                        
+                        bd_col = cols_map.get("BUSINESS_DOMAIN")
+                        tx_col = cols_map.get("TEXT")
+                        
+                        if not bd_col or not tx_col:
+                            error_msg = "必須列(BUSINESS_DOMAIN, TEXT)が見つかりません"
+                            logger.error(error_msg)
+                            logger.error(f"Available columns: {list(cols_map.keys())}")
+                            yield gr.Markdown(visible=True, value=f"⚠️ {error_msg}")
+                            return
+                        
+                        logger.info(f"Using columns - BUSINESS_DOMAIN: {bd_col}, TEXT: {tx_col}")
+                        
+                        texts = []
+                        labels = []
+                        for idx, r in df.iterrows():
+                            s_txt = str(r.get(tx_col, "") or "")
+                            s_bd = str(r.get(bd_col, "") or "")
+                            if s_txt:
+                                texts.append(s_txt)
+                                labels.append(s_bd)
+                        
+                        if not texts or not labels:
+                            error_msg = "訓練データがありません"
+                            logger.error(error_msg)
+                            yield gr.Markdown(visible=True, value=f"⚠️ {error_msg}")
+                            return
+                        
+                        unique_labels = list(set(labels))
+                        logger.info(f"Training data loaded: {len(texts)} samples, {len(unique_labels)} unique labels")
+                        logger.info(f"Labels: {unique_labels}")
+                        
+                        yield gr.Markdown(visible=True, value=f"⏳ 訓練データ読み込み完了: {len(texts)}件")
+                        
+                        # モデル保存パスの準備
+                        sp_root = Path("./models")
+                        sp_root.mkdir(parents=True, exist_ok=True)
+                        mname = str(model_name or f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}").strip()
+                        model_path = sp_root / f"{mname}.joblib"
+                        
+                        logger.info(f"Model will be saved to: {model_path}")
+                        
+                        # 訓練データをJSONL形式で保存
+                        td_path = sp_root / f"{mname}_training_data.jsonl"
+                        logger.info(f"Saving training data to: {td_path}")
+                        with td_path.open("w", encoding="utf-8") as f:
+                            for txt, lab in zip(texts, labels):
+                                f.write(json.dumps({"text": txt, "label": lab}, ensure_ascii=False) + "\n")
+                        logger.info("Training data saved")
+                        
+                        yield gr.Markdown(visible=True, value="⏳ 埋め込みベクトルを取得中...")
+                        
+                        # 埋め込みベクトルの取得(参照コードに基づく)
+                        logger.info("Creating embedding request...")
+                        logger.info(f"Using compartment ID: {_COMPARTMENT_ID[:20]}...")
+                        logger.info(f"Using model: {embed_model or 'cohere.embed-v4.0'}")
+                        logger.info(f"Number of texts to embed: {len(texts)}")
+                        
+                        embed_text_detail = EmbedTextDetails(
+                            compartment_id=_COMPARTMENT_ID,
+                            inputs=texts,
+                            serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(
+                                model_id=str(embed_model or "cohere.embed-v4.0")
+                            ),
+                            truncate="END",
+                            input_type="CLASSIFICATION"
+                        )
+                        
+                        logger.info("Sending embedding request to OCI GenAI...")
+                        embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
+                        logger.info("Embedding response received")
+                        
+                        embeddings = np.array(embed_text_response.data.embeddings)
+                        logger.info(f"Embeddings shape: {embeddings.shape}")
+                        
+                        yield gr.Markdown(visible=True, value=f"⏳ 埋め込み取得完了: {embeddings.shape}")
+                        
+                        # 学習回数の処理
                         try:
                             iters = int(iterations or 1)
                         except Exception:
                             iters = 1
-                        yield gr.Markdown(visible=True, value="⏳ 学習開始")
-                        from utils.oci_util import get_region
-                        import oracledb
-                        p = Path("uploads") / "training_data.xlsx"
-                        dataset = []
-                        labels = set()
-                        if p.exists():
-                            df = pd.read_excel(str(p))
-                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
-                            bd_col = cols_map.get("BUSINESS_DOMAIN")
-                            tx_col = cols_map.get("TEXT")
-                            if bd_col and tx_col:
-                                for _, r in df.iterrows():
-                                    s_txt = str(r.get(tx_col, "") or "")
-                                    s_bd = str(r.get(bd_col, "") or "")
-                                    if s_txt:
-                                        dataset.append({"text": s_txt, "label": s_bd})
-                                        labels.add(s_bd)
-                        if not dataset:
-                            yield gr.Markdown(visible=True, value="⚠️ 訓練データがありません")
-                            return
-                        yield gr.Markdown(visible=True, value=f"⏳ 訓練データ読み込み完了: {len(dataset)}件")
-                        sp_root = Path(str(save_path or "./models"))
-                        sp_root.mkdir(parents=True, exist_ok=True)
-                        mname = str(model_name or f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}").strip()
-                        sp = sp_root / mname
-                        sp.mkdir(parents=True, exist_ok=True)
-                        td_path = sp / "training_data.jsonl"
-                        with td_path.open("w", encoding="utf-8") as f:
-                            for item in dataset:
-                                f.write(json.dumps(item, ensure_ascii=False) + "\n")
-                        # Compute embeddings and centroids using OCI Cohere embed
-                        region = get_region()
-                        embed_params = {
-                            "provider": "ocigenai",
-                            "credential_name": "OCI_CRED",
-                            "url": f"https://inference.generativeai.{region}.oci.oraclecloud.com/20231130/actions/embedText",
-                            "model": str(embed_model or "cohere.embed-v4.0"),
+                        
+                        logger.info(f"Training iterations: {iters}")
+                        
+                        # LogisticRegressionによる訓練(参照コードに基づく)
+                        max_iter = max(1000, iters * 100)
+                        logger.info(f"Training LogisticRegression classifier with max_iter={max_iter}")
+                        yield gr.Markdown(visible=True, value=f"⏳ 分類器を訓練中(max_iter={max_iter})...")
+                        
+                        classifier = LogisticRegression(max_iter=max_iter)
+                        classifier.fit(embeddings, labels)
+                        
+                        logger.info("Classifier training completed")
+                        logger.info(f"Classifier classes: {classifier.classes_}")
+                        
+                        # モデルの保存
+                        logger.info(f"Saving model to: {model_path}")
+                        joblib.dump(classifier, model_path)
+                        logger.info("Model saved successfully")
+                        
+                        # メタ情報の保存
+                        meta_path = sp_root / f"{mname}.meta.json"
+                        logger.info(f"Saving metadata to: {meta_path}")
+                        meta_info = {
+                            "model_name": mname,
+                            "labels": sorted(list(set(labels))),
+                            "samples": len(texts),
+                            "embed_model": str(embed_model or "cohere.embed-v4.0"),
+                            "iterations": iters,
+                            "created_at": datetime.now().isoformat(timespec="seconds"),
+                            "algorithm": "LogisticRegression"
                         }
-                        def _embed_one(text: str):
-                            with pool.acquire() as conn:
-                                with conn.cursor() as cursor:
-                                    plsql = """
-DECLARE
-    l_embed_genai_params CLOB := :embed_genai_params;
-    l_result SYS_REFCURSOR;
-BEGIN
-    OPEN l_result FOR
-        SELECT et.*
-        FROM dbms_vector_chain.utl_to_embeddings(:text_to_embed, JSON(l_embed_genai_params)) et;
-    :result := l_result;
-END;"""
-                                    result_cursor = cursor.var(oracledb.CURSOR)
-                                    cursor.execute(
-                                        plsql,
-                                        embed_genai_params=json.dumps(embed_params),
-                                        text_to_embed=text,
-                                        result=result_cursor,
-                                    )
-                                    vec = []
-                                    with result_cursor.getvalue() as ref_cursor:
-                                        result_rows = ref_cursor.fetchall() or []
-                                        for r in result_rows:
-                                            v0 = r[0] if isinstance(r, (list, tuple)) and len(r) > 0 else None
-                                            if v0 is not None:
-                                                try:
-                                                    s = v0.read() if hasattr(v0, "read") else str(v0)
-                                                    j = json.loads(s)
-                                                    ev = j.get("embed_vector")
-                                                    if isinstance(ev, str):
-                                                        ev = json.loads(ev)
-                                                    if isinstance(ev, list):
-                                                        vec = [float(x) for x in ev]
-                                                        break
-                                                except Exception as e:
-                                                    logger.error(f"_embed_one parse error: {e}")
-                                    return vec
-                        # Build centroids per label
-                        by_label = {}
-                        processed = 0
-                        total = len(dataset)
-                        for item in dataset:
-                            lab = item["label"]
-                            txt = item["text"]
-                            vec = _embed_one(txt)
-                            processed += 1
-                            if processed == 1 or processed % 10 == 0 or processed == total:
-                                yield gr.Markdown(visible=True, value=f"⏳ ベクトル計算中 {processed}/{total}")
-                            if vec:
-                                by_label.setdefault(lab, []).append(vec)
-                        for i in range(max(1, iters)):
-                            yield gr.Markdown(visible=True, value=f"⏳ 学習中 ({i+1}/{max(1, iters)})")
-                        centroids = {}
-                        for lab, vecs in by_label.items():
-                            if vecs:
-                                dim = len(vecs[0])
-                                sums = [0.0] * dim
-                                for v in vecs:
-                                    for i in range(dim):
-                                        sums[i] += float(v[i])
-                                centroids[lab] = [s / float(len(vecs)) for s in sums]
-                        # Save meta and embeddings
-                        meta_path = sp / "model.meta.json"
                         with meta_path.open("w", encoding="utf-8") as f:
-                            json.dump({
-                                "labels": sorted(list(labels)),
-                                "samples": len(dataset),
-                                "embed_model": str(embed_model or "cohere.embed-v4.0"),
-                                "region": str(region),
-                                "model_name": mname,
-                                "iterations": max(1, iters),
-                            }, f, ensure_ascii=False, indent=2)
-                        emb_path = sp / "model.embeddings.json"
-                        with emb_path.open("w", encoding="utf-8") as f:
-                            json.dump({
-                                "centroids": centroids,
-                                "dimension": len(next(iter(centroids.values()), [])),
-                            }, f, ensure_ascii=False, indent=2)
+                            json.dump(meta_info, f, ensure_ascii=False, indent=2)
+                        logger.info("Metadata saved")
+                        
+                        # インデックスの更新
                         index_path = sp_root / "models.index.json"
+                        logger.info(f"Updating model index: {index_path}")
                         try:
                             idx = []
                             if index_path.exists():
                                 with index_path.open("r", encoding="utf-8") as f:
                                     idx = json.load(f) or []
                             idx = [x for x in idx if str(x.get("model_name")) != mname]
-                            idx.append({"model_name": mname, "labels": sorted(list(labels)), "samples": len(dataset), "created_at": datetime.now().isoformat(timespec="seconds")})
+                            idx.append({
+                                "model_name": mname,
+                                "labels": sorted(list(set(labels))),
+                                "samples": len(texts),
+                                "created_at": datetime.now().isoformat(timespec="seconds")
+                            })
                             with index_path.open("w", encoding="utf-8") as f:
                                 json.dump(idx, f, ensure_ascii=False, indent=2)
+                            logger.info("Model index updated")
                         except Exception as e:
-                            logger.error(f"学習用データの保存に失敗しました: {e}")
-                        yield gr.Markdown(visible=True, value=f"✅ 学習用データを保存しました（{len(dataset)}件、ラベル: {', '.join(sorted(list(labels)))})")
+                            logger.error(f"インデックス更新エラー: {e}")
+                        
+                        success_msg = f"✅ 学習完了: モデル '{mname}' を保存しました({len(texts)}件、ラベル: {', '.join(sorted(list(set(labels))))})"
+                        logger.info(success_msg)
+                        logger.info("="*50)
+                        yield gr.Markdown(visible=True, value=success_msg)
+                        
                     except Exception as e:
-                        logger.error(f"学習に失敗しました: {e}")
-                        yield gr.Markdown(visible=True, value=f"❌ 学習に失敗しました: {e}")
+                        error_msg = f"学習に失敗しました: {e}"
+                        logger.error(error_msg)
+                        import traceback
+                        logger.error(traceback.format_exc())
+                        logger.info("="*50)
+                        yield gr.Markdown(visible=True, value=f"❌ {error_msg}")
 
                 # ラベル候補の更新は削除
 
-                def _list_models(save_path):
+                def _list_models():
                     try:
-                        sp_root = Path(str(save_path or "./models"))
+                        sp_root = Path("./models")
                         out = []
                         if sp_root.exists():
-                            for p in sp_root.iterdir():
-                                if p.is_dir() and (p / "model.meta.json").exists():
-                                    out.append(p.name)
+                            # .joblibファイルからモデル名を取得
+                            for p in sp_root.glob("*.joblib"):
+                                model_name = p.stem
+                                out.append(model_name)
                         return gr.Dropdown(choices=sorted(out))
                     except Exception as e:
                         logger.error(f"_list_models error: {e}")
                         return gr.Dropdown(choices=[])
 
-                async def _mt_test_async(text, save_path, trained_model_name):
-                    from utils.oci_util import get_region
-                    sp_root = Path(str(save_path or "./models"))
-                    mname = str(trained_model_name or "").strip()
-                    sp = sp_root / mname if mname else sp_root
-                    meta_path = sp / "model.meta.json"
-                    emb_path = sp / "model.embeddings.json"
-                    if not meta_path.exists() or not emb_path.exists():
-                        return gr.Markdown(visible=True, value="ℹ️ モデルが未学習です。まず『学習を実行』してください")
-                    with meta_path.open("r", encoding="utf-8") as f:
-                        meta = json.load(f)
-                    with emb_path.open("r", encoding="utf-8") as f:
-                        emb = json.load(f)
-                    labels = [str(x) for x in meta.get("labels", [])]
-                    centroids = emb.get("centroids", {})
-                    region = meta.get("region", get_region())
-                    model_used = str(meta.get("embed_model", "cohere.embed-v4.0"))
-                    if not labels or not centroids:
-                        return gr.Markdown(visible=True, value="ℹ️ モデル情報が不足しています（labels/centroids）")
-                    def _embed_one(text: str):
-                        embed_params = {
-                            "provider": "ocigenai",
-                            "credential_name": "OCI_CRED",
-                            "url": f"https://inference.generativeai.{region}.oci.oraclecloud.com/20231130/actions/embedText",
-                            "model": model_used,
-                        }
-                        # Use DB embedding path synchronously inside async
-                        try:
-                            with pool.acquire() as conn:
-                                with conn.cursor() as cursor:
-                                    plsql = """
-DECLARE
-    l_embed_genai_params CLOB := :embed_genai_params;
-    l_result SYS_REFCURSOR;
-BEGIN
-    OPEN l_result FOR
-        SELECT et.*
-        FROM dbms_vector_chain.utl_to_embeddings(:text_to_embed, JSON(l_embed_genai_params)) et;
-    :result := l_result;
-END;"""
-                                    result_cursor = cursor.var(oracledb.CURSOR)
-                                    cursor.execute(
-                                        plsql,
-                                        embed_genai_params=json.dumps(embed_params),
-                                        text_to_embed=str(text or ""),
-                                        result=result_cursor,
-                                    )
-                                    vec = []
-                                    with result_cursor.getvalue() as ref_cursor:
-                                        result_rows = ref_cursor.fetchall() or []
-                                        for r in result_rows:
-                                            v0 = r[0] if isinstance(r, (list, tuple)) and len(r) > 0 else None
-                                            if v0 is not None:
-                                                try:
-                                                    s = v0.read() if hasattr(v0, "read") else str(v0)
-                                                    j = json.loads(s)
-                                                    ev = j.get("embed_vector")
-                                                    if isinstance(ev, str):
-                                                        ev = json.loads(ev)
-                                                    if isinstance(ev, list):
-                                                        vec = [float(x) for x in ev]
-                                                        break
-                                                except Exception as e:
-                                                    logger.error(f"_load_vectors parse error: {e}")
-                                    return vec
-                        except Exception:
-                            return []
-                    def _cosine(a, b):
-                        import math
-                        if not a or not b:
-                            return 0.0
-                        s = 0.0
-                        na = 0.0
-                        nb = 0.0
-                        for i in range(min(len(a), len(b))):
-                            s += float(a[i]) * float(b[i])
-                            na += float(a[i]) * float(a[i])
-                            nb += float(b[i]) * float(b[i])
-                        if na <= 0.0 or nb <= 0.0:
-                            return 0.0
-                        return s / (math.sqrt(na) * math.sqrt(nb))
-                    v = _embed_one(str(text or ""))
-                    sims = {}
-                    for lab in labels:
-                        c = centroids.get(lab)
-                        if c:
-                            sims[lab] = _cosine(v, c)
-                    # Normalize to probabilities
-                    total = sum([max(x, 0.0) for x in sims.values()])
-                    probs = {lab: (max(val, 0.0) / total if total > 0 else 0.0) for lab, val in sims.items()}
-                    pred = max(probs.items(), key=lambda kv: kv[1])[0] if probs else ""
-                    lines = [
-                        f"prediction: {pred}",
-                        "probabilities: " + json.dumps({k: round(v, 3) for k, v in probs.items()}, ensure_ascii=False),
-                    ]
-                    return gr.Markdown(visible=True, value="\n".join(lines)), gr.Textbox(value=pred)
+                async def _mt_test_async(text, trained_model_name):
+                    """参照コード(No.1-Classifier)に基づいた予測関数"""
+                    try:
+                        logger.info("="*50)
+                        logger.info("Starting model prediction...")
+                        logger.info(f"Model name: {trained_model_name}")
+                        logger.info(f"Input text length: {len(str(text or ''))}")
+                        
+                        # OCI GenAI クライアントの確認
+                        if not _generative_ai_inference_client or not _COMPARTMENT_ID:
+                            error_msg = "OCI GenAI クライアントが初期化されていません。環境変数を確認してください"
+                            logger.error(error_msg)
+                            return gr.Markdown(visible=True, value=f"❌ {error_msg}"), gr.Textbox(value="")
+                        
+                        logger.info("OCI GenAI client check passed")
+                        
+                        sp_root = Path("./models")
+                        mname = str(trained_model_name or "").strip()
+                        if not mname:
+                            logger.warning("モデルが選択されていません")
+                            return gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="")
+                        
+                        logger.info(f"Using model: {mname}")
+                        
+                        model_path = sp_root / f"{mname}.joblib"
+                        meta_path = sp_root / f"{mname}.meta.json"
+                        
+                        logger.info(f"Model path: {model_path}")
+                        logger.info(f"Meta path: {meta_path}")
+                        
+                        if not model_path.exists() or not meta_path.exists():
+                            error_msg = f"モデルファイルが見つかりません (model: {model_path.exists()}, meta: {meta_path.exists()})"
+                            logger.error(error_msg)
+                            return gr.Markdown(visible=True, value="ℹ️ モデルが未学習です。まず『学習を実行』してください"), gr.Textbox(value="")
+                        
+                        # メタ情報を読み込み
+                        logger.info("Loading model metadata...")
+                        with meta_path.open("r", encoding="utf-8") as f:
+                            meta = json.load(f)
+                        
+                        embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
+                        logger.info(f"Embed model: {embed_model}")
+                        logger.info(f"Model labels: {meta.get('labels', [])}")
+                        
+                        # モデルを読み込み
+                        logger.info("Loading classifier model...")
+                        classifier = joblib.load(model_path)
+                        logger.info(f"Classifier loaded, classes: {classifier.classes_}")
+                        
+                        # テキストの埋め込みベクトルを取得(参照コードに基づく)
+                        logger.info("Creating embedding request for input text...")
+                        embed_text_detail = EmbedTextDetails(
+                            compartment_id=_COMPARTMENT_ID,
+                            inputs=[str(text or "")],
+                            serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(
+                                model_id=embed_model
+                            ),
+                            truncate="END",
+                            input_type="CLASSIFICATION"
+                        )
+                        
+                        logger.info("Sending embedding request to OCI GenAI...")
+                        embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
+                        logger.info("Embedding response received")
+                        
+                        embedding = np.array(embed_text_response.data.embeddings[0])
+                        logger.info(f"Embedding shape: {embedding.shape}")
+                        
+                        # 予測を実行(参照コードに基づく)
+                        logger.info("Making prediction...")
+                        prediction = classifier.predict([embedding])
+                        probabilities = classifier.predict_proba([embedding])
+                        
+                        # 結果を整形
+                        pred = prediction[0]
+                        probs = dict(zip(classifier.classes_, probabilities[0].round(3).tolist()))
+                        
+                        logger.info(f"Prediction: {pred}")
+                        logger.info(f"Probabilities: {probs}")
+                        
+                        lines = [
+                            f"prediction: {pred}",
+                            "probabilities: " + json.dumps({k: round(v, 3) for k, v in probs.items()}, ensure_ascii=False),
+                        ]
+                        
+                        logger.info("Prediction completed successfully")
+                        logger.info("="*50)
+                        return gr.Markdown(visible=True, value="\n".join(lines)), gr.Textbox(value=pred)
+                        
+                    except Exception as e:
+                        error_msg = f"テストに失敗しました: {e}"
+                        logger.error(error_msg)
+                        import traceback
+                        logger.error(traceback.format_exc())
+                        logger.info("="*50)
+                        return gr.Markdown(visible=True, value=f"❌ {error_msg}"), gr.Textbox(value="")
 
-                def _mt_test(text, save_path, trained_model_name):
+                def _mt_test(text, trained_model_name):
                     import asyncio
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
-                        return loop.run_until_complete(_mt_test_async(text, save_path, trained_model_name))
+                        return loop.run_until_complete(_mt_test_async(text, trained_model_name))
                     finally:
                         loop.close()
 
@@ -1116,23 +1232,26 @@ END;"""
 
                 # 削除: ダウンロードボタンのクリック処理は不要（直接ファイルを提供）
                 # 直接固定テンプレートをダウンロード（クリック処理不要）
-                def _delete_model(save_path, trained_model_name):
+                def _delete_model(trained_model_name):
                     try:
-                        sp_root = Path(str(save_path or "./models"))
+                        sp_root = Path("./models")
                         mname = str(trained_model_name or "").strip()
                         if not mname:
-                            return _list_models(save_path)
-                        p = sp_root / mname
-                        if p.exists() and p.is_dir():
-                            for child in p.iterdir():
-                                if child.is_file():
-                                    child.unlink(missing_ok=True)
-                                elif child.is_dir():
-                                    for sub in child.iterdir():
-                                        if sub.is_file():
-                                            sub.unlink(missing_ok=True)
-                                    child.rmdir()
-                            p.rmdir()
+                            return _list_models()
+                        
+                        # .joblibファイルと関連ファイルを削除
+                        model_path = sp_root / f"{mname}.joblib"
+                        meta_path = sp_root / f"{mname}.meta.json"
+                        td_path = sp_root / f"{mname}_training_data.jsonl"
+                        
+                        if model_path.exists():
+                            model_path.unlink(missing_ok=True)
+                        if meta_path.exists():
+                            meta_path.unlink(missing_ok=True)
+                        if td_path.exists():
+                            td_path.unlink(missing_ok=True)
+                        
+                        # インデックスから削除
                         index_path = sp_root / "models.index.json"
                         try:
                             if index_path.exists():
@@ -1143,16 +1262,14 @@ END;"""
                                     json.dump(idx, f, ensure_ascii=False, indent=2)
                         except Exception as e:
                             logger.error(f"_delete_model_meta error: {e}")
-                        return _list_models(save_path)
+                        
+                        return _list_models()
                     except Exception as e:
                         logger.error(f"_delete_model error: {e}")
-                        return _list_models(save_path)
+                        return _list_models()
 
                 with gr.TabItem(label="モデル管理"):
-                    with gr.Accordion(label="1. モデル保存パス", open=True):
-                        with gr.Row():
-                            model_save_path_text = gr.Textbox(label="保存パス", value="./models", interactive=True)
-                    with gr.Accordion(label="2. 訓練データ一覧", open=True):
+                    with gr.Accordion(label="1. 訓練データ一覧", open=True):
                         with gr.Row():
                             td_refresh_btn = gr.Button("訓練データ一覧を取得", variant="primary")
                         with gr.Row():
@@ -1168,9 +1285,7 @@ END;"""
                                 td_upload_excel_btn = gr.Button("Excelアップロード(全削除&挿入)", variant="stop")
                         with gr.Row():
                             td_upload_result = gr.Textbox(visible=False)
-                    with gr.Accordion(label="3. モデル学習", open=True):
-                        with gr.Row():
-                            td_train_status = gr.Markdown(visible=False)
+                    with gr.Accordion(label="2. モデル学習", open=True):
                         with gr.Row():
                             td_embed_model = gr.Dropdown(
                                 label="埋め込みモデル",
@@ -1184,7 +1299,9 @@ END;"""
                             td_train_iterations = gr.Slider(label="学習回数", minimum=1, maximum=10, step=1, value=5, interactive=True)
                         with gr.Row():
                             td_train_btn = gr.Button("学習を実行", variant="primary")
-                    with gr.Accordion(label="4. モデルテスト", open=True):
+                        with gr.Row():
+                            td_train_status = gr.Markdown(visible=False)
+                    with gr.Accordion(label="3. モデルテスト", open=True):
                         with gr.Row():
                             mt_refresh_models_btn = gr.Button("モデル一覧を取得", variant="primary")
                         with gr.Row():
@@ -1211,22 +1328,22 @@ END;"""
                     )
                     td_train_btn.click(
                         fn=_td_train,
-                        inputs=[model_save_path_text, td_embed_model, td_model_name, td_train_iterations],
+                        inputs=[td_embed_model, td_model_name, td_train_iterations],
                         outputs=[td_train_status],
                     )
                     mt_refresh_models_btn.click(
                         fn=_list_models,
-                        inputs=[model_save_path_text],
+                        inputs=[],
                         outputs=[mt_trained_model_select],
                     )
                     mt_delete_model_btn.click(
                         fn=_delete_model,
-                        inputs=[model_save_path_text, mt_trained_model_select],
+                        inputs=[mt_trained_model_select],
                         outputs=[mt_trained_model_select],
                     )
                     mt_test_btn.click(
                         fn=_mt_test,
-                        inputs=[mt_text_input, model_save_path_text, mt_trained_model_select],
+                        inputs=[mt_text_input, mt_trained_model_select],
                         outputs=[mt_test_result, mt_label_text],
                     )
 
