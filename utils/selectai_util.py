@@ -1482,6 +1482,40 @@ def build_selectai_tab(pool):
                                 )
 
                         with gr.Row():
+                            dev_enable_query_rewrite = gr.Checkbox(label="Query転写を有効化", value=False)
+                        
+                        with gr.Row():
+                            with gr.Accordion(label="Query転写設定", open=False, visible=False) as dev_query_rewrite_section:
+                                with gr.Row():
+                                    dev_rewrite_model_select = gr.Dropdown(
+                                        label="転写用モデル",
+                                        choices=[
+                                            "xai.grok-code-fast-1",
+                                            "xai.grok-3",
+                                            "xai.grok-3-fast",
+                                            "xai.grok-4",
+                                            "xai.grok-4-fast-non-reasoning",
+                                            "meta.llama-4-scout-17b-16e-instruct",
+                                        ],
+                                        value="xai.grok-4-fast-non-reasoning",
+                                        interactive=True,
+                                    )
+                                with gr.Row():
+                                    dev_rewrite_use_schema = gr.Checkbox(label="第2ステップ: スキーマ情報を結合", value=True)
+                                with gr.Row():
+                                    dev_rewrite_btn = gr.Button("転写実行", variant="primary")
+                                with gr.Row():
+                                    dev_rewrite_status = gr.Markdown(visible=False)
+                                with gr.Row():
+                                    dev_rewritten_query = gr.Textbox(
+                                        label="転写後の自然言語の質問",
+                                        lines=5,
+                                        max_lines=10,
+                                        interactive=True,
+                                        show_copy_button=True,
+                                    )
+
+                        with gr.Row():
                             dev_include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
 
                         with gr.Row():
@@ -1512,6 +1546,9 @@ def build_selectai_tab(pool):
                                     container=False,
                                 )
                             dev_include_extra_prompt.change(lambda v: gr.Accordion(visible=v), inputs=dev_include_extra_prompt, outputs=dev_extra_prompt_section)
+                        
+                        # Query転写のCheckbox変更ハンドラ
+                        dev_enable_query_rewrite.change(lambda v: gr.Accordion(visible=v), inputs=dev_enable_query_rewrite, outputs=dev_query_rewrite_section)
 
                         with gr.Row():
                             with gr.Column():
@@ -1645,21 +1682,263 @@ def build_selectai_tab(pool):
                                 return f"select ai showsql q'{o}{s}{c}'"
                         esc = s.replace("'", "''")
                         return f"select ai showsql '{esc}'"
+                    
+                    def _get_profile_schema_info(profile_name: str) -> str:
+                        """指定されたProfileに関連するテーブルとVIEWのDDL、COMMENTSを取得する.
+                        
+                        Args:
+                            profile_name: Profile名
+                        
+                        Returns:
+                            str: スキーマ情報のテキスト
+                        """
+                        try:
+                            # Profileの属性を取得
+                            prof_name = _resolve_profile_name(pool, profile_name)
+                            attrs = _get_profile_attributes(pool, prof_name) or {}
+                            obj_list = attrs.get("object_list") or []
+                            
+                            if not obj_list:
+                                return ""
+                            
+                            schema_parts = []
+                            schema_parts.append("=== データベーススキーマ情報 ===")
+                            
+                            # テーブル情報を取得
+                            table_names = set(_get_table_names(pool))
+                            for obj in obj_list:
+                                obj_name = obj.get("name")
+                                if obj_name in table_names:
+                                    try:
+                                        table_df = get_table_details(pool, obj_name)
+                                        if table_df is not None and not table_df.empty:
+                                            schema_parts.append(f"\n--- テーブル: {obj_name} ---")
+                                            # カラム情報
+                                            for _, row in table_df.iterrows():
+                                                col_name = row.get("Column Name", "")
+                                                col_type = row.get("Data Type", "")
+                                                col_comment = row.get("Comments", "")
+                                                schema_parts.append(f"  - {col_name} ({col_type}): {col_comment}")
+                                    except Exception as e:
+                                        logger.error(f"Failed to get table details for {obj_name}: {e}")
+                            
+                            # VIEW情報を取得
+                            view_names = set(_get_view_names(pool))
+                            for obj in obj_list:
+                                obj_name = obj.get("name")
+                                if obj_name in view_names:
+                                    try:
+                                        view_df = get_view_details(pool, obj_name)
+                                        if view_df is not None and not view_df.empty:
+                                            schema_parts.append(f"\n--- VIEW: {obj_name} ---")
+                                            # カラム情報
+                                            for _, row in view_df.iterrows():
+                                                col_name = row.get("Column Name", "")
+                                                col_type = row.get("Data Type", "")
+                                                col_comment = row.get("Comments", "")
+                                                schema_parts.append(f"  - {col_name} ({col_type}): {col_comment}")
+                                    except Exception as e:
+                                        logger.error(f"Failed to get view details for {obj_name}: {e}")
+                            
+                            return "\n".join(schema_parts)
+                        except Exception as e:
+                            logger.error(f"_get_profile_schema_info error: {e}")
+                            return ""
+                    
+                    def _load_terminology() -> dict:
+                        """用語集を読み込む.
+                        
+                        Returns:
+                            dict: {TERM: DESCRIPTION}の辞書
+                        """
+                        try:
+                            p = Path("uploads") / "terms.xlsx"
+                            if not p.exists():
+                                return {}
+                            df = pd.read_excel(str(p))
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            t_col = cols_map.get("TERM")
+                            d_col = cols_map.get("DESCRIPTION")
+                            if not t_col or not d_col:
+                                return {}
+                            terms = {}
+                            for _, row in df.iterrows():
+                                term = str(row[t_col]).strip()
+                                desc = str(row[d_col]).strip()
+                                if term and desc:
+                                    terms[term] = desc
+                            return terms
+                        except Exception as e:
+                            logger.error(f"_load_terminology error: {e}")
+                            return {}
+                    
+                    def _dev_rewrite_query(model_name, profile_name, original_query, use_schema):
+                        """開発者機能用Query転写処理.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            profile_name: Profile名
+                            original_query: 元の自然言語の質問
+                            use_schema: 第2ステップを実行するか
+                        
+                        Yields:
+                            tuple: (status_md, rewritten_text)
+                        """
+                        from utils.chat_util import get_oci_region, get_compartment_id
+                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                        
+                        try:
+                            # 入力チェック
+                            if not model_name or not str(model_name).strip():
+                                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="")
+                                return
+                            if not original_query or not str(original_query).strip():
+                                yield gr.Markdown(visible=True, value="⚠️ 元の質問を入力してください"), gr.Textbox(value="")
+                                return
+                            
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), gr.Textbox(value="")
+                                return
+                            
+                            yield gr.Markdown(visible=True, value="⏳ 第1ステップ: 用語集で分析・置換中..."), gr.Textbox(value="")
+                            
+                            # 第1ステップ: 用語集で分析・置換
+                            terms = _load_terminology()
+                            step1_result = str(original_query).strip()
+                            
+                            if terms:
+                                # 用語集を使ってLLMで分析
+                                terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
+                                step1_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集を使用して、ユーザーの質問を分析し、より明確な表現に書き換えてください。
 
-                    def _dev_step_generate(profile, prompt, extra_prompt, include_extra):
-                        s = str(prompt or "").strip()
+**用語集:**
+{terms_text}
+
+**元の質問:**
+{original_query}
+
+**指示:**
+1. 用語集に含まれる用語があれば、その定義を使って書き換える
+2. 曖昧な表現を具体的にする
+3. 元の意図を変えずに、明確化する
+4. 結果は書き換えた質問のみを返す（説明不要）
+
+**書き換えた質問:**"""
+                                
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                try:
+                                    client = AsyncOciOpenAI(
+                                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                        auth=OciUserPrincipalAuth(),
+                                        compartment_id=compartment_id,
+                                    )
+                                    messages = [{"role": "user", "content": step1_prompt}]
+                                    resp = loop.run_until_complete(
+                                        client.chat.completions.create(model=model_name, messages=messages)
+                                    )
+                                    if resp.choices and len(resp.choices) > 0:
+                                        step1_result = resp.choices[0].message.content.strip()
+                                finally:
+                                    loop.close()
+                            
+                            # 第2ステップが無効ならここで終了
+                            if not use_schema:
+                                yield gr.Markdown(visible=True, value="✅ 完了（第1ステップのみ）"), gr.Textbox(value=step1_result)
+                                return
+                            
+                            yield gr.Markdown(visible=True, value="⏳ 第2ステップ: スキーマ情報を結合して転写中..."), gr.Textbox(value=step1_result)
+                            
+                            # 第2ステップ: スキーマ情報を結合して転写
+                            if not profile_name or not str(profile_name).strip():
+                                yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value=step1_result)
+                                return
+                            
+                            schema_info = _get_profile_schema_info(profile_name)
+                            if not schema_info:
+                                yield gr.Markdown(visible=True, value="⚠️ スキーマ情報が取得できませんでした"), gr.Textbox(value=step1_result)
+                                return
+                            
+                            step2_prompt = f"""あなたはデータベースクエリの専門家です。以下のデータベーススキーマ情報を使用して、ユーザーの質問をより正確で具体的な表現に転写してください。
+
+{schema_info}
+
+**現在の質問:**
+{step1_result}
+
+**指示:**
+1. スキーマ情報を参考に、利用可能なテーブル名、カラム名、VIEW名を明確にする
+2. 曖昧な条件を具体的にする
+3. 元の意図を変えずに、データベースに合わせて最適化する
+4. 結果は転写した質問のみを返す（説明不要）
+
+**転写した質問:**"""
+                            
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                messages = [{"role": "user", "content": step2_prompt}]
+                                resp = loop.run_until_complete(
+                                    client.chat.completions.create(model=model_name, messages=messages)
+                                )
+                                if resp.choices and len(resp.choices) > 0:
+                                    final_result = resp.choices[0].message.content.strip()
+                                else:
+                                    final_result = step1_result
+                            finally:
+                                loop.close()
+                            
+                            yield gr.Markdown(visible=True, value="✅ 転写完了"), gr.Textbox(value=final_result)
+                            
+                        except Exception as e:
+                            logger.error(f"_dev_rewrite_query error: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+
+                    def _dev_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                        """SQL生成処理.
+                        
+                        Args:
+                            profile: Profile名
+                            prompt: 元の自然言語の質問
+                            extra_prompt: 追加プロンプト
+                            include_extra: 追加プロンプトを含めるか
+                            enable_rewrite: Query転写が有効か
+                            rewritten_query: 転写後の質問
+                        
+                        Returns:
+                            gr.Textbox: 生成されたSQL
+                        """
+                        # Query転写が有効な場合は転写後の質問を使用
+                        if enable_rewrite and rewritten_query and str(rewritten_query).strip():
+                            s = str(rewritten_query).strip()
+                        else:
+                            s = str(prompt or "").strip()
+                        
                         ep = str(extra_prompt or "").strip()
                         inc = bool(include_extra)
                         final = s if not inc or not ep else (ep + "\n\n" + s)
+                        
                         if not profile or not str(profile).strip():
                             logger.error("Profileが未選択です")
                             return gr.Textbox(value="")
                         if not final:
                             logger.error("質問が未入力です")
                             return gr.Textbox(value="")
+                        
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
+                        
+                        # ... existing code ...
                         try:
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
@@ -2136,7 +2415,7 @@ def build_selectai_tab(pool):
 
                     dev_chat_execute_btn.click(
                         fn=_dev_step_generate,
-                        inputs=[dev_profile_select, dev_prompt_input, dev_extra_prompt, dev_include_extra_prompt],
+                        inputs=[dev_profile_select, dev_prompt_input, dev_extra_prompt, dev_include_extra_prompt, dev_enable_query_rewrite, dev_rewritten_query],
                         outputs=[dev_generated_sql_text],
                     ).then(
                         fn=_dev_step_run_sql,
@@ -2159,6 +2438,13 @@ def build_selectai_tab(pool):
                         fn=_predict_domain_and_set_profile,
                         inputs=[dev_prompt_input],
                         outputs=[dev_profile_select],
+                    )
+                    
+                    # Query転写ボタンのイベントハンドラ
+                    dev_rewrite_btn.click(
+                        fn=_dev_rewrite_query,
+                        inputs=[dev_rewrite_model_select, dev_profile_select, dev_prompt_input, dev_rewrite_use_schema],
+                        outputs=[dev_rewrite_status, dev_rewritten_query],
                     )
 
                 with gr.TabItem(label="フィードバック管理") as feedback_tab:
@@ -3648,6 +3934,40 @@ def build_selectai_tab(pool):
                                 )
 
                         with gr.Row():
+                            enable_query_rewrite = gr.Checkbox(label="Query転写を有効化", value=False)
+                        
+                        with gr.Row():
+                            with gr.Accordion(label="Query転写設定", open=False, visible=False) as query_rewrite_section:
+                                with gr.Row():
+                                    rewrite_model_select = gr.Dropdown(
+                                        label="転写用モデル",
+                                        choices=[
+                                            "xai.grok-code-fast-1",
+                                            "xai.grok-3",
+                                            "xai.grok-3-fast",
+                                            "xai.grok-4",
+                                            "xai.grok-4-fast-non-reasoning",
+                                            "meta.llama-4-scout-17b-16e-instruct",
+                                        ],
+                                        value="xai.grok-4-fast-non-reasoning",
+                                        interactive=True,
+                                    )
+                                with gr.Row():
+                                    rewrite_use_schema = gr.Checkbox(label="第2ステップ: スキーマ情報を結合", value=True)
+                                with gr.Row():
+                                    rewrite_btn = gr.Button("転写実行", variant="primary")
+                                with gr.Row():
+                                    rewrite_status = gr.Markdown(visible=False)
+                                with gr.Row():
+                                    rewritten_query = gr.Textbox(
+                                        label="転写後の自然言語の質問",
+                                        lines=5,
+                                        max_lines=10,
+                                        interactive=True,
+                                        show_copy_button=True,
+                                    )
+
+                        with gr.Row():
                             include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
 
                         with gr.Row():
@@ -3678,6 +3998,9 @@ def build_selectai_tab(pool):
                                 container=False,
                             )
                             include_extra_prompt.change(lambda v: gr.Accordion(visible=v), inputs=include_extra_prompt, outputs=extra_prompt_section)
+                        
+                        # Query転写のCheckbox変更ハンドラ
+                        enable_query_rewrite.change(lambda v: gr.Accordion(visible=v), inputs=enable_query_rewrite, outputs=query_rewrite_section)
 
                         with gr.Row():
                             with gr.Column():
@@ -3710,15 +4033,35 @@ def build_selectai_tab(pool):
                                 show_copy_button=True,
                             )
 
-            def _user_step_generate(profile, prompt, extra_prompt, include_extra):
-                s = str(prompt or "").strip()
+            def _user_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                """SQL生成処理.
+                
+                Args:
+                    profile: Profile名
+                    prompt: 元の自然言語の質問
+                    extra_prompt: 追加プロンプト
+                    include_extra: 追加プロンプトを含めるか
+                    enable_rewrite: Query転写が有効か
+                    rewritten_query: 転写後の質問
+                
+                Returns:
+                    tuple: (status_md, generated_sql_textbox)
+                """
+                # Query転写が有効な場合は転写後の質問を使用
+                if enable_rewrite and rewritten_query and str(rewritten_query).strip():
+                    s = str(rewritten_query).strip()
+                else:
+                    s = str(prompt or "").strip()
+                
                 ep = str(extra_prompt or "").strip()
                 inc = bool(include_extra)
                 final = s if not inc or not ep else (ep + "\n\n" + s)
+                
                 if not profile or not str(profile).strip():
                     return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
                 if not final:
                     return gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
+                
                 q = final
                 if q.endswith(";"):
                     q = q[:-1]
@@ -3861,6 +4204,21 @@ def build_selectai_tab(pool):
 
             def _on_chat_clear():
                 return "", gr.Dropdown(choices=_profile_names()), gr.Textbox(value="")
+            
+            def _user_rewrite_query(model_name, profile_name, original_query, use_schema):
+                """ユーザー機能用Query転写処理.
+                
+                Args:
+                    model_name: 使用するLLMモデル
+                    profile_name: Profile名
+                    original_query: 元の自然言語の質問
+                    use_schema: 第2ステップを実行するか
+                
+                Yields:
+                    tuple: (status_md, rewritten_text)
+                """
+                # 開発者機能と同じロジックを使用
+                return _dev_rewrite_query(model_name, profile_name, original_query, use_schema)
 
             def _user_predict_domain_and_set_profile(text):
                 """ユーザータブ用: 自然言語の質問から業務ドメインを予測し、対応するProfileを設定する"""
@@ -3952,7 +4310,7 @@ def build_selectai_tab(pool):
 
             chat_execute_btn.click(
                 fn=_user_step_generate,
-                inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt],
+                inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt, enable_query_rewrite, rewritten_query],
                 outputs=[generated_sql_status, generated_sql_text],
             ).then(
                 fn=_user_step_run_sql,
@@ -3969,6 +4327,13 @@ def build_selectai_tab(pool):
                 fn=_user_predict_domain_and_set_profile,
                 inputs=[prompt_input],
                 outputs=[profile_select],
+            )
+            
+            # Query転写ボタンのイベントハンドラ
+            rewrite_btn.click(
+                fn=_user_rewrite_query,
+                inputs=[rewrite_model_select, profile_select, prompt_input, rewrite_use_schema],
+                outputs=[rewrite_status, rewritten_query],
             )
 
         # 各タブ選択時のProfileドロップダウン更新イベントハンドラー
