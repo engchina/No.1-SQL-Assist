@@ -1166,14 +1166,6 @@ END;"""
 
                 with gr.TabItem(label="用語集管理"):
                     with gr.Accordion(label="1. 用語集", open=True):
-                        term_preview_status = gr.Markdown(visible=False)
-                        term_preview_df = gr.Dataframe(
-                            label="用語集プレビュー",
-                            interactive=False,
-                            wrap=True,
-                            visible=False,
-                            value=pd.DataFrame(columns=["TERM", "DESCRIPTION"]),
-                        )
                         # テンプレートファイルを事前作成し、そのままダウンロード可能にする
                         up_dir = Path("uploads")
                         up_dir.mkdir(parents=True, exist_ok=True)
@@ -1182,9 +1174,26 @@ END;"""
                             _df = pd.DataFrame(columns=["Term", "Description", "English"])
                             with pd.ExcelWriter(_p) as _writer:
                                 _df.to_excel(_writer, sheet_name="terms", index=False)
-                        term_download_btn = gr.DownloadButton(label="テンプレートをダウンロード", value=str(_p), variant="secondary")
-                        term_upload_file = gr.File(label="用語集Excelをアップロード", file_types=[".xlsx"], type="filepath")
-                        term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False)
+    
+                        with gr.Row():
+                            term_upload_file = gr.File(label="用語集Excelをアップロード", file_types=[".xlsx"], type="filepath")
+                        with gr.Row():
+                            term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False)
+                        with gr.Row():
+                            with gr.Column():
+                                term_download_btn = gr.DownloadButton(label="テンプレートをダウンロード", value=str(_p), variant="secondary")
+                            with gr.Column():
+                                term_preview_btn = gr.Button("用語集をプレビュー", variant="primary")
+                        with gr.Row():
+                            term_preview_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            term_preview_df = gr.Dataframe(
+                                label="用語集プレビュー",
+                                interactive=False,
+                                wrap=True,
+                                visible=False,
+                                value=pd.DataFrame(columns=["TERM", "DESCRIPTION"]),
+                            )
 
                     def _term_list():
                         try:
@@ -1257,8 +1266,6 @@ END;"""
                         except Exception as e:
                             logger.error(f"用語集Excelアップロードに失敗しました: {e}")
                             return gr.Textbox(visible=True, value=f"❌ エラー: {e}")
-
-                    term_preview_btn = gr.Button("用語集をプレビュー", variant="primary")
 
                     term_preview_btn.click(
                         fn=_term_refresh,
