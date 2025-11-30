@@ -30,6 +30,8 @@ from utils.management_util import (
     get_view_details,
 )
 
+from utils.sql_learning_util import build_sql_learning_tab
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
@@ -4059,6 +4061,8 @@ def build_selectai_tab(pool):
                                 interactive=False,
                                 show_copy_button=True,
                             )
+
+                build_sql_learning_tab(pool)
 
             def _user_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                 """SQL生成処理.

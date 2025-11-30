@@ -229,4 +229,21 @@ textarea[rows]:not([rows="1"])::-webkit-scrollbar-thumb {
   all: initial !important;
   background: #a8a8a8 !important;
 }
+
+/* SQL学習タブ用のインデックス・表示最適化 */
+#sql_learning_tables_sql textarea,
+#sql_learning_views_sql textarea,
+#sql_learning_insert_sql textarea {
+  font-family: "Roboto", monospace !important;
+  font-size: 0.8rem !important;
+  line-height: 1.3 !important;
+}
+
+/* DataFrame の行インデックスを目立たなくする */
+#query_result_df table thead th:first-child,
+#query_result_df table tbody td:first-child {
+  color: #999999 !important;
+  font-size: 0.7rem !important;
+}
+
 """
