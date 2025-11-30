@@ -474,17 +474,28 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="2. プロファイル詳細・変更", open=True):
                         with gr.Row():
-                            with gr.Column():
-                                selected_profile_name = gr.Textbox(label="選択されたProfile名", interactive=True)
-                            with gr.Column():
-                                business_domain_text = gr.Textbox(label="業務ドメイン名", value="", interactive=True)
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("選択されたProfile名", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        selected_profile_name = gr.Textbox(show_label=False, interactive=True, container=False)
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("業務ドメイン名", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        business_domain_text = gr.Textbox(show_label=False, value="", interactive=True, container=False)
                         with gr.Row():
-                            with gr.Column():
+                            with gr.Column(scale=1):
+                                gr.Markdown("Profile 作成SQL", elem_classes="input-label")
+                            with gr.Column(scale=9):
                                 profile_json_text = gr.Textbox(
-                                    label="Profile 作成SQL",
+                                    show_label=False,
                                     lines=5,
                                     max_lines=10,
                                     show_copy_button=True,
+                                    container=False,
                                 )
                         selected_profile_original_name = gr.State("")
                         with gr.Row():
@@ -493,11 +504,22 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="3. プロファイル作成", open=True):
                         with gr.Row():
-                            profile_name = gr.Textbox(
-                                label="Profile名",
-                                value=f"profile_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                            )
-                            business_domain_input = gr.Textbox(label="業務ドメイン名", placeholder="例: 顧客管理、売上分析 等")
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Profile名", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        profile_name = gr.Textbox(
+                                            show_label=False,
+                                            value=f"profile_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("業務ドメイン名", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        business_domain_input = gr.Textbox(show_label=False, placeholder="例: 顧客管理、売上分析 等", container=False)
 
                         with gr.Row():
                             refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
@@ -511,76 +533,113 @@ def build_selectai_tab(pool):
                                 views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
 
                         with gr.Row():
-                            compartment_id_input = gr.Textbox(label="OCI Compartment OCID", placeholder="ocid1.compartment.oc1...", value=os.environ.get("OCI_COMPARTMENT_OCID", ""))
+                            with gr.Column(scale=1):
+                                gr.Markdown("OCI Compartment OCID", elem_classes="input-label")
+                            with gr.Column(scale=9):
+                                compartment_id_input = gr.Textbox(show_label=False, placeholder="ocid1.compartment.oc1...", value=os.environ.get("OCI_COMPARTMENT_OCID", ""), container=False)
 
                         with gr.Row():
-                            region_input = gr.Dropdown(
-                                label="Region",
-                                choices=["ap-osaka-1", "us-chicago-1"],
-                                value="us-chicago-1",
-                                interactive=True,
-                            )
-
-                        with gr.Row():
-                            with gr.Column():
-                                embedding_model_input = gr.Dropdown(
-                                    label="Embedding_Model",
-                                    choices=[
-                                        "cohere.embed-v4.0",
-                                    ],
-                                    value="cohere.embed-v4.0",
+                            with gr.Column(scale=1):
+                                gr.Markdown("Region", elem_classes="input-label")
+                            with gr.Column(scale=9):
+                                region_input = gr.Dropdown(
+                                    show_label=False,
+                                    choices=["ap-osaka-1", "us-chicago-1"],
+                                    value="us-chicago-1",
                                     interactive=True,
-                                )
-
-                            with gr.Column():
-                                model_input = gr.Dropdown(
-                                    label="Model",
-                                    choices=[
-                                        "xai.grok-code-fast-1",
-                                        "xai.grok-3",
-                                        "xai.grok-3-fast",
-                                        "xai.grok-4",
-                                        "xai.grok-4-fast-non-reasoning",
-                                        "meta.llama-4-scout-17b-16e-instruct",
-                                    ],
-                                    value="xai.grok-code-fast-1",
-                                    interactive=True,
-                                )
-
-                            with gr.Column():
-                                max_tokens_input = gr.Slider(
-                                    label="Max Tokens",
-                                    minimum=1024,
-                                    maximum=16384,
-                                    step=1024,
-                                    value=4096,
-                                    interactive=True,
+                                    container=False,
                                 )
 
                         with gr.Row():
-                            with gr.Column():
-                                enforce_object_list_input = gr.Dropdown(
-                                    label="Enforce_Object_List",
-                                    choices=["true", "false"],
-                                    value="true",
-                                    interactive=True,
-                                )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Embedding_Model", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        embedding_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "cohere.embed-v4.0",
+                                            ],
+                                            value="cohere.embed-v4.0",
+                                            interactive=True,
+                                            container=False,
+                                        )
 
-                            with gr.Column():
-                                comments_input = gr.Dropdown(
-                                    label="Comments",
-                                    choices=["true", "false"],
-                                    value="true",
-                                    interactive=True,
-                                )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Model", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
 
-                            with gr.Column():
-                                annotations_input = gr.Dropdown(
-                                    label="Annotations",
-                                    choices=["true", "false"],
-                                    value="true",
-                                    interactive=True,
-                                )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Max Tokens", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        max_tokens_input = gr.Slider(
+                                            show_label=False,
+                                            minimum=1024,
+                                            maximum=16384,
+                                            step=1024,
+                                            value=4096,
+                                            interactive=True,
+                                            container=False,
+                                        )
+
+                        with gr.Row():
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Enforce_Object_List", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        enforce_object_list_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=["true", "false"],
+                                            value="true",
+                                            interactive=True,
+                                            container=False,
+                                        )
+
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Comments", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        comments_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=["true", "false"],
+                                            value="true",
+                                            interactive=True,
+                                            container=False,
+                                        )
+
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Annotations", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        annotations_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=["true", "false"],
+                                            value="true",
+                                            interactive=True,
+                                            container=False,
+                                        )
 
                         with gr.Row():
                             build_btn = gr.Button("作成", variant="primary")

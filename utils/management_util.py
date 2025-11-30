@@ -1057,10 +1057,15 @@ def build_management_tab(pool):
             
             # Feature 2: Table Details and Drop
             with gr.Accordion(label="2. テーブル詳細と削除", open=True):
-                selected_table_name = gr.Textbox(
-                    label="選択されたテーブル名",
-                    interactive=False,
-                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("選択されたテーブル名", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        selected_table_name = gr.Textbox(
+                            show_label=False,
+                            interactive=False,
+                            container=False,
+                        )
 
                 with gr.Row():
                     table_drop_btn = gr.Button("選択したテーブルを削除", variant="stop")
@@ -1091,13 +1096,18 @@ def build_management_tab(pool):
             
             # Feature 3: Create Table
             with gr.Accordion(label="3. テーブル作成", open=False):
-                create_table_sql = gr.Textbox(
-                    label="CREATE TABLE SQL文（複数の文をセミコロンで区切って入力可能）",
-                    placeholder="CREATE TABLE文を入力してください\n例:\nCREATE TABLE test_table (\n  id NUMBER PRIMARY KEY,\n  name VARCHAR2(100)\n);\n\nCOMMENT ON TABLE test_table IS 'テストテーブル';\nCOMMENT ON COLUMN test_table.id IS 'ID';\nCOMMENT ON COLUMN test_table.name IS '名称';",
-                    lines=10,
-                    max_lines=15,
-                    show_copy_button=True,
-                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("CREATE TABLE SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        create_table_sql = gr.Textbox(
+                            show_label=False,
+                            placeholder="CREATE TABLE文を入力してください\n例:\nCREATE TABLE test_table (\n  id NUMBER PRIMARY KEY,\n  name VARCHAR2(100)\n);\n\nCOMMENT ON TABLE test_table IS 'テストテーブル';\nCOMMENT ON COLUMN test_table.id IS 'ID';\nCOMMENT ON COLUMN test_table.name IS '名称';",
+                            lines=10,
+                            max_lines=15,
+                            show_copy_button=True,
+                            container=False,
+                        )
                 
                 with gr.Row():
                     with gr.Column():
@@ -1110,19 +1120,23 @@ def build_management_tab(pool):
 
                 with gr.Accordion(label="AI分析と処理", open=False):
                     with gr.Row():
-                        table_ai_model_input = gr.Dropdown(
-                            label="モデル",
-                            choices=[
-                                "xai.grok-code-fast-1",
-                                "xai.grok-3",
-                                "xai.grok-3-fast",
-                                "xai.grok-4",
-                                "xai.grok-4-fast-non-reasoning",
-                                "meta.llama-4-scout-17b-16e-instruct",
-                            ],
-                            value="xai.grok-code-fast-1",
-                            interactive=True,
-                        )
+                        with gr.Column(scale=1):
+                            gr.Markdown("モデル", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            table_ai_model_input = gr.Dropdown(
+                                show_label=False,
+                                choices=[
+                                    "xai.grok-code-fast-1",
+                                    "xai.grok-3",
+                                    "xai.grok-3-fast",
+                                    "xai.grok-4",
+                                    "xai.grok-4-fast-non-reasoning",
+                                    "meta.llama-4-scout-17b-16e-instruct",
+                                ],
+                                value="xai.grok-code-fast-1",
+                                interactive=True,
+                                container=False,
+                            )
                     with gr.Row():
                         table_ai_analyze_btn = gr.Button("AI分析", variant="primary")
                     with gr.Row():
@@ -1337,10 +1351,15 @@ def build_management_tab(pool):
             
             # Feature 2: View Details and Drop
             with gr.Accordion(label="2. ビュー詳細と削除", open=True):
-                selected_view_name = gr.Textbox(
-                    label="選択されたビュー名",
-                    interactive=False,
-                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("選択されたビュー名", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        selected_view_name = gr.Textbox(
+                            show_label=False,
+                            interactive=False,
+                            container=False,
+                        )
 
                 with gr.Row():
                     view_drop_btn = gr.Button("選択したビューを削除", variant="stop")
@@ -1370,19 +1389,23 @@ def build_management_tab(pool):
                         )
 
                 with gr.Row():
-                    view_analysis_model_input = gr.Dropdown(
-                        label="モデル",
-                        choices=[
-                            "xai.grok-code-fast-1",
-                            "xai.grok-3",
-                            "xai.grok-3-fast",
-                            "xai.grok-4",
-                            "xai.grok-4-fast-non-reasoning",
-                            "meta.llama-4-scout-17b-16e-instruct",
-                        ],
-                        value="xai.grok-code-fast-1",
-                        interactive=True,
-                    )
+                    with gr.Column(scale=1):
+                        gr.Markdown("モデル", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        view_analysis_model_input = gr.Dropdown(
+                            show_label=False,
+                            choices=[
+                                "xai.grok-code-fast-1",
+                                "xai.grok-3",
+                                "xai.grok-3-fast",
+                                "xai.grok-4",
+                                "xai.grok-4-fast-non-reasoning",
+                                "meta.llama-4-scout-17b-16e-instruct",
+                            ],
+                            value="xai.grok-code-fast-1",
+                            interactive=True,
+                            container=False,
+                        )
 
                 with gr.Row():
                     view_ai_extract_btn = gr.Button("AIでJOIN/WHERE条件を抽出", variant="primary")
@@ -1411,13 +1434,18 @@ def build_management_tab(pool):
             
             # Feature 3: Create View
             with gr.Accordion(label="3. ビュー作成", open=False):
-                create_view_sql = gr.Textbox(
-                    label="CREATE VIEW SQL文（複数の文をセミコロンで区切って入力可能）",
-                    placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\nSELECT id, name FROM test_table;\n\nCOMMENT ON TABLE test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
-                    lines=10,
-                    max_lines=15,
-                    show_copy_button=True,
-                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("CREATE VIEW SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        create_view_sql = gr.Textbox(
+                            show_label=False,
+                            placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\nSELECT id, name FROM test_table;\n\nCOMMENT ON TABLE test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
+                            lines=10,
+                            max_lines=15,
+                            show_copy_button=True,
+                            container=False,
+                        )
                 
                 with gr.Row():
                     with gr.Column():
@@ -1429,19 +1457,23 @@ def build_management_tab(pool):
 
                 with gr.Accordion(label="AI分析と処理", open=False):
                     with gr.Row():
-                        view_ai_model_input = gr.Dropdown(
-                            label="モデル",
-                            choices=[
-                                "xai.grok-code-fast-1",
-                                "xai.grok-3",
-                                "xai.grok-3-fast",
-                                "xai.grok-4",
-                                "xai.grok-4-fast-non-reasoning",
-                                "meta.llama-4-scout-17b-16e-instruct",
-                            ],
-                            value="xai.grok-code-fast-1",
-                            interactive=True,
-                        )
+                        with gr.Column(scale=1):
+                            gr.Markdown("モデル", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            view_ai_model_input = gr.Dropdown(
+                                show_label=False,
+                                choices=[
+                                    "xai.grok-code-fast-1",
+                                    "xai.grok-3",
+                                    "xai.grok-3-fast",
+                                    "xai.grok-4",
+                                    "xai.grok-4-fast-non-reasoning",
+                                    "meta.llama-4-scout-17b-16e-instruct",
+                                ],
+                                value="xai.grok-code-fast-1",
+                                interactive=True,
+                                container=False,
+                            )
                     with gr.Row():
                         view_ai_analyze_btn = gr.Button("AI分析", variant="primary")
                     with gr.Row():
@@ -1730,27 +1762,39 @@ def build_management_tab(pool):
                 data_refresh_status = gr.Markdown(visible=False)
                 
                 with gr.Row():
-                    with gr.Column():
+                    with gr.Column(scale=1):
+                        gr.Markdown("テーブル・ビュー選択", elem_classes="input-label")
+                    with gr.Column(scale=5):
                         data_table_select = gr.Dropdown(
-                            label="テーブル・ビュー選択",
+                            show_label=False,
                             choices=[],
                             interactive=True,
-                        )
-                    with gr.Column():
-                        data_limit_input = gr.Number(
-                            label="取得件数",
-                            value=100,
-                            minimum=1,
-                            maximum=10000,
+                            container=False,
                         )
                 
                 with gr.Row():
-                    data_where_input = gr.Textbox(
-                        label="WHERE条件（オプション）",
-                        placeholder="例: status = 'A' AND created_at > SYSDATE - 7",
-                        lines=2,
-                        max_lines=5,
-                    )
+                    with gr.Column(scale=1):
+                        gr.Markdown("取得件数", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        data_limit_input = gr.Number(
+                            show_label=False,
+                            value=100,
+                            minimum=1,
+                            maximum=10000,
+                            container=False,
+                        )
+                
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("WHERE条件（オプション）", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        data_where_input = gr.Textbox(
+                            show_label=False,
+                            placeholder="例: status = 'A' AND created_at > SYSDATE - 7",
+                            lines=2,
+                            max_lines=5,
+                            container=False,
+                        )
 
                 with gr.Row():                
                     data_display_btn = gr.Button("データを表示", variant="primary")
@@ -1770,25 +1814,36 @@ def build_management_tab(pool):
             # Feature 2: CSV Upload
             with gr.Accordion(label="2. CSVアップロード", open=False):
                 with gr.Row():
-                    csv_file_input = gr.File(
-                        label="CSVファイル",
-                        file_types=[".csv"],
-                        type="filepath",
-                    )
+                    with gr.Column(scale=1):
+                        gr.Markdown("CSVファイル", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        csv_file_input = gr.File(
+                            show_label=False,
+                            file_types=[".csv"],
+                            type="filepath",
+                        )
                 
                 with gr.Row():
-                    with gr.Column():
+                    with gr.Column(scale=1):
+                        gr.Markdown("アップロード先テーブル", elem_classes="input-label")
+                    with gr.Column(scale=5):
                         csv_table_select = gr.Dropdown(
-                            label="アップロード先テーブル",
+                            show_label=False,
                             choices=[],
                             interactive=True,
-                            visible=False,
+                            visible=True,
+                            container=False,
                         )
-                    with gr.Column():
+
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("アップロードモード", elem_classes="input-label")
+                    with gr.Column(scale=5):
                         csv_upload_mode = gr.Radio(
-                            label="アップロードモード",
+                            show_label=False,
                             choices=["INSERT", "TRUNCATE & INSERT"],
                             value="INSERT",
+                            container=False,
                         )
                 
                 csv_preview_info = gr.Markdown(
@@ -1809,27 +1864,37 @@ def build_management_tab(pool):
             
             # Feature 3: SQL Bulk Execution
             with gr.Accordion(label="3. SQL一括実行", open=False):
-                sql_template_select = gr.Dropdown(
-                    label="SQLテンプレート（オプション）",
-                    choices=[
-                        "",
-                        "INSERT - 単一行",
-                        "INSERT - 複数行",
-                        "UPDATE",
-                        "DELETE",
-                        "MERGE",
-                    ],
-                    value="",
-                    interactive=True,
-                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("SQLテンプレート（オプション）", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        sql_template_select = gr.Dropdown(
+                            show_label=False,
+                            choices=[
+                                "",
+                                "INSERT - 単一行",
+                                "INSERT - 複数行",
+                                "UPDATE",
+                                "DELETE",
+                                "MERGE",
+                            ],
+                            value="",
+                            interactive=True,
+                            container=False,
+                        )
                 
-                data_sql_input = gr.Textbox(
-                    label="SQL文（複数の文をセミコロンで区切って入力可能）",
-                    placeholder="INSERT/UPDATE/DELETE/MERGE文を入力してください（注: SELECT文は禁止されています）\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';",
-                    lines=10,
-                    max_lines=15,
-                    show_copy_button=True,
-                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        data_sql_input = gr.Textbox(
+                            show_label=False,
+                            placeholder="INSERT/UPDATE/DELETE/MERGE文を入力してください（注: SELECT文は禁止されています）\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';",
+                            lines=10,
+                            max_lines=15,
+                            show_copy_button=True,
+                            container=False,
+                        )
                 
                 with gr.Row():
                     data_clear_btn = gr.Button("クリア", variant="secondary")
@@ -1840,22 +1905,30 @@ def build_management_tab(pool):
                     data_sql_result = gr.Markdown(visible=False)
 
                 with gr.Accordion(label="AI分析と処理", open=False):
-                    data_ai_model_input = gr.Dropdown(
-                        label="モデル",
-                        choices=[
-                            "xai.grok-code-fast-1",
-                            "xai.grok-3",
-                            "xai.grok-3-fast",
-                            "xai.grok-4",
-                            "xai.grok-4-fast-non-reasoning",
-                            "meta.llama-4-scout-17b-16e-instruct",
-                        ],
-                        value="xai.grok-code-fast-1",
-                        interactive=True,
-                    )
-                    data_ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                    data_ai_status_md = gr.Markdown(visible=False)
-                    data_ai_result_md = gr.Markdown(visible=False)
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("モデル", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            data_ai_model_input = gr.Dropdown(
+                                show_label=False,
+                                choices=[
+                                    "xai.grok-code-fast-1",
+                                    "xai.grok-3",
+                                    "xai.grok-3-fast",
+                                    "xai.grok-4",
+                                    "xai.grok-4-fast-non-reasoning",
+                                    "meta.llama-4-scout-17b-16e-instruct",
+                                ],
+                                value="xai.grok-code-fast-1",
+                                interactive=True,
+                                container=False,
+                            )
+                    with gr.Row():
+                        data_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                    with gr.Row():
+                        data_ai_status_md = gr.Markdown(visible=False)
+                    with gr.Row():
+                        data_ai_result_md = gr.Markdown(visible=False)
             
             # Event Handlers
             def refresh_data_table_list():

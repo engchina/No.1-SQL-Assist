@@ -427,21 +427,30 @@ def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
     with gr.TabItem(label="SQLの実行") as tab_query:
         with gr.Accordion(label="1. SQLの入力", open=True):
-            sql_input = gr.Textbox(
-                label="SQL文（SELECTは1文のみ、その他は複数文同時実行可）\n注意: 複数実行時はSELECTを含めないでください",
-                placeholder="複数の文はセミコロンで区切って入力できます。\n例: INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/BEGIN..END/EXEC など。SELECTは1回に1文のみ",
-                lines=8,
-                max_lines=15,
-                show_copy_button=True,
-            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("SQL文（SELECTは1文のみ、その他は複数文同時実行可）\n注意: 複数実行時はSELECTを含めないでください", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    sql_input = gr.Textbox(
+                        show_label=False,
+                        placeholder="複数の文はセミコロンで区切って入力できます。\n例: INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/BEGIN..END/EXEC など。SELECTは1回に1文のみ",
+                        lines=8,
+                        max_lines=15,
+                        show_copy_button=True,
+                        container=False,
+                    )
 
             with gr.Row():
-                limit_input = gr.Number(
-                    label="取得件数",
-                    value=100,
-                    minimum=1,
-                    maximum=10000,
-                )
+                with gr.Column(scale=1):
+                    gr.Markdown("取得件数", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    limit_input = gr.Number(
+                        show_label=False,
+                        value=100,
+                        minimum=1,
+                        maximum=10000,
+                        container=False,
+                    )
 
             with gr.Row():
                 clear_btn = gr.Button("クリア", variant="secondary")
@@ -466,19 +475,24 @@ def build_query_tab(pool):
             result_style = gr.HTML(visible=False)
 
             with gr.Accordion(label="AI分析と処理", open=False):
-                ai_model_input = gr.Dropdown(
-                    label="モデル",
-                    choices=[
-                        "xai.grok-code-fast-1",
-                        "xai.grok-3",
-                        "xai.grok-3-fast",
-                        "xai.grok-4",
-                        "xai.grok-4-fast-non-reasoning",
-                        "meta.llama-4-scout-17b-16e-instruct",
-                    ],
-                    value="xai.grok-code-fast-1",
-                    interactive=True,
-                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("モデル", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        ai_model_input = gr.Dropdown(
+                            show_label=False,
+                            choices=[
+                                "xai.grok-code-fast-1",
+                                "xai.grok-3",
+                                "xai.grok-3-fast",
+                                "xai.grok-4",
+                                "xai.grok-4-fast-non-reasoning",
+                                "meta.llama-4-scout-17b-16e-instruct",
+                            ],
+                            value="xai.grok-code-fast-1",
+                            interactive=True,
+                            container=False,
+                        )
                 ai_analyze_btn = gr.Button("AI分析", variant="primary")
                 ai_status_md = gr.Markdown(visible=False)
                 ai_result_md = gr.Markdown(visible=False)

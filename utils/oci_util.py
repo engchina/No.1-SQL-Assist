@@ -334,7 +334,7 @@ def build_oci_genai_tab(pool):
             with gr.Row():
                 with gr.Column(scale=1):
                      gr.Markdown("User OCID*", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_create_oci_cred_user_ocid_text = gr.Textbox(
                         show_label=False,
                         lines=1,
@@ -345,7 +345,7 @@ def build_oci_genai_tab(pool):
             with gr.Row():
                 with gr.Column(scale=1):
                      gr.Markdown("Tenancy OCID*", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_create_oci_cred_tenancy_ocid_text = gr.Textbox(
                         show_label=False,
                         lines=1,
@@ -356,7 +356,7 @@ def build_oci_genai_tab(pool):
             with gr.Row():
                 with gr.Column(scale=1):
                      gr.Markdown("Fingerprint*", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_create_oci_cred_fingerprint_text = gr.Textbox(
                         show_label=False,
                         lines=1,
@@ -367,19 +367,18 @@ def build_oci_genai_tab(pool):
             with gr.Row():
                 with gr.Column(scale=1):
                      gr.Markdown("Private Key*", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_create_oci_cred_private_key_file = gr.File(
                         show_label=False,
                         file_types=[".pem"],
                         type="filepath",
                         interactive=True,
-                        container=False,
                     )
 
             with gr.Row():
                 with gr.Column(scale=1):
                      gr.Markdown("Region*", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_create_oci_cred_region_text = gr.Dropdown(
                         choices=["ap-osaka-1", "us-chicago-1"],
                         show_label=False,
@@ -471,7 +470,7 @@ def build_oci_embedding_test_tab(pool):
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("ベクトル結果", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_test_oci_cred_vector_text = gr.Textbox(
                         show_label=False,
                         lines=8,
@@ -485,7 +484,7 @@ def build_oci_embedding_test_tab(pool):
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("テキスト", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_test_oci_cred_query_text = gr.Textbox(
                         show_label=False,
                         placeholder="埋め込みベクトルに変換するテキストを入力してください...",
@@ -498,7 +497,7 @@ def build_oci_embedding_test_tab(pool):
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("モデル", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     tab_test_oci_cred_model_input = gr.Dropdown(
                         show_label=False,
                         choices=["cohere.embed-v4.0"],
@@ -694,7 +693,7 @@ def build_oracle_ai_database_tab(pool=None):
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("リージョン", elem_classes="input-label")
-                with gr.Column(scale=4):
+                with gr.Column(scale=5):
                     region_input = gr.Dropdown(show_label=False, choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True, container=False)
             with gr.Row():
                 fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
