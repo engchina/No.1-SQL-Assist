@@ -26,13 +26,6 @@ custom_css = """
 }
 
 @font-face {
-  font-family: 'Noto Sans HK';
-  src: url('fonts/NotoSansHK-Regular.otf') format('opentype');
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
   font-family: 'Roboto';
   src: url('fonts/Roboto-Regular.ttf') format('truetype');
   font-weight: 400;

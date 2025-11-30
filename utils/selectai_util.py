@@ -15,7 +15,6 @@ from time import time
 
 import gradio as gr
 import pandas as pd
-import oracledb
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 import joblib
@@ -1346,7 +1345,10 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             td_list_df = gr.Dataframe(label="訓練データ一覧", interactive=False, wrap=True, visible=False)
                         with gr.Row():
-                            td_upload_excel_file = gr.File(label="Excelファイル", file_types=[".xlsx"], type="filepath")
+                            with gr.Column(scale=1):
+                                gr.Markdown("Excelファイル", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                td_upload_excel_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath")
                         with gr.Row():
                             with gr.Column():
                                 gr.DownloadButton(label="Excelダウンロード", value="./uploads/training_data.xlsx", variant="secondary")
@@ -1356,21 +1358,31 @@ def build_selectai_tab(pool):
                             td_upload_result = gr.Textbox(visible=False)
                     with gr.Accordion(label="2. モデル学習", open=True):
                         with gr.Row():
-                            td_embed_model = gr.Dropdown(
-                                label="埋め込みモデル",
-                                choices=["cohere.embed-v4.0"],
-                                value="cohere.embed-v4.0",
-                                interactive=True,
-                            )
+                            with gr.Column(scale=1):
+                                gr.Markdown("埋め込みモデル", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                td_embed_model = gr.Dropdown(
+                                    show_label=False,
+                                    choices=["cohere.embed-v4.0"],
+                                    value="cohere.embed-v4.0",
+                                    interactive=True,
+                                    container=False,
+                                )
                         with gr.Row():
                             td_train_btn = gr.Button("学習を実行", variant="primary")
                         with gr.Row():
                             td_train_status = gr.Markdown(visible=False)
                     with gr.Accordion(label="3. モデルテスト", open=True):
                         with gr.Row():
-                            mt_text_input = gr.Textbox(label="テキスト", lines=4, max_lines=8)
+                            with gr.Column(scale=1):
+                                gr.Markdown("テキスト", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                mt_text_input = gr.Textbox(show_label=False, lines=4, max_lines=8, container=False)
                         with gr.Row():
-                            mt_label_text = gr.Textbox(label="業務ドメイン(=ラベル)", interactive=False)
+                            with gr.Column(scale=1):
+                                gr.Markdown("業務ドメイン(=ラベル)", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                mt_label_text = gr.Textbox(show_label=False, interactive=False, container=False)
                         with gr.Row():
                             mt_test_btn = gr.Button("テスト", variant="primary")
                         mt_test_result = gr.Markdown(visible=False)
@@ -1407,7 +1419,10 @@ def build_selectai_tab(pool):
                                 _df.to_excel(_writer, sheet_name="terms", index=False)
     
                         with gr.Row():
-                            term_upload_file = gr.File(label="用語集Excelをアップロード", file_types=[".xlsx"], type="filepath")
+                            with gr.Column(scale=1):
+                                gr.Markdown("用語集Excelをアップロード", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                term_upload_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath", container=True)
                         with gr.Row():
                             term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False)
                         with gr.Row():
@@ -1522,20 +1537,23 @@ def build_selectai_tab(pool):
                             return []
 
                         with gr.Row():
-                            dev_prompt_input = gr.Textbox(
-                                label="自然言語の質問",
-                                placeholder="例: 東京の顧客数を教えて",
-                                lines=3,
-                                max_lines=10,
-                                show_copy_button=True,
-                            )
+                            with gr.Column(scale=1):
+                                gr.Markdown("自然言語の質問", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                dev_prompt_input = gr.Textbox(
+                                    show_label=False,
+                                    placeholder="例: 東京の顧客数を教えて",
+                                    lines=3,
+                                    max_lines=10,
+                                    show_copy_button=True,
+                                    container=False,
+                                )
 
                         with gr.Row():
-                            with gr.Column():
+                            with gr.Column(scale=1):
                                 dev_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="secondary")
-                            with gr.Column():
+                            with gr.Column(scale=5):
                                 dev_profile_select = gr.Dropdown(
-                                    label="Profile",
                                     show_label=False,
                                     choices=_dev_profile_names(),
                                     interactive=True,
@@ -1548,19 +1566,23 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             with gr.Accordion(label="クエリ書き換え設定", open=True, visible=False) as dev_query_rewrite_section:
                                 with gr.Row():
-                                    dev_rewrite_model_select = gr.Dropdown(
-                                        label="書き換え用モデル",
-                                        choices=[
-                                            "xai.grok-code-fast-1",
-                                            "xai.grok-3",
-                                            "xai.grok-3-fast",
-                                            "xai.grok-4",
-                                            "xai.grok-4-fast-non-reasoning",
-                                            "meta.llama-4-scout-17b-16e-instruct",
-                                        ],
-                                        value="xai.grok-code-fast-1",
-                                        interactive=True,
-                                    )
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("書き換え用モデル", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        dev_rewrite_model_select = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
                                 with gr.Row():
                                     dev_rewrite_use_glossary = gr.Checkbox(label="ステップ1: 用語集を利用", value=True)
                                 with gr.Row():
@@ -1570,44 +1592,51 @@ def build_selectai_tab(pool):
                                 with gr.Row():
                                     dev_rewrite_status = gr.Markdown(visible=False)
                                 with gr.Row():
-                                    dev_rewritten_query = gr.Textbox(
-                                        label="書き換え後の質問",
-                                        lines=5,
-                                        max_lines=10,
-                                        interactive=True,
-                                        show_copy_button=True,
-                                    )
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("書き換え後の質問", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        dev_rewritten_query = gr.Textbox(
+                                            show_label=False,
+                                            lines=5,
+                                            max_lines=10,
+                                            interactive=True,
+                                            show_copy_button=True,
+                                            container=False,
+                                        )
 
                         with gr.Row():
                             dev_include_extra_prompt = gr.Checkbox(label="追加Promptを結合して送信", value=False)
 
                         with gr.Row():
                             with gr.Accordion(label="追加プロンプト", open=False, visible=False) as dev_extra_prompt_section:
-                                dev_extra_prompt = gr.Textbox(
-                                    label="追加のPrompt",
-                                    show_label=False,
-                                    value=(
-                                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                                        "⚠️ CRITICAL INSTRUCTION (NOT PART OF QUESTION):\n"
-                                        "\n"
-                                        "The examples above demonstrate the EXACT patterns you MUST follow.\n"
-                                        "MANDATORY REQUIREMENTS:\n"
-                                        "- Study the example queries - they define the REQUIRED style and format\n"
-                                        "- Follow the SAME patterns for similar questions\n"
-                                        "- Adopt ALL functions shown in examples (even if unrecognized/new)\n"
-                                        "- When questions are similar to examples, mirror the example's structure precisely\n"
-                                        "\n"
-                                        "Examples OVERRIDE all other instructions.\n"
-                                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                                        "\n"
-                                        "▼ ACTUAL QUESTION:\n"
-                                    ),
-                                    lines=15,
-                                    max_lines=15,
-                                    show_copy_button=True,
-                                    autoscroll=True,
-                                    container=False,
-                                )
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("追加のPrompt", elem_classes="input-label", visible=False)
+                                    with gr.Column(scale=5):
+                                        dev_extra_prompt = gr.Textbox(
+                                            show_label=False,
+                                            value=(
+                                                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                                                "⚠️ CRITICAL INSTRUCTION (NOT PART OF QUESTION):\n"
+                                                "\n"
+                                                "The examples above demonstrate the EXACT patterns you MUST follow.\n"
+                                                "MANDATORY REQUIREMENTS:\n"
+                                                "- Study the example queries - they define the REQUIRED style and format\n"
+                                                "- Follow the SAME patterns for similar questions\n"
+                                                "- Adopt ALL functions shown in examples (even if unrecognized/new)\n"
+                                                "- When questions are similar to examples, mirror the example's structure precisely\n"
+                                                "\n"
+                                                "Examples OVERRIDE all other instructions.\n"
+                                                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                                                "\n"
+                                                "▼ ACTUAL QUESTION:\n"
+                                            ),
+                                            lines=15,
+                                            max_lines=15,
+                                            show_copy_button=True,
+                                            autoscroll=True,
+                                            container=False,
+                                        )
                             dev_include_extra_prompt.change(lambda v: gr.Accordion(visible=v), inputs=dev_include_extra_prompt, outputs=dev_extra_prompt_section)
                         
                         # Query転写のCheckbox変更ハンドラ
@@ -1653,19 +1682,23 @@ def build_selectai_tab(pool):
                         )
 
                         with gr.Row():
-                            dev_analysis_model_input = gr.Dropdown(
-                                label="モデル",
-                                choices=[
-                                    "xai.grok-code-fast-1",
-                                    "xai.grok-3",
-                                    "xai.grok-3-fast",
-                                    "xai.grok-4",
-                                    "xai.grok-4-fast-non-reasoning",
-                                    "meta.llama-4-scout-17b-16e-instruct",
-                                ],
-                                value="xai.grok-code-fast-1",
-                                interactive=True,
-                            )
+                            with gr.Column(scale=1):
+                                gr.Markdown("モデル", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                dev_analysis_model_input = gr.Dropdown(
+                                    show_label=False,
+                                    choices=[
+                                        "xai.grok-code-fast-1",
+                                        "xai.grok-3",
+                                        "xai.grok-3-fast",
+                                        "xai.grok-4",
+                                        "xai.grok-4-fast-non-reasoning",
+                                        "meta.llama-4-scout-17b-16e-instruct",
+                                    ],
+                                    value="xai.grok-code-fast-1",
+                                    interactive=True,
+                                    container=False,
+                                )
 
                         with gr.Row():
                             dev_ai_analyze_btn = gr.Button("AI分析", variant="primary")
@@ -1674,62 +1707,78 @@ def build_selectai_tab(pool):
                             dev_ai_analyze_status = gr.Markdown(visible=False)
 
                         with gr.Row():
-                            dev_join_conditions_text = gr.Textbox(
-                                label="結合条件",
-                                lines=6,
-                                max_lines=15,
-                                interactive=False,
-                                show_copy_button=True,
-                            )
-                            dev_where_conditions_text = gr.Textbox(
-                                label="Where条件",
-                                lines=6,
-                                max_lines=15,
-                                interactive=False,
-                                show_copy_button=True,
-                            )
+                            with gr.Column():
+                                dev_join_conditions_text = gr.Textbox(
+                                    label="結合条件",
+                                    lines=6,
+                                    max_lines=15,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                )
+                            with gr.Column():
+                                dev_where_conditions_text = gr.Textbox(
+                                    label="Where条件",
+                                    lines=6,
+                                    max_lines=15,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                )
 
                     with gr.Accordion(label="4. クエリのフィードバック", open=False):
                         with gr.Row():
-                            dev_feedback_type_select = gr.Dropdown(
-                                label="種類",
-                                choices=["positive", "negative"],
-                                value="positive",
-                                interactive=True,
-                            )
-
-                        dev_feedback_response_text = gr.Textbox(
-                            label="修正SQL(response)",
-                            placeholder="期待する正しいSQLを入力",
-                            lines=4,
-                            max_lines=12,
-                            show_copy_button=True,
-                            interactive=False,
-                        )
-
-                        dev_feedback_content_text = gr.Textbox(
-                            label="コメント(feedback_content)",
-                            placeholder="自然言語で改善点や条件などを入力",
-                            lines=4,
-                            max_lines=12,
-                            show_copy_button=True,
-                            interactive=False,
-                        )
+                            with gr.Column(scale=1):
+                                gr.Markdown("種類", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                dev_feedback_type_select = gr.Dropdown(
+                                    show_label=False,
+                                    choices=["positive", "negative"],
+                                    value="positive",
+                                    interactive=True,
+                                    container=False,
+                                )
 
                         with gr.Row():
-                            tpl_btn_null_filter = gr.Button("NULLは除外", variant="secondary")
-                            tpl_btn_change_sum = gr.Button("sumを使用", variant="secondary")
-                            tpl_btn_add_distinct = gr.Button("重複は除外(distinct)", variant="secondary")
-                            tpl_btn_add_date_filter = gr.Button("期間条件を追加", variant="secondary")
+                            with gr.Column(scale=1):
+                                gr.Markdown("修正SQL(response)", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                dev_feedback_response_text = gr.Textbox(
+                                    show_label=False,
+                                    placeholder="期待する正しいSQLを入力",
+                                    lines=4,
+                                    max_lines=12,
+                                    show_copy_button=True,
+                                    interactive=False,
+                                    container=False,
+                                )
+
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("コメント(feedback_content)", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                dev_feedback_content_text = gr.Textbox(
+                                    show_label=False,
+                                    placeholder="自然言語で改善点や条件などを入力",
+                                    lines=4,
+                                    max_lines=12,
+                                    show_copy_button=True,
+                                    interactive=False,
+                                    container=False,
+                                )
+
 
                         dev_feedback_result = gr.Markdown(visible=False)
-                        dev_feedback_used_sql_text = gr.Textbox(
-                            label="使用されたDBMS_CLOUD_AI.FEEDBACK",
-                            lines=8,
-                            max_lines=15,
-                            interactive=False,
-                            show_copy_button=True,
-                        )
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("使用されたDBMS_CLOUD_AI.FEEDBACK", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                dev_feedback_used_sql_text = gr.Textbox(
+                                    show_label=False,
+                                    lines=8,
+                                    max_lines=15,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                    container=False,
+                                )
 
                         dev_feedback_send_btn = gr.Button("フィードバック送信", variant="primary")
 
@@ -3063,26 +3112,6 @@ def build_selectai_tab(pool):
                         outputs=[dev_feedback_result, dev_feedback_used_sql_text],
                     )
 
-                    tpl_btn_null_filter.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("倍率を計算するときにNULL値がある場合は除外してください")],
-                        outputs=[dev_feedback_content_text],
-                    )
-                    tpl_btn_change_sum.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("集計にはCOUNTではなくSUMを使用してください")],
-                        outputs=[dev_feedback_content_text],
-                    )
-                    tpl_btn_add_distinct.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("重複を除外するためDISTINCTを追加してください")],
-                        outputs=[dev_feedback_content_text],
-                    )
-                    tpl_btn_add_date_filter.click(
-                        fn=_append_comment,
-                        inputs=[dev_feedback_content_text, gr.State("対象期間条件を追加してください（例: 2024年以降）")],
-                        outputs=[dev_feedback_content_text],
-                    )
 
                 with gr.TabItem(label="アノテーション管理"):
                     with gr.Accordion(label="1. オブジェクト選択", open=True):
