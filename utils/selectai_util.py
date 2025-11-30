@@ -3725,6 +3725,13 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             rev_profile_select = gr.Dropdown(label="Profile", choices=_load_profiles_from_json(), interactive=True)
                         with gr.Row():
+                            rev_sql_input = gr.Textbox(label="対象SQL", lines=8, max_lines=15, show_copy_button=True)
+
+                    with gr.Accordion(label="2. 参照コンテキスト", open=False):
+                        rev_context_text = gr.Textbox(label="送信するメタ情報", lines=15, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False)
+
+                    with gr.Accordion(label="3. 生成", open=True):
+                        with gr.Row():
                             rev_model_input = gr.Dropdown(
                                 label="モデル",
                                 choices=[
@@ -3739,14 +3746,11 @@ def build_selectai_tab(pool):
                                 interactive=True,
                             )
                         with gr.Row():
-                            rev_sql_input = gr.Textbox(label="対象SQL", lines=8, max_lines=15, show_copy_button=True)
-
-                    with gr.Accordion(label="2. 参照コンテキスト", open=False):
-                        rev_context_text = gr.Textbox(label="送信するメタ情報", lines=15, max_lines=15, interactive=False, show_copy_button=True)
-
-                    with gr.Accordion(label="3. 生成", open=True):
-                        rev_generate_btn = gr.Button("自然言語を生成", variant="primary")
-                        rev_question_output = gr.Textbox(label="推奨質問(日本語)", lines=4, max_lines=10, interactive=False, show_copy_button=True)
+                            rev_use_glossary = gr.Checkbox(label="用語集を利用", value=False)
+                        with gr.Row():
+                            rev_generate_btn = gr.Button("自然言語を生成", variant="primary")
+                        with gr.Row():
+                            rev_question_output = gr.Textbox(label="推奨質問(日本語)", lines=4, max_lines=10, interactive=False, show_copy_button=True)
 
                     def _rev_profile_names():
                         try:
@@ -3806,7 +3810,18 @@ def build_selectai_tab(pool):
                         except Exception as e:
                             return gr.Textbox(value=f"❌ エラー: {e}")
 
-                    async def _rev_generate_async(model_name, profile_name, sql_text):
+                    async def _rev_generate_async(model_name, profile_name, sql_text, use_glossary):
+                        """SQL→質問逆生成処理.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            profile_name: Profile名
+                            sql_text: 対象SQL
+                            use_glossary: 用語集を利用するか
+                        
+                        Returns:
+                            gr.Textbox: 生成された質問文
+                        """
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
                             region = get_oci_region()
@@ -3838,17 +3853,60 @@ def build_selectai_tab(pool):
                                 out_text = msg.content if hasattr(msg, "content") else ""
                             import re as _re
                             out_text = _re.sub(r"^```.*?\n|\n```$", "", str(out_text or ""), flags=_re.DOTALL).strip()
+                            
+                            # 用語集を利用する場合は逆処理を適用
+                            if use_glossary:
+                                terms = _load_terminology()
+                                if terms:
+                                    # 用語集を使ってLLMで書き換え（逆処理）
+                                    terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
+                                    glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集を参照して、自然言語の質問をより明確な表現に修正してください。
+
+**用語集:**
+{terms_text}
+
+**元の質問:**
+{out_text}
+
+**指示:**
+1. 用語集に含まれる言葉が使われている場合は、その定義に沿って修正してください。
+2. 曖昧な表現は、より具体的な表現に改めてください。
+3. 質問の元の意図を変えない範囲で、内容を明確にしてください。
+4. 出力は修正後の質問文のみとし、余計な説明は含めないでください。
+
+**修正後の質問:**"""
+                                    
+                                    messages = [{"role": "user", "content": glossary_prompt}]
+                                    glossary_resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                    if glossary_resp.choices and len(glossary_resp.choices) > 0:
+                                        glossary_result = glossary_resp.choices[0].message.content.strip()
+                                        # 元の質問と用語集適用後の質問を\n\nで連結
+                                        out_text = str(out_text) + "\n\n" + glossary_result
+                            
                             return gr.Textbox(value=out_text)
                         except Exception as e:
                             logger.error(f"_rev_generate_async error: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
                             return gr.Textbox(value=f"❌ エラー: {e}")
 
-                    def _rev_generate(model_name, profile_name, sql_text):
+                    def _rev_generate(model_name, profile_name, sql_text, use_glossary):
+                        """SQL→質問逆生成のラッパー関数.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            profile_name: Profile名
+                            sql_text: 対象SQL
+                            use_glossary: 用語集を利用するか
+                        
+                        Returns:
+                            gr.Textbox: 生成された質問文
+                        """
                         import asyncio
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            return loop.run_until_complete(_rev_generate_async(model_name, profile_name, sql_text))
+                            return loop.run_until_complete(_rev_generate_async(model_name, profile_name, sql_text, use_glossary))
                         finally:
                             loop.close()
 
@@ -3863,7 +3921,7 @@ def build_selectai_tab(pool):
 
                     rev_generate_btn.click(
                         fn=_rev_generate,
-                        inputs=[rev_model_input, rev_profile_select, rev_sql_input],
+                        inputs=[rev_model_input, rev_profile_select, rev_sql_input, rev_use_glossary],
                         outputs=[rev_question_output],
                     )
 
