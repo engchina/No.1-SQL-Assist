@@ -202,42 +202,53 @@ def build_oci_chat_test_tab(pool):
     """
 
     with gr.TabItem(label="AI チャット") as tab_chat:
-        with gr.Accordion(label="チャット", open=True):
+        with gr.Accordion(label="", open=True):
             with gr.Row():
                 with gr.Column():
+                    with gr.Row():
+                        with gr.Column(scale=5):
+                            with gr.Row():
+                                with gr.Column(scale=1):
+                                    gr.Markdown("モデル", elem_classes="input-label")
+                                with gr.Column(scale=5):
+                                    chat_model_input = gr.Dropdown(
+                                        show_label=False,
+                                        choices=[
+                                            "xai.grok-code-fast-1",
+                                            "xai.grok-3",
+                                            "xai.grok-3-fast",
+                                            "xai.grok-4",
+                                            "xai.grok-4-fast-non-reasoning",
+                                            "meta.llama-4-scout-17b-16e-instruct",
+                                        ],
+                                        value="xai.grok-code-fast-1",
+                                        interactive=True,
+                                        container=False,
+                                    )
+                        with gr.Column(scale=5):
+                            with gr.Row():
+                                with gr.Column(scale=1):
+                                    gr.Markdown("")
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            chatbot = gr.Chatbot(
+                                label="会話履歴",
+                                height=350,
+                                show_copy_button=True,
+                                avatar_images=(None, None),
+                                type='messages',
+                            )
 
                     with gr.Row():
-                        chat_model_input = gr.Dropdown(
-                            label="モデル",
-                            choices=[
-                                "xai.grok-code-fast-1",
-                                "xai.grok-3",
-                                "xai.grok-3-fast",
-                                "xai.grok-4",
-                                "xai.grok-4-fast-non-reasoning",
-                                "meta.llama-4-scout-17b-16e-instruct",
-                            ],
-                            value="xai.grok-code-fast-1",
-                            interactive=True,
-                            scale=2,
-                        )
-                    with gr.Row():
-                        chatbot = gr.Chatbot(
-                            label="会話履歴",
-                            height=350,
-                            show_copy_button=True,
-                            avatar_images=(None, None),
-                            type='messages',
-                        )
-
-                    with gr.Row():
-                        msg_input = gr.Textbox(
-                            value="こんにちわ",
-                            label="💬 メッセージ",
-                            placeholder="メッセージを入力してください（Enterで改行、Shift＋Enterで送信）",
-                            lines=2,
-                            max_lines=8,
-                        )
+                        with gr.Column(scale=1):
+                            msg_input = gr.Textbox(
+                                value="こんにちわ",
+                                label="💬 メッセージ",
+                                placeholder="メッセージを入力してください（Enterで改行、Shift＋Enterで送信）",
+                                lines=2,
+                                max_lines=8,
+                                container=False,
+                            )
 
                     with gr.Row():
                         clear_btn = gr.Button("クリア", scale=1)

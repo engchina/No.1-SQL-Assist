@@ -369,13 +369,26 @@ def build_sql_learning_tab(pool):
             default_lesson = lessons[0]
             default_lesson_text = f"【{default_lesson['id']}】{default_lesson['title']}\n\n{default_lesson['desc']}"
             
-            lesson_select = gr.Dropdown(
-                label="レッスン",
-                choices=[f"{l['id']} - {l['title']}" for l in lessons],
-                value=f"{lessons[0]['id']} - {lessons[0]['title']}",
-            )
-            lesson_desc_md = gr.Markdown(visible=True, value=default_lesson_text)
-            lesson_sql_text = gr.Textbox(label="学習SQL", lines=6, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False, value=default_lesson['sql'])
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("レッスン", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    lesson_select = gr.Dropdown(
+                        show_label=False,
+                        choices=[f"{l['id']} - {l['title']}" for l in lessons],
+                        value=f"{lessons[0]['id']} - {lessons[0]['title']}",
+                        container=False,
+                    )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    lesson_desc_md = gr.Markdown(visible=True, value=default_lesson_text)
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("学習SQL", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    lesson_sql_text = gr.Textbox(show_label=False, lines=6, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False, value=default_lesson['sql'], container=False)
 
             with gr.Row():
                 run_lesson_btn = gr.Button("このSQLを実行", variant="primary")

@@ -376,16 +376,22 @@ def build_oci_genai_tab(pool):
                     )
 
             with gr.Row():
-                with gr.Column(scale=1):
-                     gr.Markdown("Region*", elem_classes="input-label")
                 with gr.Column(scale=5):
-                    tab_create_oci_cred_region_text = gr.Dropdown(
-                        choices=["ap-osaka-1", "us-chicago-1"],
-                        show_label=False,
-                        interactive=True,
-                        value="us-chicago-1",
-                        container=False,
-                    )
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("Region*", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            tab_create_oci_cred_region_text = gr.Dropdown(
+                                choices=["ap-osaka-1", "us-chicago-1"],
+                                show_label=False,
+                                interactive=True,
+                                value="us-chicago-1",
+                                container=False,
+                            )
+                with gr.Column(scale=5):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("")
 
             with gr.Row():
                 with gr.Column():
@@ -691,10 +697,16 @@ def build_oracle_ai_database_tab(pool=None):
     with gr.TabItem(label="Oracle AI Database") as tab_adb:
         with gr.Accordion(label="Oracle AI Database", open=True):
             with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("リージョン", elem_classes="input-label")
                 with gr.Column(scale=5):
-                    region_input = gr.Dropdown(show_label=False, choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True, container=False)
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("リージョン", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            region_input = gr.Dropdown(show_label=False, choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True, container=False)
+                with gr.Column(scale=5):
+                    with gr.Row():
+                        with gr.Column(scale=5):
+                            gr.Markdown("")
             with gr.Row():
                 fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
             with gr.Row():
