@@ -77,6 +77,14 @@ textarea {
 }
 
 /* ======= Component Styles ======= */
+.input-label {
+    display: flex !important;
+    align-items: center;
+    height: 100%;
+    font-weight: bold;
+    font-size: 1rem;
+}
+
 .app {
   background: #c4c4c440;
 }

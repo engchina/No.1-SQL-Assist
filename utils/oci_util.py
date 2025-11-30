@@ -332,45 +332,60 @@ def build_oci_genai_tab(pool):
     with gr.TabItem(label="OCI 認証情報設定") as tab_create_oci_cred:
         with gr.Accordion(label="OCI 認証情報設定", open=True):
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                     gr.Markdown("User OCID*", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_create_oci_cred_user_ocid_text = gr.Textbox(
-                        label="User OCID*",
+                        show_label=False,
                         lines=1,
                         interactive=True,
+                        container=False,
                     )
 
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                     gr.Markdown("Tenancy OCID*", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_create_oci_cred_tenancy_ocid_text = gr.Textbox(
-                        label="Tenancy OCID*",
+                        show_label=False,
                         lines=1,
                         interactive=True,
+                        container=False,
                     )
 
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                     gr.Markdown("Fingerprint*", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_create_oci_cred_fingerprint_text = gr.Textbox(
-                        label="Fingerprint*",
+                        show_label=False,
                         lines=1,
                         interactive=True,
+                        container=False,
                     )
 
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                     gr.Markdown("Private Key*", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_create_oci_cred_private_key_file = gr.File(
-                        label="Private Key*",
+                        show_label=False,
                         file_types=[".pem"],
                         type="filepath",
                         interactive=True,
+                        container=False,
                     )
 
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                     gr.Markdown("Region*", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_create_oci_cred_region_text = gr.Dropdown(
                         choices=["ap-osaka-1", "us-chicago-1"],
-                        label="Region*",
+                        show_label=False,
                         interactive=True,
                         value="us-chicago-1",
+                        container=False,
                     )
 
             with gr.Row():
@@ -454,33 +469,42 @@ def build_oci_embedding_test_tab(pool):
             
         with gr.Accordion(label="埋め込みモデル", open=True):
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                    gr.Markdown("ベクトル結果", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_test_oci_cred_vector_text = gr.Textbox(
-                        label="ベクトル結果",
+                        show_label=False,
                         lines=8,
                         max_lines=8,
                         autoscroll=False,
                         interactive=False,
                         show_copy_button=True,
+                        container=False,
                     )
 
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                    gr.Markdown("テキスト", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_test_oci_cred_query_text = gr.Textbox(
-                        label="テキスト",
+                        show_label=False,
                         placeholder="埋め込みベクトルに変換するテキストを入力してください...",
                         lines=2,
                         max_lines=5,
                         value="こんにちわ",
+                        container=False,
                     )
             
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                    gr.Markdown("モデル", elem_classes="input-label")
+                with gr.Column(scale=4):
                     tab_test_oci_cred_model_input = gr.Dropdown(
-                        label="モデル",
+                        show_label=False,
                         choices=["cohere.embed-v4.0"],
                         value="cohere.embed-v4.0",
                         interactive=True,
+                        container=False,
                     )
 
             with gr.Row():
@@ -668,7 +692,10 @@ def build_oracle_ai_database_tab(pool=None):
     with gr.TabItem(label="Oracle AI Database") as tab_adb:
         with gr.Accordion(label="Oracle AI Database", open=True):
             with gr.Row():
-                region_input = gr.Dropdown(label="リージョン", choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True)
+                with gr.Column(scale=1):
+                    gr.Markdown("リージョン", elem_classes="input-label")
+                with gr.Column(scale=4):
+                    region_input = gr.Dropdown(show_label=False, choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True, container=False)
             with gr.Row():
                 fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
             with gr.Row():
