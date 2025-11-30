@@ -556,17 +556,22 @@ def build_selectai_tab(pool):
                                 compartment_id_input = gr.Textbox(show_label=False, placeholder="ocid1.compartment.oc1...", value=os.environ.get("OCI_COMPARTMENT_OCID", ""), container=False)
 
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("Region", elem_classes="input-label")
-                            with gr.Column(scale=9):
-                                region_input = gr.Dropdown(
-                                    show_label=False,
-                                    choices=["ap-osaka-1", "us-chicago-1"],
-                                    value="us-chicago-1",
-                                    interactive=True,
-                                    container=False,
-                                )
-
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Region", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        region_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=["ap-osaka-1", "us-chicago-1"],
+                                            value="us-chicago-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -582,7 +587,12 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             container=False,
                                         )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
 
+                        with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -602,7 +612,6 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             container=False,
                                         )
-
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -631,7 +640,12 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             container=False,
                                         )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
 
+                        with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -644,7 +658,12 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             container=False,
                                         )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
 
+                        with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -657,11 +676,16 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             container=False,
                                         )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
 
                         with gr.Row():
                             build_btn = gr.Button("作成", variant="primary")
 
-                        create_info = gr.Markdown(visible=False)               
+                        with gr.Row():
+                            create_info = gr.Markdown(visible=False)               
 
                 def refresh_profiles():
                     try:
@@ -1376,16 +1400,22 @@ def build_selectai_tab(pool):
                             td_upload_result = gr.Textbox(visible=False)
                     with gr.Accordion(label="2. モデル学習", open=True):
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("埋め込みモデル", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                td_embed_model = gr.Dropdown(
-                                    show_label=False,
-                                    choices=["cohere.embed-v4.0"],
-                                    value="cohere.embed-v4.0",
-                                    interactive=True,
-                                    container=False,
-                                )
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("埋め込みモデル", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        td_embed_model = gr.Dropdown(
+                                            show_label=False,
+                                            choices=["cohere.embed-v4.0"],
+                                            value="cohere.embed-v4.0",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
                         with gr.Row():
                             td_train_btn = gr.Button("学習を実行", variant="primary")
                         with gr.Row():
@@ -1397,13 +1427,20 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 mt_text_input = gr.Textbox(show_label=False, lines=4, max_lines=8, container=False)
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("業務ドメイン(=ラベル)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                mt_label_text = gr.Textbox(show_label=False, interactive=False, container=False)
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("業務ドメイン(=ラベル)", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        mt_label_text = gr.Textbox(show_label=False, interactive=False, container=False)
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
                         with gr.Row():
                             mt_test_btn = gr.Button("テスト", variant="primary")
-                        mt_test_result = gr.Markdown(visible=False)
+                        with gr.Row():                            
+                            mt_test_result = gr.Markdown(visible=False)
 
                     td_refresh_btn.click(
                         fn=_td_refresh,
@@ -1701,26 +1738,29 @@ def build_selectai_tab(pool):
                         )
 
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("モデル", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                dev_analysis_model_input = gr.Dropdown(
-                                    show_label=False,
-                                    choices=[
-                                        "xai.grok-code-fast-1",
-                                        "xai.grok-3",
-                                        "xai.grok-3-fast",
-                                        "xai.grok-4",
-                                        "xai.grok-4-fast-non-reasoning",
-                                        "meta.llama-4-scout-17b-16e-instruct",
-                                    ],
-                                    value="xai.grok-code-fast-1",
-                                    interactive=True,
-                                    container=False,
-                                )
-
-                        with gr.Row():
-                            dev_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("モデル", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        dev_analysis_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        dev_ai_analyze_btn = gr.Button("AI分析", variant="primary")
 
                         with gr.Row():
                             dev_ai_analyze_status = gr.Markdown(visible=False)
@@ -1745,17 +1785,22 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="4. クエリのフィードバック", open=False):
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("種類", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                dev_feedback_type_select = gr.Dropdown(
-                                    show_label=False,
-                                    choices=["positive", "negative"],
-                                    value="positive",
-                                    interactive=True,
-                                    container=False,
-                                )
-
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("種類", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        dev_feedback_type_select = gr.Dropdown(
+                                            show_label=False,
+                                            choices=["positive", "negative"],
+                                            value="positive",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("修正SQL(response)", elem_classes="input-label")
@@ -2554,16 +2599,21 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="1. フィードバック一覧", open=True):
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("Profile", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                global_profile_select = gr.Dropdown(
-                                    show_label=False,
-                                    choices=_global_profile_names(),
-                                    interactive=True,
-                                    container=False,
-                                )
-
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Profile", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        global_profile_select = gr.Dropdown(
+                                            show_label=False,
+                                            choices=_global_profile_names(),
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
                         with gr.Row():
                             global_feedback_index_refresh_btn = gr.Button("最新エントリを取得", variant="primary")
 
@@ -2580,13 +2630,16 @@ def build_selectai_tab(pool):
                             global_feedback_index_info = gr.Markdown(visible=False)
 
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("選択されたSQL_ID", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                selected_sql_id = gr.Textbox(show_label=False, interactive=False, container=False)
-
-                        with gr.Row():
-                            selected_feedback_delete_btn = gr.Button("選択したフィードバックを削除", variant="stop")
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("選択されたSQL_ID", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        selected_sql_id = gr.Textbox(show_label=False, interactive=False, container=False)
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        selected_feedback_delete_btn = gr.Button("選択したフィードバックを削除", variant="stop")
                             
                         with gr.Row():
                             with gr.Column(scale=1):
@@ -2818,7 +2871,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("サンプル件数", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        cm_sample_limit = gr.Slider(show_label=False, minimum=0, maximum=100, step=1, value=10, interactive=True, container=False)
+                                        cm_sample_limit = gr.Number(show_label=False, minimum=0, maximum=100, value=10, interactive=True, container=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -2863,24 +2916,29 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="3. コメント自動生成", open=False):
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("モデル", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                cm_model_input = gr.Dropdown(
-                                    show_label=False,
-                                    choices=[
-                                        "xai.grok-code-fast-1",
-                                        "xai.grok-3",
-                                        "xai.grok-3-fast",
-                                        "xai.grok-4",
-                                        "xai.grok-4-fast-non-reasoning",
-                                        "meta.llama-4-scout-17b-16e-instruct",
-                                    ],
-                                    value="xai.grok-code-fast-1",
-                                    interactive=True,
-                                    container=False,
-                                )
-                        cm_generate_btn = gr.Button("生成", variant="primary")
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("モデル", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        cm_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        cm_generate_btn = gr.Button("生成", variant="primary")
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("生成されたSQL文", elem_classes="input-label")
@@ -2897,25 +2955,29 @@ def build_selectai_tab(pool):
 
                         with gr.Accordion(label="AI分析と処理", open=False):
                             with gr.Row():
-                                with gr.Column(scale=1):
-                                    gr.Markdown("モデル", elem_classes="input-label")
                                 with gr.Column(scale=5):
-                                    cm_ai_model_input = gr.Dropdown(
-                                        show_label=False,
-                                        choices=[
-                                            "xai.grok-code-fast-1",
-                                            "xai.grok-3",
-                                            "xai.grok-3-fast",
-                                            "xai.grok-4",
-                                            "xai.grok-4-fast-non-reasoning",
-                                            "meta.llama-4-scout-17b-16e-instruct",
-                                        ],
-                                        value="xai.grok-code-fast-1",
-                                        interactive=True,
-                                        container=False,
-                                    )
-                            with gr.Row():
-                                cm_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                                    with gr.Row():
+                                        with gr.Column(scale=1):
+                                            gr.Markdown("モデル", elem_classes="input-label")
+                                        with gr.Column(scale=5):
+                                            cm_ai_model_input = gr.Dropdown(
+                                                show_label=False,
+                                                choices=[
+                                                    "xai.grok-code-fast-1",
+                                                    "xai.grok-3",
+                                                    "xai.grok-3-fast",
+                                                    "xai.grok-4",
+                                                    "xai.grok-4-fast-non-reasoning",
+                                                    "meta.llama-4-scout-17b-16e-instruct",
+                                                ],
+                                                value="xai.grok-code-fast-1",
+                                                interactive=True,
+                                                container=False,
+                                            )
+                                with gr.Column(scale=5):
+                                    with gr.Row():
+                                        with gr.Column(scale=1):
+                                            cm_ai_analyze_btn = gr.Button("AI分析", variant="primary")
                             with gr.Row():
                                 cm_ai_status_md = gr.Markdown(visible=False)
                             with gr.Row():
@@ -3211,7 +3273,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("サンプル件数", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        am_sample_limit = gr.Slider(show_label=False, minimum=0, maximum=100, step=1, value=10, interactive=True, container=False)
+                                        am_sample_limit = gr.Number(show_label=False, minimum=0, maximum=100, value=10, interactive=True, container=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -3265,24 +3327,29 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="3. アノテーション自動生成", open=False):
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("モデル", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                am_model_input = gr.Dropdown(
-                                    show_label=False,
-                                    choices=[
-                                        "xai.grok-code-fast-1",
-                                        "xai.grok-3",
-                                        "xai.grok-3-fast",
-                                        "xai.grok-4",
-                                        "xai.grok-4-fast-non-reasoning",
-                                        "meta.llama-4-scout-17b-16e-instruct",
-                                    ],
-                                    value="xai.grok-code-fast-1",
-                                    interactive=True,
-                                    container=False,
-                                )
-                        am_generate_btn = gr.Button("生成", variant="primary")
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("モデル", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        am_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        am_generate_btn = gr.Button("生成", variant="primary")
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("生成されたSQL文", elem_classes="input-label")
@@ -3299,26 +3366,33 @@ def build_selectai_tab(pool):
 
                         with gr.Accordion(label="AI分析と処理", open=False):
                             with gr.Row():
-                                with gr.Column(scale=1):
-                                    gr.Markdown("モデル", elem_classes="input-label")
                                 with gr.Column(scale=5):
-                                    am_ai_model_input = gr.Dropdown(
-                                        show_label=False,
-                                        choices=[
-                                            "xai.grok-code-fast-1",
-                                            "xai.grok-3",
-                                            "xai.grok-3-fast",
-                                            "xai.grok-4",
-                                            "xai.grok-4-fast-non-reasoning",
-                                            "meta.llama-4-scout-17b-16e-instruct",
-                                        ],
-                                        value="xai.grok-code-fast-1",
-                                        interactive=True,
-                                        container=False,
-                                    )
-                            am_ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                            am_ai_status_md = gr.Markdown(visible=False)
-                            am_ai_result_md = gr.Markdown(visible=False)
+                                    with gr.Row():
+                                        with gr.Column(scale=1):
+                                            gr.Markdown("モデル", elem_classes="input-label")
+                                        with gr.Column(scale=5):
+                                            am_ai_model_input = gr.Dropdown(
+                                                show_label=False,
+                                                choices=[
+                                                    "xai.grok-code-fast-1",
+                                                    "xai.grok-3",
+                                                    "xai.grok-3-fast",
+                                                    "xai.grok-4",
+                                                    "xai.grok-4-fast-non-reasoning",
+                                                    "meta.llama-4-scout-17b-16e-instruct",
+                                                ],
+                                                value="xai.grok-code-fast-1",
+                                                interactive=True,
+                                                container=False,
+                                            )
+                                with gr.Column(scale=5):
+                                    with gr.Row():
+                                        with gr.Column(scale=1):
+                                            am_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                            with gr.Row():
+                                am_ai_status_md = gr.Markdown(visible=False)
+                            with gr.Row():
+                                am_ai_result_md = gr.Markdown(visible=False)
 
                     def _am_refresh_objects():
                         try:
@@ -3671,11 +3745,16 @@ def build_selectai_tab(pool):
                 with gr.TabItem(label="合成データ生成") as synthetic_tab:
                     with gr.Accordion(label="1. 対象選択", open=True):
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("Profile", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                syn_profile_select = gr.Dropdown(show_label=False, choices=_load_profiles_from_json(), interactive=True, container=False)
-
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Profile", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        syn_profile_select = gr.Dropdown(show_label=False, choices=_load_profiles_from_json(), interactive=True, container=False)
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
                         with gr.Row():
                             with gr.Column():
                                 syn_refresh_status = gr.Markdown(visible=False)
@@ -3692,7 +3771,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("各テーブルの生成件数", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        syn_rows_per_table = gr.Slider(show_label=False, minimum=0, maximum=10000, step=1, value=1, interactive=True, container=False)
+                                        syn_rows_per_table = gr.Number(show_label=False, minimum=1, maximum=100, value=1, interactive=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("生成の指示(オプション)", elem_classes="input-label")
@@ -3704,11 +3783,13 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("サンプル行数(sample_rows)", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        syn_sample_rows = gr.Slider(show_label=False, minimum=0, maximum=1000, step=1, value=5, interactive=True, container=False)
+                                        syn_sample_rows = gr.Number(show_label=False, minimum=0, maximum=100, value=5, interactive=True, container=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        syn_comments = gr.Checkbox(label="コメントを考慮(comments)", value=True)
+                                        gr.Markdown("コメントを考慮(comments)", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        syn_comments = gr.Checkbox(label="", value=True, container=False)
 
                         with gr.Row():
                             syn_generate_btn = gr.Button("生成開始", variant="primary")
@@ -3716,29 +3797,43 @@ def build_selectai_tab(pool):
                     with gr.Accordion(label="2. 進捗と状態", open=True):
                         syn_generate_info = gr.Markdown(visible=True, value="ℹ️ Profileと対象テーブルを選択し、生成開始を押下してください")
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("オペレーションID", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                syn_operation_id_text = gr.Textbox(show_label=False, interactive=False, container=False)
-                        syn_status_update_btn = gr.Button("ステータスを更新", variant="secondary")
-                        syn_status_df = gr.Dataframe(label="ステータス", interactive=False, wrap=True, visible=False, value=pd.DataFrame())
-                        syn_status_style = gr.HTML(visible=False)
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("オペレーションID", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        syn_operation_id_text = gr.Textbox(show_label=False, interactive=False, container=False)
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        syn_status_update_btn = gr.Button("ステータスを更新", variant="primary")
+                        with gr.Row():
+                            syn_status_df = gr.Dataframe(label="ステータス", interactive=False, wrap=True, visible=False, value=pd.DataFrame())
+                        with gr.Row():
+                            syn_status_style = gr.HTML(visible=False)
 
                     with gr.Accordion(label="3. 結果確認", open=False):
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("テーブル", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                syn_result_table_select = gr.Dropdown(show_label=False, choices=[], interactive=True, container=False)
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("テーブル", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        syn_result_table_select = gr.Dropdown(show_label=False, choices=[], interactive=True, container=False)
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("取得件数", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        syn_result_limit = gr.Number(show_label=False, value=50, minimum=0, maximum=10000, container=False)
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("取得件数", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                syn_result_limit = gr.Number(show_label=False, value=50, minimum=0, maximum=10000, container=False)
-                        syn_result_btn = gr.Button("データを表示", variant="primary")
-                        syn_result_info = gr.Markdown(visible=True, value="ℹ️ 生成済みテーブルからデータを表示します")
-                        syn_result_df = gr.Dataframe(label="データ表示", interactive=False, wrap=True, visible=False, value=pd.DataFrame(), elem_id="synthetic_data_result_df")
-                        syn_result_style = gr.HTML(visible=False)
+                            syn_result_btn = gr.Button("データを表示", variant="primary")
+                        with gr.Row():
+                            syn_result_info = gr.Markdown(visible=True, value="ℹ️ 生成済みテーブルからデータを表示します")
+                        with gr.Row():
+                            syn_result_df = gr.Dataframe(label="データ表示", interactive=False, wrap=True, visible=False, value=pd.DataFrame(), elem_id="synthetic_data_result_df")
+                        with gr.Row():
+                            syn_result_style = gr.HTML(visible=False)
 
                     def _syn_profile_names():
                         try:
@@ -4713,3 +4808,4 @@ def build_selectai_tab(pool):
             inputs=[profile_select],
             outputs=[profile_select],
         )
+

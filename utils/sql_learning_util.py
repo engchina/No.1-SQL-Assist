@@ -381,7 +381,7 @@ def build_sql_learning_tab(pool):
                     )
             with gr.Row():
                 with gr.Column(scale=1):
-                    gr.Markdown("", elem_classes="input-label")
+                    gr.Markdown("レッスンの説明", elem_classes="input-label")
                 with gr.Column(scale=5):
                     lesson_desc_md = gr.Markdown(visible=True, value=default_lesson_text)
             with gr.Row():

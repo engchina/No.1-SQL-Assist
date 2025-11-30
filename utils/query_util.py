@@ -441,16 +441,22 @@ def build_query_tab(pool):
                     )
 
             with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("取得件数", elem_classes="input-label")
                 with gr.Column(scale=5):
-                    limit_input = gr.Number(
-                        show_label=False,
-                        value=100,
-                        minimum=1,
-                        maximum=10000,
-                        container=False,
-                    )
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("取得件数", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            limit_input = gr.Number(
+                                show_label=False,
+                                value=100,
+                                minimum=1,
+                                maximum=1000,
+                                container=False,
+                            )
+                with gr.Column(scale=5):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("")
 
             with gr.Row():
                 clear_btn = gr.Button("クリア", variant="secondary")
@@ -464,38 +470,48 @@ def build_query_tab(pool):
                 visible=True,
             )
 
-            result_df = gr.Dataframe(
-                label="実行結果",
-                interactive=False,
-                wrap=True,
-                visible=False,
-                value=pd.DataFrame(),
-                elem_id="query_result_df",
-            )
-            result_style = gr.HTML(visible=False)
+            with gr.Row():
+                result_df = gr.Dataframe(
+                    label="実行結果",
+                    interactive=False,
+                    wrap=True,
+                    visible=False,
+                    value=pd.DataFrame(),
+                    elem_id="query_result_df",
+                )
+
+            with gr.Row():
+                result_style = gr.HTML(visible=False)
 
             with gr.Accordion(label="AI分析と処理", open=False):
                 with gr.Row():
-                    with gr.Column(scale=1):
-                        gr.Markdown("モデル", elem_classes="input-label")
                     with gr.Column(scale=5):
-                        ai_model_input = gr.Dropdown(
-                            show_label=False,
-                            choices=[
-                                "xai.grok-code-fast-1",
-                                "xai.grok-3",
-                                "xai.grok-3-fast",
-                                "xai.grok-4",
-                                "xai.grok-4-fast-non-reasoning",
-                                "meta.llama-4-scout-17b-16e-instruct",
-                            ],
-                            value="xai.grok-code-fast-1",
-                            interactive=True,
-                            container=False,
-                        )
-                ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                ai_status_md = gr.Markdown(visible=False)
-                ai_result_md = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("モデル", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                ai_model_input = gr.Dropdown(
+                                    show_label=False,
+                                    choices=[
+                                        "xai.grok-code-fast-1",
+                                        "xai.grok-3",
+                                        "xai.grok-3-fast",
+                                        "xai.grok-4",
+                                        "xai.grok-4-fast-non-reasoning",
+                                        "meta.llama-4-scout-17b-16e-instruct",
+                                    ],
+                                    value="xai.grok-code-fast-1",
+                                    interactive=True,
+                                    container=False,
+                                )
+                    with gr.Column(scale=5):
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                with gr.Row():
+                    ai_status_md = gr.Markdown(visible=False)
+                with gr.Row():
+                    ai_result_md = gr.Markdown(visible=False)
 
         async def _ai_analyze_async(model_name, sql_text, result_info_text):
             from utils.chat_util import get_oci_region, get_compartment_id

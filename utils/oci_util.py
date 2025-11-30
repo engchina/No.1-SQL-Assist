@@ -453,9 +453,9 @@ def build_oci_embedding_test_tab(pool):
             yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="テキスト埋め込みテスト") as tab_test_oci_cred:
-        with gr.Accordion(label="OCI 認証情報の作成", open=True):
-            with gr.Accordion(label="SQL", open=False):
+    with gr.TabItem(label="Embeddingテスト") as tab_test_oci_cred:
+        with gr.Accordion(label="OCI Credentialの作成", open=True):
+            with gr.Accordion(label="生成されたSQL", open=False):
                 with gr.Column():
                     tab_auto_create_sql_text = gr.Textbox(
                         label="SQL",
@@ -468,11 +468,42 @@ def build_oci_embedding_test_tab(pool):
                         container=False,
                     )
             with gr.Row():
-                tab_auto_create_btn = gr.Button(value="OCI_CREDを作成", variant="primary")
+                tab_auto_create_btn = gr.Button(value="OCI Credentialを作成", variant="primary")
             with gr.Row():
                 tab_auto_create_status_md = gr.Markdown(visible=False)
             
-        with gr.Accordion(label="埋め込みモデル", open=True):
+        with gr.Accordion(label="Embedding生成テスト", open=True):
+            with gr.Row():
+                with gr.Column(scale=5):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("Embeddingモデル", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            tab_test_oci_cred_model_input = gr.Dropdown(
+                                show_label=False,
+                                choices=["cohere.embed-v4.0"],
+                                value="cohere.embed-v4.0",
+                                interactive=True,
+                                container=False,
+                            )
+                with gr.Column(scale=5):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("")
+
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("入力テキスト", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    tab_test_oci_cred_query_text = gr.Textbox(
+                        show_label=False,
+                        placeholder="Embeddingベクトルに変換するテキストを入力してください...",
+                        lines=2,
+                        max_lines=5,
+                        value="こんにちわ",
+                        container=False,
+                    )
+
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("ベクトル結果", elem_classes="input-label")
@@ -484,31 +515,6 @@ def build_oci_embedding_test_tab(pool):
                         autoscroll=False,
                         interactive=False,
                         show_copy_button=True,
-                        container=False,
-                    )
-
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("テキスト", elem_classes="input-label")
-                with gr.Column(scale=5):
-                    tab_test_oci_cred_query_text = gr.Textbox(
-                        show_label=False,
-                        placeholder="埋め込みベクトルに変換するテキストを入力してください...",
-                        lines=2,
-                        max_lines=5,
-                        value="こんにちわ",
-                        container=False,
-                    )
-            
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("モデル", elem_classes="input-label")
-                with gr.Column(scale=5):
-                    tab_test_oci_cred_model_input = gr.Dropdown(
-                        show_label=False,
-                        choices=["cohere.embed-v4.0"],
-                        value="cohere.embed-v4.0",
-                        interactive=True,
                         container=False,
                     )
 
