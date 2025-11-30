@@ -229,7 +229,9 @@ textarea[rows]:not([rows="1"])::-webkit-scrollbar-thumb {
   all: initial !important;
   background: #a8a8a8 !important;
 }
+"""
 
+""" NOT USE
 /* SQL学習タブ用のインデックス・表示最適化 */
 #sql_learning_tables_sql textarea,
 #sql_learning_views_sql textarea,
@@ -245,5 +247,4 @@ textarea[rows]:not([rows="1"])::-webkit-scrollbar-thumb {
   color: #999999 !important;
   font-size: 0.7rem !important;
 }
-
 """
