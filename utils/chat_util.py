@@ -202,7 +202,7 @@ def build_oci_chat_test_tab(pool):
     """
 
     with gr.TabItem(label="AI チャット") as tab_chat:
-        with gr.Accordion(label="", open=True):
+        with gr.Accordion(label="ℹ️ AI は不正確な情報を表示することがあるため、生成された回答を再確認するようにしてください。", open=True):
             with gr.Row():
                 with gr.Column():
                     with gr.Row():
