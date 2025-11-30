@@ -16,17 +16,7 @@ output "ssh_to_instance" {
   value       = "ssh -o ServerAliveInterval=10 ubuntu@${oci_core_instance.generated_oci_core_instance.public_ip}"
 }
 
-#output "sqlplus_to_oracle" {
-#  description = "convenient command to sqlplus to oracle database"
-#  value       = "sqlplus vector100/HelloVector__20240101@${oci_core_instance.generated_oci_core_instance.public_ip}:1521/freepdb1"
-#}
-
 output "application_url" {
   description = "convenient url to access the application"
   value       = "http://${oci_core_instance.generated_oci_core_instance.public_ip}:8080"
-}
-
-output "langfuse_url" {
-  description = "convenient url to access the langfuse"
-  value       = "http://${oci_core_instance.generated_oci_core_instance.public_ip}:3000"
 }

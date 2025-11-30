@@ -7,7 +7,7 @@ variable "compartment_ocid" {
 }
 
 variable "adb_name" {
-  default = "AIPOCADB"
+  default = "AISQLADB"
 }
 
 variable "adb_password" {
@@ -19,7 +19,7 @@ variable "license_model" {
 }
 
 variable "instance_display_name" {
-  default = "AIPOC_INSTANCE"
+  default = "AISQL_INSTANCE"
 }
 
 variable "instance_shape" {

@@ -1,6 +1,6 @@
 """認証ユーティリティモジュール.
 
-このモジュールは、OCI、Cohere、OpenAI、Azure OpenAI、Langfuseなどの
+このモジュールは、OCI、OpenAI、Azure OpenAIなどの
 各種サービスの認証情報を設定するための関数を提供します。
 """
 
