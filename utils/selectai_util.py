@@ -1482,13 +1482,13 @@ def build_selectai_tab(pool):
                                 )
 
                         with gr.Row():
-                            dev_enable_query_rewrite = gr.Checkbox(label="Query転写を有効化", value=False)
+                            dev_enable_query_rewrite = gr.Checkbox(label="クエリ書き換えを有効化", value=False)
                         
                         with gr.Row():
-                            with gr.Accordion(label="Query転写設定", open=False, visible=False) as dev_query_rewrite_section:
+                            with gr.Accordion(label="クエリ書き換え設定", open=True, visible=False) as dev_query_rewrite_section:
                                 with gr.Row():
                                     dev_rewrite_model_select = gr.Dropdown(
-                                        label="転写用モデル",
+                                        label="書き換え用モデル",
                                         choices=[
                                             "xai.grok-code-fast-1",
                                             "xai.grok-3",
@@ -1501,14 +1501,16 @@ def build_selectai_tab(pool):
                                         interactive=True,
                                     )
                                 with gr.Row():
-                                    dev_rewrite_use_schema = gr.Checkbox(label="第2ステップ: スキーマ情報を結合", value=True)
+                                    dev_rewrite_use_glossary = gr.Checkbox(label="ステップ1: 用語集を利用", value=True)
                                 with gr.Row():
-                                    dev_rewrite_btn = gr.Button("転写実行", variant="primary")
+                                    dev_rewrite_use_schema = gr.Checkbox(label="ステップ2: スキーマ情報を利用", value=False)
+                                with gr.Row():
+                                    dev_rewrite_btn = gr.Button("書き換え実行", variant="primary")
                                 with gr.Row():
                                     dev_rewrite_status = gr.Markdown(visible=False)
                                 with gr.Row():
                                     dev_rewritten_query = gr.Textbox(
-                                        label="転写後の自然言語の質問",
+                                        label="書き換え後の質問",
                                         lines=5,
                                         max_lines=10,
                                         interactive=True,
@@ -1772,13 +1774,14 @@ def build_selectai_tab(pool):
                             logger.error(f"_load_terminology error: {e}")
                             return {}
                     
-                    def _dev_rewrite_query(model_name, profile_name, original_query, use_schema):
-                        """開発者機能用Query転写処理.
+                    def _dev_rewrite_query(model_name, profile_name, original_query, use_glossary, use_schema):
+                        """開発者向けクエリ書き換え処理.
                         
                         Args:
                             model_name: 使用するLLMモデル
                             profile_name: Profile名
                             original_query: 元の自然言語の質問
+                            use_glossary: 第1ステップ（用語集）を実行するか
                             use_schema: 第2ステップを実行するか
                         
                         Yields:
@@ -1802,16 +1805,22 @@ def build_selectai_tab(pool):
                                 yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), gr.Textbox(value="")
                                 return
                             
-                            yield gr.Markdown(visible=True, value="⏳ 第1ステップ: 用語集で分析・置換中..."), gr.Textbox(value="")
+                            # ステップ1/2が両方OFFの場合は警告して終了
+                            if (not use_glossary) and (not use_schema):
+                                yield gr.Markdown(visible=True, value="⚠️ ステップ1（用語集）とステップ2（スキーマ）がOFFです。少なくとも1つをONにしてください"), gr.Textbox(value="")
+                                return
                             
-                            # 第1ステップ: 用語集で分析・置換
-                            terms = _load_terminology()
                             step1_result = str(original_query).strip()
                             
-                            if terms:
-                                # 用語集を使ってLLMで分析
-                                terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
-                                step1_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集を使用して、ユーザーの質問を分析し、より明確な表現に書き換えてください。
+                            # 第1ステップ: 用語集で分析・置換（ONの場合のみ）
+                            if use_glossary:
+                                yield gr.Markdown(visible=True, value="⏳ 第1ステップ: 用語集で分析・置換中..."), gr.Textbox(value="")
+                                
+                                terms = _load_terminology()
+                                if terms:
+                                    # 用語集を使ってLLMで分析
+                                    terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
+                                    step1_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集を参照して、ユーザーの質問を分析し、より明確な表現に修正してください。
 
 **用語集:**
 {terms_text}
@@ -1820,38 +1829,38 @@ def build_selectai_tab(pool):
 {original_query}
 
 **指示:**
-1. 用語集に含まれる用語があれば、その定義を使って書き換える
-2. 曖昧な表現を具体的にする
-3. 元の意図を変えずに、明確化する
-4. 結果は書き換えた質問のみを返す（説明不要）
+1. 用語集に含まれる言葉が使われている場合は、その定義に沿って修正してください。
+2. 曖昧な表現は、より具体的な表現に改めてください。
+3. 質問の元の意図を変えない範囲で、内容を明確にしてください。
+4. 出力は修正後の質問文のみとし、余計な説明は含めないでください。
 
-**書き換えた質問:**"""
-                                
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-                                try:
-                                    client = AsyncOciOpenAI(
-                                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                        auth=OciUserPrincipalAuth(),
-                                        compartment_id=compartment_id,
-                                    )
-                                    messages = [{"role": "user", "content": step1_prompt}]
-                                    resp = loop.run_until_complete(
-                                        client.chat.completions.create(model=model_name, messages=messages)
-                                    )
-                                    if resp.choices and len(resp.choices) > 0:
-                                        step1_result = resp.choices[0].message.content.strip()
-                                finally:
-                                    loop.close()
+**修正後の質問:**"""
+                                    
+                                    loop = asyncio.new_event_loop()
+                                    asyncio.set_event_loop(loop)
+                                    try:
+                                        client = AsyncOciOpenAI(
+                                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                            auth=OciUserPrincipalAuth(),
+                                            compartment_id=compartment_id,
+                                        )
+                                        messages = [{"role": "user", "content": step1_prompt}]
+                                        resp = loop.run_until_complete(
+                                            client.chat.completions.create(model=model_name, messages=messages)
+                                        )
+                                        if resp.choices and len(resp.choices) > 0:
+                                            step1_result = resp.choices[0].message.content.strip()
+                                    finally:
+                                        loop.close()
                             
                             # 第2ステップが無効ならここで終了
                             if not use_schema:
                                 yield gr.Markdown(visible=True, value="✅ 完了（第1ステップのみ）"), gr.Textbox(value=step1_result)
                                 return
                             
-                            yield gr.Markdown(visible=True, value="⏳ 第2ステップ: スキーマ情報を結合して転写中..."), gr.Textbox(value=step1_result)
+                            yield gr.Markdown(visible=True, value="⏳ ステップ2: スキーマ情報を取り込み、自然言語へ書き換え中..."), gr.Textbox(value=step1_result)
                             
-                            # 第2ステップ: スキーマ情報を結合して転写
+                            # ステップ2: スキーマ情報を取り込み、自然言語へ書き換え
                             if not profile_name or not str(profile_name).strip():
                                 yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value=step1_result)
                                 return
@@ -1861,20 +1870,22 @@ def build_selectai_tab(pool):
                                 yield gr.Markdown(visible=True, value="⚠️ スキーマ情報が取得できませんでした"), gr.Textbox(value=step1_result)
                                 return
                             
-                            step2_prompt = f"""あなたはデータベースクエリの専門家です。以下のデータベーススキーマ情報を使用して、ユーザーの質問をより正確で具体的な表現に転写してください。
+                            step2_prompt = f"""あなたはデータベースクエリの専門家です。以下のデータベーススキーマ情報を参照し、元の質問をデータベースがより正確に解釈できる自然言語へ変換してください。
 
+=== 参考スキーマ情報 ===
 {schema_info}
 
-**現在の質問:**
+=== 元の質問 ===
 {step1_result}
 
-**指示:**
-1. スキーマ情報を参考に、利用可能なテーブル名、カラム名、VIEW名を明確にする
-2. 曖昧な条件を具体的にする
-3. 元の意図を変えずに、データベースに合わせて最適化する
-4. 結果は転写した質問のみを返す（説明不要）
+指示:
+1. 利用可能なテーブル名・カラム名・VIEW名を自然言語の中で明確にし、曖昧な用語はスキーマに合わせて具体化してください。
+2. 条件・期間・集計などが含まれる場合は、自然言語で明確に記述してください。
+3. 質問の元の意図を保ちつつ、データベースにとって解釈しやすい表現にしてください。
+4. SQLやコードは絶対に出力せず、自然言語のみを使用してください。
+5. 出力は変換後の自然言語の質問文のみとし、説明や前置きは不要です。
 
-**転写した質問:**"""
+変換後の自然言語:"""
                             
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
@@ -1889,13 +1900,13 @@ def build_selectai_tab(pool):
                                     client.chat.completions.create(model=model_name, messages=messages)
                                 )
                                 if resp.choices and len(resp.choices) > 0:
-                                    final_result = resp.choices[0].message.content.strip()
+                                    final_result = str(step1_result) + "\n\n" + resp.choices[0].message.content.strip()
                                 else:
                                     final_result = step1_result
                             finally:
                                 loop.close()
                             
-                            yield gr.Markdown(visible=True, value="✅ 転写完了"), gr.Textbox(value=final_result)
+                            yield gr.Markdown(visible=True, value="✅ 書き換え完了"), gr.Textbox(value=final_result)
                             
                         except Exception as e:
                             logger.error(f"_dev_rewrite_query error: {e}")
@@ -1912,7 +1923,7 @@ def build_selectai_tab(pool):
                             extra_prompt: 追加プロンプト
                             include_extra: 追加プロンプトを含めるか
                             enable_rewrite: Query転写が有効か
-                            rewritten_query: 転写後の質問
+                            rewritten_query: 書き換え後の質問
                         
                         Returns:
                             gr.Textbox: 生成されたSQL
@@ -2079,41 +2090,6 @@ def build_selectai_tab(pool):
                             logger.error(f"_dev_step_run_sql error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
 
-                    def _dev_step_explain(profile, generated_sql, current_summary):
-                        try:
-                            with pool.acquire() as conn:
-                                with conn.cursor() as cursor:
-                                    s = str(generated_sql or "").strip()
-                                    if not s:
-                                        return gr.Markdown(visible=True, value=current_summary)
-                                    analysis_text = ""
-                                    try:
-                                        ex_stmt = f"SELECT AI EXPLAINSQL <sql>\n{s}\n</sql>。\n日本語で解説してください。"
-                                        cursor.execute(ex_stmt)
-                                        arows = cursor.fetchmany(size=200)
-                                        if arows:
-                                            parts = []
-                                            for r in arows:
-                                                for v in r:
-                                                    try:
-                                                        t = v.read() if hasattr(v, "read") else str(v)
-                                                    except Exception as e:
-                                                        logger.error(f"_dev_step_explain value read error: {e}")
-                                                        t = str(v)
-                                                    if t:
-                                                        parts.append(t)
-                                            analysis_text = "\n".join(parts)
-                                    except Exception as e:
-                                        logger.error(f"_dev_step_explain analysis fetch error: {e}")
-                                        analysis_text = ""
-                                    base = str(current_summary or "")
-                                    if analysis_text:
-                                        base = base + f"\n\n### EXPLAINSQL\n````\n{analysis_text}\n````"
-                                    return gr.Markdown(visible=True, value=base)
-                        except Exception as e:
-                            logger.error(f"_dev_step_explain error: {e}")
-                            return gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}")
-
                     async def _dev_ai_analyze_async(model_name, sql_text):
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
@@ -2130,15 +2106,6 @@ def build_selectai_tab(pool):
                                 auth=OciUserPrincipalAuth(),
                                 compartment_id=compartment_id,
                             )
-                            # prompt = (
-                            #     "次のSQLからJOIN条件とWHERE条件のみを抽出して出力。形式は厳密に:\n"
-                            #     "JOIN:\n<JOIN条件を1行ずつ>\n\nWHERE:\n<WHERE条件を1行ずつ>\n\n"
-                            #     "```sql\n" + s + "\n```"
-                            # )
-                            # messages = [
-                            #     {"role": "system", "content": "追加説明は不要。指定形式のみ。"},
-                            #     {"role": "user", "content": prompt},
-                            # ]
 
                             prompt = (
                                 "Extract ONLY JOIN and WHERE conditions from the SQL query below.\n"
@@ -2443,7 +2410,7 @@ def build_selectai_tab(pool):
                     # Query転写ボタンのイベントハンドラ
                     dev_rewrite_btn.click(
                         fn=_dev_rewrite_query,
-                        inputs=[dev_rewrite_model_select, dev_profile_select, dev_prompt_input, dev_rewrite_use_schema],
+                        inputs=[dev_rewrite_model_select, dev_profile_select, dev_prompt_input, dev_rewrite_use_glossary, dev_rewrite_use_schema],
                         outputs=[dev_rewrite_status, dev_rewritten_query],
                     )
 
@@ -3937,7 +3904,7 @@ def build_selectai_tab(pool):
                             enable_query_rewrite = gr.Checkbox(label="クエリ書き換えを有効化", value=False)
                         
                         with gr.Row():
-                            with gr.Accordion(label="クエリ書き換え設定", open=False, visible=False) as query_rewrite_section:
+                            with gr.Accordion(label="クエリ書き換え設定", open=True, visible=False) as query_rewrite_section:
                                 with gr.Row():
                                     rewrite_model_select = gr.Dropdown(
                                         label="書き換え用モデル",
@@ -3949,11 +3916,13 @@ def build_selectai_tab(pool):
                                             "xai.grok-4-fast-non-reasoning",
                                             "meta.llama-4-scout-17b-16e-instruct",
                                         ],
-                                        value="xai.grok-4-fast-non-reasoning",
+                                        value="xai.grok-code-fast-1",
                                         interactive=True,
                                     )
                                 with gr.Row():
-                                    rewrite_use_schema = gr.Checkbox(label="ステップ2: スキーマ情報を利用", value=True)
+                                    rewrite_use_glossary = gr.Checkbox(label="ステップ1: 用語集を使用", value=True)
+                                with gr.Row():
+                                    rewrite_use_schema = gr.Checkbox(label="ステップ2: スキーマ情報を利用", value=False)
                                 with gr.Row():
                                     rewrite_btn = gr.Button("書き換え実行", variant="primary")
                                 with gr.Row():
@@ -4042,7 +4011,7 @@ def build_selectai_tab(pool):
                     extra_prompt: 追加プロンプト
                     include_extra: 追加プロンプトを含めるか
                     enable_rewrite: Query転写が有効か
-                    rewritten_query: 転写後の質問
+                    rewritten_query: 書き換え後の質問
                 
                 Returns:
                     tuple: (status_md, generated_sql_textbox)
@@ -4205,8 +4174,8 @@ def build_selectai_tab(pool):
             def _on_chat_clear():
                 return "", gr.Dropdown(choices=_profile_names()), gr.Textbox(value="")
             
-            def _user_rewrite_query(model_name, profile_name, original_query, use_schema):
-                """ユーザー機能用Query転写処理.
+            def _user_rewrite_query(model_name, profile_name, original_query, use_glossary, use_schema):
+                """ユーザー向けクエリ書き換え処理.
                 
                 Args:
                     model_name: 使用するLLMモデル
@@ -4218,7 +4187,7 @@ def build_selectai_tab(pool):
                     tuple: (status_md, rewritten_text)
                 """
                 # 開発者機能と同じロジックを使用
-                return _dev_rewrite_query(model_name, profile_name, original_query, use_schema)
+                yield from _dev_rewrite_query(model_name, profile_name, original_query, use_glossary, use_schema)
 
             def _user_predict_domain_and_set_profile(text):
                 """ユーザータブ用: 自然言語の質問から業務ドメインを予測し、対応するProfileを設定する"""
@@ -4332,7 +4301,7 @@ def build_selectai_tab(pool):
             # Query転写ボタンのイベントハンドラ
             rewrite_btn.click(
                 fn=_user_rewrite_query,
-                inputs=[rewrite_model_select, profile_select, prompt_input, rewrite_use_schema],
+                inputs=[rewrite_model_select, profile_select, prompt_input, rewrite_use_glossary, rewrite_use_schema],
                 outputs=[rewrite_status, rewritten_query],
             )
 
