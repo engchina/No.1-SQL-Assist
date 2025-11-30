@@ -214,7 +214,7 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
             # 管理機能タブを構築
             build_management_tab(pool)
 
-        build_query_tab(pool)
+        build_query_tab(pool)           
 
         with gr.TabItem(label="SelectAI 連携"):
             build_selectai_tab(pool)
