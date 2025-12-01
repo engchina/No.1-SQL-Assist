@@ -1716,12 +1716,10 @@ def build_selectai_tab(pool):
                             with gr.Column():
                                 dev_chat_execute_btn = gr.Button("実行", variant="primary")
 
-                    with gr.Accordion(label="2. 実行結果", open=True):
-                        dev_chat_result_info = gr.Markdown(
-                            value="ℹ️ Profile を選択し、自然言語の質問を入力して「実行」をクリックしてください",
-                            visible=True,
-                        )
+                        with gr.Row():
+                            dev_chat_status_md = gr.Markdown(visible=False)
 
+                    with gr.Accordion(label="2. 実行結果", open=True):
                         dev_chat_result_df = gr.Dataframe(
                             label="実行結果",
                             interactive=False,
@@ -2579,7 +2577,7 @@ def build_selectai_tab(pool):
                     ).then(
                         fn=_dev_step_run_sql,
                         inputs=[dev_profile_select, dev_generated_sql_text],
-                        outputs=[dev_chat_result_info, dev_chat_result_df, dev_chat_result_style],
+                        outputs=[dev_chat_status_md, dev_chat_result_df, dev_chat_result_style],
                     )
 
                     dev_ai_analyze_btn.click(
@@ -4474,36 +4472,34 @@ def build_selectai_tab(pool):
                                 chat_clear_btn = gr.Button("クリア", variant="secondary")
                             with gr.Column():
                                 chat_execute_btn = gr.Button("実行", variant="primary")
+                        with gr.Row():
+                            chat_status_md = gr.Markdown(visible=False)
 
-                        with gr.Accordion(label="2. 実行結果", open=True):
-                            chat_result_info = gr.Markdown(
-                                value="ℹ️ Profile を選択し、自然言語の質問を入力して「実行」をクリックしてください",
-                                visible=True,
-                            )
-                            chat_result_df = gr.Dataframe(
-                                label="実行結果",
-                                interactive=False,
-                                wrap=True,
-                                visible=False,
-                                value=pd.DataFrame(),
-                                elem_id="selectai_chat_result_df",
-                            )
-                            chat_result_style = gr.HTML(visible=False)
+                    with gr.Accordion(label="2. 実行結果", open=True):
+                        chat_result_df = gr.Dataframe(
+                            label="実行結果",
+                            interactive=False,
+                            wrap=True,
+                            visible=False,
+                            value=pd.DataFrame(),
+                            elem_id="selectai_chat_result_df",
+                        )
+                        chat_result_style = gr.HTML(visible=False)
 
-                        with gr.Accordion(label="3. 生成SQL", open=False):
-                            generated_sql_status = gr.Markdown(visible=False)
-                            with gr.Row():
-                                with gr.Column(scale=1):
-                                    gr.Markdown("生成されたSQL文", elem_classes="input-label")
-                                with gr.Column(scale=5):
-                                    generated_sql_text = gr.Textbox(
-                                        show_label=False,
-                                        lines=8,
-                                        max_lines=15,
-                                        interactive=False,
-                                        show_copy_button=True,
-                                        container=False,
-                                    )
+                    with gr.Accordion(label="3. 生成SQL", open=False):
+                        generated_sql_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("生成されたSQL文", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                generated_sql_text = gr.Textbox(
+                                    show_label=False,
+                                    lines=8,
+                                    max_lines=15,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                    container=False,
+                                )
 
                 build_sql_learning_tab(pool)
 
@@ -4789,7 +4785,7 @@ def build_selectai_tab(pool):
             ).then(
                 fn=_user_step_run_sql,
                 inputs=[profile_select, generated_sql_text],
-                outputs=[chat_result_info, chat_result_df, chat_result_style],
+                outputs=[chat_status_md, chat_result_df, chat_result_style],
             )
 
             chat_clear_btn.click(
