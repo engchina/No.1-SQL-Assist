@@ -153,73 +153,73 @@ def _lessons() -> List[Dict[str, str]]:
         {
             "id": "L01",
             "title": "SELECTの基本（1表）",
-            "desc": "社員テーブルから基本的な列を取得します。",
+            "desc": "まずは基本から！社員一覧表（EMPLOYEE）から、名前や給与などの情報を取り出してみましょう。",
             "sql": "SELECT EMPLOYEE_ID, EMPLOYEE_NAME, SALARY FROM EMPLOYEE ORDER BY EMPLOYEE_ID FETCH FIRST 10 ROWS ONLY;",
         },
         {
             "id": "L02",
             "title": "WHERE条件",
-            "desc": "給与が50万円以上の社員を抽出します。",
+            "desc": "条件を絞り込んでみましょう。給与が50万円以上の社員だけをピックアップして表示します。",
             "sql": "SELECT EMPLOYEE_NAME, SALARY FROM EMPLOYEE WHERE SALARY >= 500000 ORDER BY SALARY DESC;",
         },
         {
             "id": "L03",
             "title": "LIKEとUPPER",
-            "desc": "社員名に'佐'を含むレコード（大文字小文字を正規化）。",
+            "desc": "あいまいな条件で検索します。名前に「佐」という文字が含まれている社員を探し出します。",
             "sql": "SELECT EMPLOYEE_NAME FROM EMPLOYEE WHERE UPPER(EMPLOYEE_NAME) LIKE UPPER('%佐%');",
         },
         {
             "id": "L04",
             "title": "JOIN（社員×部門）",
-            "desc": "社員と部門を結合し、部署名付きで表示します。",
+            "desc": "複数の表を組み合わせてみましょう。社員の情報に、その人が所属する「部署名」をくっつけて表示します。",
             "sql": "SELECT e.EMPLOYEE_NAME, d.DEPARTMENT_NAME, e.SALARY FROM EMPLOYEE e JOIN DEPARTMENT d ON e.DEPARTMENT_ID = d.DEPARTMENT_ID ORDER BY d.DEPARTMENT_ID, e.EMPLOYEE_ID;",
         },
         {
             "id": "L05",
             "title": "集約（COUNT/SUM）",
-            "desc": "部門ごとの社員数と総給与を集計します。",
+            "desc": "データを集計します。それぞれの部署に「何人の社員がいるか」や「給与の合計はいくらか」を計算してみましょう。",
             "sql": "SELECT d.DEPARTMENT_NAME, COUNT(*) AS 人数, SUM(e.SALARY) AS 総給与 FROM EMPLOYEE e JOIN DEPARTMENT d ON e.DEPARTMENT_ID = d.DEPARTMENT_ID GROUP BY d.DEPARTMENT_NAME ORDER BY 人数 DESC;",
         },
         {
             "id": "L06",
             "title": "AVGとHAVING",
-            "desc": "平均給与が50万円以上の部門のみ表示します。",
+            "desc": "集計結果に対してさらに条件を付けます。社員の「平均給与」が高い（50万円以上）部署だけを抜き出します。",
             "sql": "SELECT d.DEPARTMENT_NAME, AVG(e.SALARY) AS 平均給与 FROM EMPLOYEE e JOIN DEPARTMENT d ON e.DEPARTMENT_ID = d.DEPARTMENT_ID GROUP BY d.DEPARTMENT_NAME HAVING AVG(e.SALARY) >= 500000 ORDER BY 平均給与 DESC;",
         },
         {
             "id": "L07",
             "title": "ビューの利用（V_EMP_DEPT）",
-            "desc": "ビューを使って社員と部門を簡潔に参照します。",
+            "desc": "便利な「ビュー」を使ってみましょう。あらかじめ用意された「社員と部署のセット」から、簡単にデータを取得します。",
             "sql": "SELECT EMPLOYEE_NAME, DEPARTMENT_NAME, SALARY FROM V_EMP_DEPT ORDER BY DEPARTMENT_NAME, EMPLOYEE_NAME;",
         },
         {
             "id": "L08",
             "title": "サブクエリ（平均より高い給与）",
-            "desc": "全体の平均給与より高い社員を抽出します。",
+            "desc": "2段階で検索します。「全社員の平均給与」を計算し、それよりも高いお給料をもらっている社員を探します。",
             "sql": "SELECT EMPLOYEE_NAME, SALARY FROM EMPLOYEE WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEE) ORDER BY SALARY DESC;",
         },
         {
             "id": "L09",
             "title": "相関サブクエリ（部門平均より高い）",
-            "desc": "各社員の所属部門の平均給与より高い人を抽出します。",
+            "desc": "少し高度な検索です。「その人が所属する部署の平均」と比べて、より高い給与をもらっている社員を見つけます。",
             "sql": "SELECT e.EMPLOYEE_NAME, e.SALARY, d.DEPARTMENT_NAME FROM EMPLOYEE e JOIN DEPARTMENT d ON e.DEPARTMENT_ID = d.DEPARTMENT_ID WHERE e.SALARY > (SELECT AVG(e2.SALARY) FROM EMPLOYEE e2 WHERE e2.DEPARTMENT_ID = e.DEPARTMENT_ID) ORDER BY e.SALARY DESC;",
         },
         {
             "id": "L10",
             "title": "EXISTS（プロジェクトを持つ部門）",
-            "desc": "少なくとも1件のプロジェクトがある部門を抽出します。",
+            "desc": "データの存在確認をします。何らかのプロジェクトを持っている（プロジェクトが存在する）部署だけを表示します。",
             "sql": "SELECT d.DEPARTMENT_NAME FROM DEPARTMENT d WHERE EXISTS (SELECT 1 FROM PROJECT p WHERE p.DEPARTMENT_ID = d.DEPARTMENT_ID) ORDER BY d.DEPARTMENT_NAME;",
         },
         {
             "id": "L11",
             "title": "LEFT JOIN（プロジェクトがない部門）",
-            "desc": "プロジェクトが存在しない部門を抽出します。",
+            "desc": "逆のパターンも見てみましょう。まだプロジェクトが一つもない部署を見つけ出します。",
             "sql": "SELECT d.DEPARTMENT_NAME FROM DEPARTMENT d LEFT JOIN PROJECT p ON p.DEPARTMENT_ID = d.DEPARTMENT_ID WHERE p.PROJECT_ID IS NULL ORDER BY d.DEPARTMENT_NAME;",
         },
         {
             "id": "L12",
             "title": "WITH句（CTE）",
-            "desc": "CTEで部門平均給与を計算して社員と結合します。",
+            "desc": "複雑な計算を整理します。先に「部署ごとの平均」を計算しておき、それを後から社員データと組み合わせて使います。",
             "sql": (
                 "WITH dept_avg AS (\n"
                 "  SELECT DEPARTMENT_ID, AVG(SALARY) AS AVG_SAL\n"
@@ -236,19 +236,19 @@ def _lessons() -> List[Dict[str, str]]:
         {
             "id": "L13",
             "title": "DISTINCT",
-            "desc": "部門の一覧（重複なし）を取得します。",
+            "desc": "重複を取り除きます。同じ部署名が何度も出てこないように、部署の種類だけをスッキリと一覧表示します。",
             "sql": "SELECT DISTINCT DEPARTMENT_NAME FROM DEPARTMENT ORDER BY DEPARTMENT_NAME;",
         },
         {
             "id": "L14",
             "title": "日付関数（今年開始のプロジェクト）",
-            "desc": "当年開始のプロジェクトのみを抽出します。",
+            "desc": "日付を扱います。今年スタートしたプロジェクトだけを抜き出して表示してみましょう。",
             "sql": "SELECT PROJECT_NAME, START_DATE, BUDGET FROM PROJECT WHERE EXTRACT(YEAR FROM START_DATE) = EXTRACT(YEAR FROM SYSDATE) ORDER BY START_DATE;",
         },
         {
             "id": "L15",
             "title": "CASE式（給与帯ラベル）",
-            "desc": "給与額に応じてS/M/Lのラベルを付けます。",
+            "desc": "条件によって表示を変えます。給与の金額に応じて、自動的に「S」「M」「L」というランクを付けて表示します。",
             "sql": "SELECT EMPLOYEE_NAME, SALARY, CASE WHEN SALARY >= 600000 THEN 'S' WHEN SALARY >= 500000 THEN 'M' ELSE 'L' END AS 給与帯 FROM EMPLOYEE ORDER BY SALARY DESC;",
         },
     ]
