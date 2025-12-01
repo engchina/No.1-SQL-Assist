@@ -18,6 +18,7 @@ from dotenv import find_dotenv, load_dotenv
 from gradio.themes import Default, GoogleFont
 import logging
 
+from utils.auth_util import do_auth
 from utils.css_util import custom_css
 from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab
 from utils.chat_util import build_oci_chat_test_tab
@@ -252,4 +253,5 @@ if __name__ == "__main__":
         server_port=args.port,
         max_threads=200,
         show_api=False,
+        auth=do_auth,
     )

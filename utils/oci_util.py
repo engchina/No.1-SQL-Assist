@@ -29,38 +29,75 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+# OCI設定ファイルのパス定数
+OCI_CONFIG_PATH = "/root/.oci/config"
+OCI_KEY_FILE_PATH = "/root/.oci/oci_api_key.pem"
+
 
 def get_region():
     """OCI設定ファイルからリージョン情報を取得する共通関数.
 
     Returns:
-        str: OCIリージョン名
+        str: OCIリージョン名、取得できない場合はNone
     """
-    oci_config_path = find_dotenv("/root/.oci/config")
-    region = get_key(oci_config_path, "region")
-    return region
+    try:
+        oci_config_path = find_dotenv(OCI_CONFIG_PATH)
+        if not oci_config_path:
+            # find_dotenvが失敗した場合は直接パスを使用
+            oci_config_path = OCI_CONFIG_PATH
+        
+        # ファイルが存在するか確認
+        if not Path(oci_config_path).exists():
+            logger.warning(f"OCI設定ファイルが存在しません: {oci_config_path}")
+            return None
+            
+        region = get_key(oci_config_path, "region")
+        return region
+    except Exception as e:
+        logger.error(f"リージョン取得エラー: {e}")
+        return None
 
 
 def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
+    """OCI設定ファイルを更新する.
+    
+    Args:
+        user_ocid: ユーザーOCID
+        tenancy_ocid: テナンシーOCID
+        fingerprint: APIキーのフィンガープリント
+        private_key_file: プライベートキーファイル（Gradio File型）
+        region: OCIリージョン
+        
+    Returns:
+        gr.Markdown: 更新結果メッセージ
+    """
     has_error = False
+    error_messages = []
+    
     if not user_ocid:
         has_error = True
+        error_messages.append("User OCID")
         logger.error("User OCIDが未入力です")
     if not tenancy_ocid:
         has_error = True
+        error_messages.append("Tenancy OCID")
         logger.error("Tenancy OCIDが未入力です")
     if not fingerprint:
         has_error = True
+        error_messages.append("Fingerprint")
         logger.error("Fingerprintが未入力です")
-    if not private_key_file:
+    if not private_key_file or (hasattr(private_key_file, 'name') and not private_key_file.name):
         has_error = True
+        error_messages.append("Private Key")
         logger.error("Private Keyが未入力です")
     if not region:
         has_error = True
+        error_messages.append("Region")
         logger.error("Regionが未選択です")
 
     if has_error:
-        return gr.Markdown(visible=True, value="❌ 入力不足です")
+        missing_fields = "、".join(error_messages)
+        return gr.Markdown(visible=True, value=f"❌ 入力不足です: {missing_fields}が未入力です")
 
     user_ocid = str(user_ocid).strip()
     tenancy_ocid = str(tenancy_ocid).strip()
@@ -68,6 +105,10 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
     region = str(region).strip()
 
     try:
+        # プライベートキーファイルの存在確認
+        if not hasattr(private_key_file, 'name') or not private_key_file.name:
+            return gr.Markdown(visible=True, value="❌ プライベートキーファイルが選択されていません")
+            
         base_dir = Path(__file__).resolve().parent.parent
         oci_dir = Path("/root/.oci")
         oci_dir.mkdir(parents=True, exist_ok=True)
@@ -77,22 +118,41 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
             if config_src.exists():
                 shutil.copy(str(config_src), str(oci_dir / "config"))
             else:
-                pass
+                # configファイルが存在しない場合は新規作成
+                (oci_dir / "config").write_text("[DEFAULT]\n")
 
-        oci_config_path = find_dotenv("/root/.oci/config")
-        key_file_path = "/root/.oci/oci_api_key.pem"
+        # OCI設定ファイルのパスを取得
+        oci_config_path = find_dotenv(OCI_CONFIG_PATH)
+        if not oci_config_path:
+            # find_dotenvが失敗した場合は直接パスを使用
+            oci_config_path = OCI_CONFIG_PATH
+            logger.info(f"find_dotenvが失敗したため、直接パスを使用: {oci_config_path}")
+        
+        # 設定ファイルが存在することを確認
+        if not Path(oci_config_path).exists():
+            logger.error(f"OCI設定ファイルが見つかりません: {oci_config_path}")
+            return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルが見つかりません: {oci_config_path}")
+            
+        key_file_path = OCI_KEY_FILE_PATH
 
         set_key(oci_config_path, "user", user_ocid, quote_mode="never")
         set_key(oci_config_path, "tenancy", tenancy_ocid, quote_mode="never")
         set_key(oci_config_path, "region", region, quote_mode="never")
         set_key(oci_config_path, "fingerprint", fingerprint, quote_mode="never")
         set_key(oci_config_path, "key_file", key_file_path, quote_mode="never")
+        
+        # プライベートキーファイルをコピー
         shutil.copy(private_key_file.name, key_file_path)
+        # パーミッション設定（セキュリティのため）
+        os.chmod(key_file_path, 0o600)
+        
         load_dotenv(oci_config_path)
+        logger.info("OCI設定ファイルを正常に更新しました")
 
         return gr.Markdown(visible=True, value="✅ OCI設定ファイルを更新しました")
     except Exception as e:
         logger.error(f"Error updating OCI config: {e}")
+        logger.exception("Full traceback:")
         return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルの更新に失敗しました: {e}")
 
 
