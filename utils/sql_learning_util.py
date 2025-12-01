@@ -171,8 +171,8 @@ def _lessons() -> List[Dict[str, str]]:
         {
             "id": "L04",
             "title": "DISTINCT",
-            "desc": "重複を取り除きます。同じ部署名が何度も出てこないように、部署の種類だけをスッキリと一覧表示します。",
-            "sql": "SELECT DISTINCT DEPARTMENT_NAME FROM DEPARTMENT ORDER BY DEPARTMENT_NAME;",
+            "desc": "重複を取り除きます。同じ所在地が何度も出てこないように、所在地の種類だけをスッキリと一覧表示します。",
+            "sql": "SELECT DISTINCT LOCATION FROM DEPARTMENT ORDER BY LOCATION;",
         },
         {
             "id": "L05",
