@@ -2109,8 +2109,8 @@ def build_selectai_tab(pool):
                             enable_rewrite: Query転写が有効か
                             rewritten_query: 書き換え後の質問
                         
-                        Returns:
-                            gr.Textbox: 生成されたSQL
+                        Yields:
+                            tuple: (status_md, generated_sql_textbox)
                         """
                         # Query転写が有効な場合は転写後の質問を使用
                         if enable_rewrite and rewritten_query and str(rewritten_query).strip():
@@ -2124,17 +2124,19 @@ def build_selectai_tab(pool):
                         
                         if not profile or not str(profile).strip():
                             logger.error("Profileが未選択です")
-                            return gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
+                            return
                         if not final:
                             logger.error("質問が未入力です")
-                            return gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
+                            return
                         
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
                         
-                        # ... existing code ...
                         try:
+                            yield gr.Markdown(visible=True, value="⏳ SQL生成中..."), gr.Textbox(value="")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     try:
@@ -2206,10 +2208,10 @@ def build_selectai_tab(pool):
                                     gen_sql_display = generated_sql
                                     if gen_sql_display and not gen_sql_display.endswith(";"):
                                         gen_sql_display = gen_sql_display
-                                    return gr.Textbox(value=gen_sql_display)
+                                    yield gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
                         except Exception as e:
                             logger.error(f"_dev_step_generate error: {e}")
-                            return gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
 
                     def _dev_step_run_sql(profile, generated_sql):
                         try:
@@ -2573,7 +2575,7 @@ def build_selectai_tab(pool):
                     dev_chat_execute_btn.click(
                         fn=_dev_step_generate,
                         inputs=[dev_profile_select, dev_prompt_input, dev_extra_prompt, dev_include_extra_prompt, dev_enable_query_rewrite, dev_rewritten_query],
-                        outputs=[dev_generated_sql_text],
+                        outputs=[dev_chat_status_md, dev_generated_sql_text],
                     ).then(
                         fn=_dev_step_run_sql,
                         inputs=[dev_profile_select, dev_generated_sql_text],
@@ -4514,7 +4516,7 @@ def build_selectai_tab(pool):
                     enable_rewrite: Query転写が有効か
                     rewritten_query: 書き換え後の質問
                 
-                Returns:
+                Yields:
                     tuple: (status_md, generated_sql_textbox)
                 """
                 # Query転写が有効な場合は転写後の質問を使用
@@ -4528,14 +4530,17 @@ def build_selectai_tab(pool):
                 final = s if not inc or not ep else (ep + "\n\n" + s)
                 
                 if not profile or not str(profile).strip():
-                    return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
+                    yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
+                    return
                 if not final:
-                    return gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
+                    yield gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
+                    return
                 
                 q = final
                 if q.endswith(";"):
                     q = q[:-1]
                 try:
+                    yield gr.Markdown(visible=True, value="⏳ SQL生成中..."), gr.Textbox(value="")
                     with pool.acquire() as conn:
                         with conn.cursor() as cursor:
                             try:
@@ -4604,9 +4609,9 @@ def build_selectai_tab(pool):
                                         generated_sql = m.group(0).strip()
                                         break
                             gen_sql_display = generated_sql
-                            return gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
+                            yield gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
                 except Exception as e:
-                    return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                    yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
 
             def _user_step_run_sql(profile, sql_text):
                 if not profile or not str(profile).strip():
@@ -4781,7 +4786,7 @@ def build_selectai_tab(pool):
             chat_execute_btn.click(
                 fn=_user_step_generate,
                 inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt, enable_query_rewrite, rewritten_query],
-                outputs=[generated_sql_status, generated_sql_text],
+                outputs=[chat_status_md, generated_sql_text],
             ).then(
                 fn=_user_step_run_sql,
                 inputs=[profile_select, generated_sql_text],
