@@ -699,12 +699,11 @@ def build_selectai_tab(pool):
                             return
                         sample = df.head(5)
                         widths = []
-                        columns = max(1, len(df.columns))
                         for col in sample.columns:
                             series = sample[col].astype(str)
                             row_max = series.map(len).max() if len(series) > 0 else 0
                             length = max(len(str(col)), row_max)
-                            widths.append(min(100 / columns, length))
+                            widths.append(length)
                         total = sum(widths) if widths else 0
                         style_value = ""
                         if total > 0:
@@ -712,9 +711,12 @@ def build_selectai_tab(pool):
                             diff = 100 - sum(col_widths)
                             if diff != 0 and len(col_widths) > 0:
                                 col_widths[0] = max(5, col_widths[0] + diff)
-                            rules = ["#profile_list_df table { table-layout: fixed; width: 100%; }"]
+                            rules = []
+                            rules.append("#profile_list_df { width: 100% !important; }")
+                            rules.append("#profile_list_df .wrap { overflow-x: auto !important; }")
+                            rules.append("#profile_list_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
                             for idx, pct in enumerate(col_widths, start=1):
-                                rules.append(f"#profile_list_df table th:nth-child({idx}), #profile_list_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                                rules.append(f"#profile_list_df table th:nth-child({idx}), #profile_list_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                             style_value = "<style>" + "\n".join(rules) + "</style>"
                         yield gr.Markdown(visible=False), gr.Dataframe(value=df, visible=True), gr.HTML(visible=bool(style_value), value=style_value)
                     except Exception as e:
@@ -2224,15 +2226,13 @@ def build_selectai_tab(pool):
                                         widths = []
                                         if len(df) > 0:
                                             sample = df.head(5)
-                                            columns = max(1, len(df.columns))
                                             for col in df.columns:
                                                 series = sample[col].astype(str)
                                                 row_max = series.map(len).max() if len(series) > 0 else 0
                                                 length = max(len(str(col)), row_max)
-                                                widths.append(min(100 / columns, length))
+                                                widths.append(length)
                                         else:
-                                            columns = max(1, len(df.columns))
-                                            widths = [min(100 / columns, len(c)) for c in df.columns]
+                                            widths = [len(str(c)) for c in df.columns]
                                         total = sum(widths) if widths else 0
                                         if total <= 0:
                                             col_widths = None
@@ -2250,10 +2250,12 @@ def build_selectai_tab(pool):
                                         style_value = ""
                                         if col_widths:
                                             rules = []
-                                            rules.append("#selectai_dev_chat_result_df table { table-layout: fixed; width: 100%; }")
+                                            rules.append("#selectai_dev_chat_result_df { width: 100% !important; }")
+                                            rules.append("#selectai_dev_chat_result_df .wrap { overflow-x: auto !important; }")
+                                            rules.append("#selectai_dev_chat_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
                                             for idx, pct in enumerate(col_widths, start=1):
                                                 rules.append(
-                                                    f"#selectai_dev_chat_result_df table th:nth-child({idx}), #selectai_dev_chat_result_df table td:nth-child({idx}) {{ width: {pct}%; }}"
+                                                    f"#selectai_dev_chat_result_df table th:nth-child({idx}), #selectai_dev_chat_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
                                                 )
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
                                         style_component = gr.HTML(visible=bool(style_value), value=style_value)
@@ -3967,21 +3969,23 @@ def build_selectai_tab(pool):
                                     if len(cols) > 0:
                                         sample = df.head(5)
                                         widths = []
-                                        columns = max(1, len(df.columns))
                                         for col in df.columns:
                                             series = sample[col].astype(str) if not sample.empty else pd.Series([], dtype=str)
                                             row_max = series.map(len).max() if len(series) > 0 else 0
                                             length = max(len(str(col)), row_max)
-                                            widths.append(min(100 / columns, length))
+                                            widths.append(length)
                                         total = sum(widths) if widths else 0
                                         if total > 0:
                                             col_widths = [max(5, int(100 * w / total)) for w in widths]
                                             diff = 100 - sum(col_widths)
                                             if diff != 0 and len(col_widths) > 0:
                                                 col_widths[0] = max(5, col_widths[0] + diff)
-                                            rules = ["#synthetic_data_status_df table { table-layout: fixed; width: 100%; }"]
+                                            rules = []
+                                            rules.append("#synthetic_data_status_df { width: 100% !important; }")
+                                            rules.append("#synthetic_data_status_df .wrap { overflow-x: auto !important; }")
+                                            rules.append("#synthetic_data_status_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
                                             for idx, pct in enumerate(col_widths, start=1):
-                                                rules.append(f"#synthetic_data_status_df table th:nth-child({idx}), #synthetic_data_status_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                                                rules.append(f"#synthetic_data_status_df table th:nth-child({idx}), #synthetic_data_status_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
                                     return gr.Markdown(visible=True, value="✅ ステータス更新完了"), df_component, gr.HTML(visible=bool(style_value), value=style_value)
                         except Exception as e:
@@ -3995,12 +3999,11 @@ def build_selectai_tab(pool):
                                 widths = []
                                 cols = df.columns.tolist()
                                 sample = df.head(5)
-                                columns = max(1, len(cols))
                                 for col in cols:
                                     series = sample[col].astype(str)
                                     row_max = series.map(len).max() if len(series) > 0 else 0
                                     length = max(len(str(col)), row_max)
-                                    widths.append(min(100 / columns, length))
+                                    widths.append(length)
                                 total = sum(widths) if widths else 0
                                 style_value = ""
                                 if total > 0:
@@ -4008,9 +4011,12 @@ def build_selectai_tab(pool):
                                     diff = 100 - sum(col_widths)
                                     if diff != 0 and len(col_widths) > 0:
                                         col_widths[0] = max(5, col_widths[0] + diff)
-                                    rules = ["#synthetic_data_result_df table { table-layout: fixed; width: 100%; }"]
+                                    rules = []
+                                    rules.append("#synthetic_data_result_df { width: 100% !important; }")
+                                    rules.append("#synthetic_data_result_df .wrap { overflow-x: auto !important; }")
+                                    rules.append("#synthetic_data_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
                                     for idx, pct in enumerate(col_widths, start=1):
-                                        rules.append(f"#synthetic_data_result_df table th:nth-child({idx}), #synthetic_data_result_df table td:nth-child({idx}) {{ width: {pct}%; }}")
+                                        rules.append(f"#synthetic_data_result_df table th:nth-child({idx}), #synthetic_data_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                                     style_value = "<style>" + "\n".join(rules) + "</style>"
                                 return gr.Markdown(visible=True, value="✅ 表示完了"), gr.Dataframe(visible=True, value=df, label=f"データ表示（件数: {len(df)}）", elem_id="synthetic_data_result_df"), gr.HTML(visible=bool(style_value), value=style_value)
                             else:
@@ -4585,15 +4591,13 @@ def build_selectai_tab(pool):
                                 widths = []
                                 if len(df) > 0:
                                     sample = df.head(5)
-                                    columns = max(1, len(df.columns))
                                     for col in df.columns:
                                         series = sample[col].astype(str)
                                         row_max = series.map(len).max() if len(series) > 0 else 0
                                         length = max(len(str(col)), row_max)
-                                        widths.append(min(100 / columns, length))
+                                        widths.append(length)
                                 else:
-                                    columns = max(1, len(df.columns))
-                                    widths = [min(100 / columns, len(c)) for c in df.columns]
+                                    widths = [len(str(c)) for c in df.columns]
                                 total = sum(widths) if widths else 0
                                 if total <= 0:
                                     col_widths = None
@@ -4611,10 +4615,12 @@ def build_selectai_tab(pool):
                                 style_value = ""
                                 if col_widths:
                                     rules = []
-                                    rules.append("#selectai_chat_result_df table { table-layout: fixed; width: 100%; }")
+                                    rules.append("#selectai_chat_result_df { width: 100% !important; }")
+                                    rules.append("#selectai_chat_result_df .wrap { overflow-x: auto !important; }")
+                                    rules.append("#selectai_chat_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
                                     for idx, pct in enumerate(col_widths, start=1):
                                         rules.append(
-                                            f"#selectai_chat_result_df table th:nth-child({idx}), #selectai_chat_result_df table td:nth-child({idx}) {{ width: {pct}%; }}"
+                                            f"#selectai_chat_result_df table th:nth-child({idx}), #selectai_chat_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
                                         )
                                     style_value = "<style>" + "\n".join(rules) + "</style>"
                                 style_component = gr.HTML(visible=bool(style_value), value=style_value)

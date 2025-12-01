@@ -102,15 +102,13 @@ def execute_select_sql(pool, sql: str, limit: int):
                     widths = []
                     if len(df) > 0:
                         sample = df.head(5)
-                        columns = max(1, len(df.columns))
-                        for i, col in enumerate(df.columns):
+                        for col in df.columns:
                             series = sample[col].astype(str)
                             row_max = series.map(len).max() if len(series) > 0 else 0
                             length = max(len(str(col)), row_max)
-                            widths.append(min(100 / columns, length))
+                            widths.append(length)
                     else:
-                        columns = max(1, len(df.columns))
-                        widths = [min(100 / columns, len(c)) for c in df.columns]
+                        widths = [len(str(c)) for c in df.columns]
 
                     total = sum(widths) if widths else 0
                     if total <= 0:
@@ -130,10 +128,12 @@ def execute_select_sql(pool, sql: str, limit: int):
                     style_value = ""
                     if col_widths:
                         rules = []
-                        rules.append("#query_result_df table { table-layout: fixed; width: 100%; }")
+                        rules.append("#query_result_df { width: 100% !important; }")
+                        rules.append("#query_result_df .wrap { overflow-x: auto !important; }")
+                        rules.append("#query_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
                         for idx, pct in enumerate(col_widths, start=1):
                             rules.append(
-                                f"#query_result_df table th:nth-child({idx}), #query_result_df table td:nth-child({idx}) {{ width: {pct}%; }}"
+                                f"#query_result_df table th:nth-child({idx}), #query_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
                             )
                         style_value = "<style>" + "\n".join(rules) + "</style>"
                     style_component = gr.HTML(visible=bool(style_value), value=style_value)
