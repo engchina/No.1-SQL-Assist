@@ -32,6 +32,6 @@ runcmd:
   - netfilter-persistent save
   - echo "Downloading and running init script..."
   - cd /u01/aipoc
-  - git clone -b v0.0.2 https://github.com/engchina/No.1-SQL-Assist.git; cd No.1-SQL-Assist
+  - git clone -b v0.0.3 https://github.com/engchina/No.1-SQL-Assist.git; cd No.1-SQL-Assist
   - chmod +x init_script.sh
   - nohup bash init_script.sh >> /var/log/cloud-init-custom.log 2>&1 &

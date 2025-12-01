@@ -345,9 +345,12 @@ def build_sql_learning_tab(pool):
 
             with gr.Row():
                 run_lesson_btn = gr.Button("このSQLを実行", variant="primary")
-            lesson_result_info = gr.Markdown(visible=False)
-            lesson_result_df = gr.Dataframe(label="実行結果", interactive=False, wrap=True, visible=False, value=pd.DataFrame())
-            lesson_result_style = gr.HTML(visible=False)
+            with gr.Row():
+                lesson_result_info = gr.Markdown(visible=False)
+            with gr.Row():
+                lesson_result_df = gr.Dataframe(label="実行結果", interactive=False, wrap=True, visible=False, value=pd.DataFrame(), elem_id="query_result_df")
+            with gr.Row():
+                lesson_result_style = gr.HTML(visible=False)
 
         def _show_tables(current_visible):
             """表のSQL表示を切り替える."""
