@@ -1080,23 +1080,24 @@ def build_management_tab(pool):
                 
                 with gr.Row():
                     with gr.Column():
+                        gr.Markdown("### CREATE TABLE SQL")
+                        table_ddl_text = gr.Textbox(
+                            label="DDL",
+                            show_label=False,
+                            lines=15,
+                            max_lines=15,
+                            interactive=False,
+                            show_copy_button=True,
+                            autoscroll=False,
+                        )
+                    with gr.Column():
                         gr.Markdown("### 列情報")
                         table_columns_df = gr.Dataframe(
                             label="列情報",
                             show_label=False,
                             interactive=False,
                             wrap=True,
-                        )
-                    
-                    with gr.Column():
-                        gr.Markdown("### CREATE TABLE SQL")
-                        table_ddl_text = gr.Textbox(
-                            label="DDL",
-                            lines=15,
-                            max_lines=15,
-                            interactive=False,
-                            show_copy_button=True,
-                            autoscroll=False,
+                            visible=False,
                         )
             
             # Feature 3: Create Table
@@ -1196,14 +1197,17 @@ def build_management_tab(pool):
                             table_name = str(current_df.iloc[row_index, 0])
                             logger.info(f"Table selected from row {row_index}: {table_name}")
                             col_df, ddl = get_table_details(pool, table_name)
-                            return table_name, col_df, ddl
+                            if isinstance(col_df, pd.DataFrame) and not col_df.empty:
+                                return table_name, gr.Dataframe(visible=True, value=col_df), ddl
+                            else:
+                                return table_name, gr.Dataframe(visible=False, value=pd.DataFrame()), ddl
                         else:
                             logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
                     logger.error(f"Error in on_table_select: {e}")
                     logger.error(traceback.format_exc())
                 
-                return "", pd.DataFrame(), ""
+                return "", gr.Dataframe(visible=False, value=pd.DataFrame()), ""
             
             def refresh_table_list():
                 try:
@@ -1378,7 +1382,18 @@ def build_management_tab(pool):
                 with gr.Row():
                     view_drop_result = gr.Markdown(visible=False)
                 
-                with gr.Row():
+                with gr.Row():                   
+                    with gr.Column():
+                        gr.Markdown("### CREATE VIEW SQL")
+                        view_ddl_text = gr.Textbox(
+                            label="DDL",
+                            show_label=False,
+                            lines=15,
+                            max_lines=15,
+                            interactive=False,
+                            show_copy_button=True,
+                            autoscroll=False,
+                        )
                     with gr.Column():
                         gr.Markdown("### 列情報")
                         view_columns_df = gr.Dataframe(
@@ -1386,17 +1401,7 @@ def build_management_tab(pool):
                             show_label=False,
                             interactive=False,
                             wrap=True,
-                        )
-                    
-                    with gr.Column():
-                        gr.Markdown("### CREATE VIEW SQL")
-                        view_ddl_text = gr.Textbox(
-                            label="DDL",
-                            lines=15,
-                            max_lines=15,
-                            interactive=False,
-                            show_copy_button=True,
-                            autoscroll=False,
+                            visible=False,
                         )
 
                 with gr.Row():
@@ -1542,14 +1547,17 @@ def build_management_tab(pool):
                             view_name = str(current_df.iloc[row_index, 0])
                             logger.info(f"View selected from row {row_index}: {view_name}")
                             col_df, ddl = get_view_details(pool, view_name)
-                            return view_name, col_df, ddl
+                            if isinstance(col_df, pd.DataFrame) and not col_df.empty:
+                                return view_name, gr.Dataframe(visible=True, value=col_df), ddl
+                            else:
+                                return view_name, gr.Dataframe(visible=False, value=pd.DataFrame()), ddl
                         else:
                             logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
                     logger.error(f"Error in on_view_select: {e}")
                     logger.error(traceback.format_exc())
                 
-                return "", pd.DataFrame(), ""
+                return "", gr.Dataframe(visible=False, value=pd.DataFrame()), ""
             
             def refresh_view_list():
                 try:

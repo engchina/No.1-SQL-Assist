@@ -1479,20 +1479,20 @@ def build_selectai_tab(pool):
                         up_dir.mkdir(parents=True, exist_ok=True)
                         _p = up_dir / "terms.xlsx"
                         if not _p.exists():
-                            _df = pd.DataFrame(columns=["Term", "Description", "English"])
+                            _df = pd.DataFrame(columns=["TERM", "DESCRIPTION"])
                             with pd.ExcelWriter(_p) as _writer:
                                 _df.to_excel(_writer, sheet_name="terms", index=False)
     
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("用語集Excelをアップロード", elem_classes="input-label")
+                                gr.Markdown("用語集Excelをアップロード<br>ℹ️ ファイルをドロップすると自動的にアップロードされます", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 term_upload_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath", container=True)
                         with gr.Row():
                             term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False)
                         with gr.Row():
                             with gr.Column():
-                                term_download_btn = gr.DownloadButton(label="テンプレートをダウンロード", value=str(_p), variant="secondary")
+                                gr.DownloadButton(label="テンプレートをダウンロード", value=str(_p), variant="secondary")
                             with gr.Column():
                                 term_preview_btn = gr.Button("用語集をプレビュー", variant="primary")
                         with gr.Row():
@@ -1537,19 +1537,6 @@ def build_selectai_tab(pool):
                         except Exception as e:
                             yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
 
-                    def _term_download_excel():
-                        try:
-                            up_dir = Path("uploads")
-                            up_dir.mkdir(parents=True, exist_ok=True)
-                            p = up_dir / "terms.xlsx"
-                            if not p.exists():
-                                df = pd.DataFrame(columns=["TERM", "DESCRIPTION"])
-                                with pd.ExcelWriter(p) as writer:
-                                    df.to_excel(writer, sheet_name="terms", index=False)
-                            return gr.DownloadButton(value=str(p), visible=True)
-                        except Exception:
-                            return gr.DownloadButton(visible=False)
-
                     def _term_upload_excel(file_path):
                         try:
                             if not file_path:
@@ -1584,7 +1571,6 @@ def build_selectai_tab(pool):
                     )
 
                     # ダウンロードはボタン自体で実行（クリックハンドラ不要）
-
                     term_upload_file.change(
                         fn=_term_upload_excel,
                         inputs=[term_upload_file],
