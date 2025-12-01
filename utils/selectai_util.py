@@ -1793,7 +1793,7 @@ def build_selectai_tab(pool):
                                     show_copy_button=True,
                                 )
 
-                    with gr.Accordion(label="4. クエリのフィードバック", open=True):
+                    with gr.Accordion(label="4. クエリのフィードバック", open=False):
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():

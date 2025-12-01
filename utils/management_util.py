@@ -1832,7 +1832,7 @@ def build_management_tab(pool):
                     )
             
             # Feature 2: CSV Upload
-            with gr.Accordion(label="2. CSVアップロード", open=True):
+            with gr.Accordion(label="2. CSVアップロード", open=False):
                 with gr.Row():
                     with gr.Column(scale=1):
                         gr.Markdown("CSVファイル", elem_classes="input-label")
