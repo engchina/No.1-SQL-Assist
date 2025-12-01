@@ -427,13 +427,14 @@ def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
     with gr.TabItem(label="SQLの実行") as tab_query:
         with gr.Accordion(label="1. SQLの入力", open=True):
+            gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/(PL/SQL)/EXECは複数文をセミコロンで区切って同時実行可能。")
             with gr.Row():
                 with gr.Column(scale=1):
-                    gr.Markdown("SQL文（SELECTは1文のみ、その他は複数文同時実行可）\n注意: 複数実行時はSELECTを含めないでください", elem_classes="input-label")
+                    gr.Markdown("SQL文", elem_classes="input-label")
                 with gr.Column(scale=5):
                     sql_input = gr.Textbox(
                         show_label=False,
-                        placeholder="複数の文はセミコロンで区切って入力できます。\n例: INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/BEGIN..END/EXEC など。SELECTは1回に1文のみ",
+                        placeholder="",
                         lines=8,
                         max_lines=15,
                         show_copy_button=True,
@@ -465,11 +466,6 @@ def build_query_tab(pool):
                 result_info = gr.Markdown(visible=False)
 
         with gr.Accordion(label="2. 実行結果の表示", open=True):
-            result_help = gr.Markdown(
-                value="ℹ️ SELECTは1文のみ実行可能。INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/PL/SQL/EXECは複数文をセミコロンで区切って同時実行可能。複数実行時はSELECTを含めないでください",
-                visible=True,
-            )
-
             with gr.Row():
                 result_df = gr.Dataframe(
                     label="実行結果",

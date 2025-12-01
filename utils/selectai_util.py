@@ -4012,9 +4012,9 @@ def build_selectai_tab(pool):
                                     for idx, pct in enumerate(col_widths, start=1):
                                         rules.append(f"#synthetic_data_result_df table th:nth-child({idx}), #synthetic_data_result_df table td:nth-child({idx}) {{ width: {pct}%; }}")
                                     style_value = "<style>" + "\n".join(rules) + "</style>"
-                                return gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df, label=f"データ表示（件数: {len(df)}）", elem_id="synthetic_data_result_df"), gr.HTML(visible=bool(style_value), value=style_value)
+                                return gr.Markdown(visible=True, value="✅ 表示完了"), gr.Dataframe(visible=True, value=df, label=f"データ表示（件数: {len(df)}）", elem_id="synthetic_data_result_df"), gr.HTML(visible=bool(style_value), value=style_value)
                             else:
-                                return gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示（件数: 0）", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                                return gr.Markdown(visible=True, value="✅ 表示完了(データなし)"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示（件数: 0）", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
 

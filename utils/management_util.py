@@ -2019,7 +2019,7 @@ def build_management_tab(pool):
                         elem_id="data_result_df",
                     )
                     # style_component is removed
-                    yield df_component, gr.Markdown(visible=False)
+                    yield df_component, gr.Markdown(visible=True, value="✅ 表示完了")
                 except Exception as e:
                     yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(value=f"❌ データ取得に失敗しました: {str(e)}", visible=True)
             

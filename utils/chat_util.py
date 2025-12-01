@@ -233,7 +233,7 @@ def build_oci_chat_test_tab(pool):
                         with gr.Column(scale=1):
                             chatbot = gr.Chatbot(
                                 label="会話履歴",
-                                height=350,
+                                height=400,
                                 show_copy_button=True,
                                 avatar_images=(None, None),
                                 type='messages',
