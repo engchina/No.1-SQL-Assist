@@ -1793,7 +1793,7 @@ def build_selectai_tab(pool):
                                     show_copy_button=True,
                                 )
 
-                    with gr.Accordion(label="4. クエリのフィードバック", open=False):
+                    with gr.Accordion(label="4. クエリのフィードバック", open=True):
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -2976,7 +2976,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 cm_execute_result = gr.Textbox(show_label=False, interactive=False, lines=5, max_lines=8, container=False)
 
-                        with gr.Accordion(label="AI分析と処理", open=False):
+                        with gr.Accordion(label="AI分析と処理", open=True):
                             with gr.Row():
                                 with gr.Column(scale=5):
                                     with gr.Row():
@@ -3387,7 +3387,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 am_execute_result = gr.Textbox(show_label=False, interactive=False, lines=5, max_lines=8, container=False)
 
-                        with gr.Accordion(label="AI分析と処理", open=False):
+                        with gr.Accordion(label="AI分析と処理", open=True):
                             with gr.Row():
                                 with gr.Column(scale=5):
                                     with gr.Row():
@@ -3845,7 +3845,7 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             syn_status_style = gr.HTML(visible=False)
 
-                    with gr.Accordion(label="3. 結果確認", open=False):
+                    with gr.Accordion(label="3. 結果確認", open=True):
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -4110,7 +4110,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 rev_sql_input = gr.Textbox(show_label=False, lines=8, max_lines=15, show_copy_button=True, container=False)
 
-                    with gr.Accordion(label="2. 参照コンテキスト", open=False):
+                    with gr.Accordion(label="2. 参照コンテキスト", open=True):
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("送信するメタ情報", elem_classes="input-label")
@@ -4488,7 +4488,7 @@ def build_selectai_tab(pool):
                         )
                         chat_result_style = gr.HTML(visible=False)
 
-                    with gr.Accordion(label="3. 生成SQL", open=False):
+                    with gr.Accordion(label="3. 生成SQL", open=True):
                         generated_sql_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):

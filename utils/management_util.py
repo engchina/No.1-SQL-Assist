@@ -1100,7 +1100,7 @@ def build_management_tab(pool):
                         )
             
             # Feature 3: Create Table
-            with gr.Accordion(label="3. テーブル作成", open=False):
+            with gr.Accordion(label="3. テーブル作成", open=True):
                 with gr.Row():
                     with gr.Column(scale=1):
                         gr.Markdown("CREATE TABLE SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
@@ -1123,7 +1123,7 @@ def build_management_tab(pool):
                 with gr.Row():
                     create_table_result = gr.Markdown(visible=False)
 
-                with gr.Accordion(label="AI分析と処理", open=False):
+                with gr.Accordion(label="AI分析と処理", open=True):
                     with gr.Row():
                         with gr.Column(scale=5):
                             with gr.Row():
@@ -1447,7 +1447,7 @@ def build_management_tab(pool):
                         )
             
             # Feature 3: Create View
-            with gr.Accordion(label="3. ビュー作成", open=False):
+            with gr.Accordion(label="3. ビュー作成", open=True):
                 with gr.Row():
                     with gr.Column(scale=1):
                         gr.Markdown("CREATE VIEW SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
@@ -1469,7 +1469,7 @@ def build_management_tab(pool):
                 with gr.Row():                
                     create_view_result = gr.Markdown(visible=False)
 
-                with gr.Accordion(label="AI分析と処理", open=False):
+                with gr.Accordion(label="AI分析と処理", open=True):
                     with gr.Row():
                         with gr.Column(scale=5):
                             with gr.Row():
@@ -1832,7 +1832,7 @@ def build_management_tab(pool):
                     )
             
             # Feature 2: CSV Upload
-            with gr.Accordion(label="2. CSVアップロード", open=False):
+            with gr.Accordion(label="2. CSVアップロード", open=True):
                 with gr.Row():
                     with gr.Column(scale=1):
                         gr.Markdown("CSVファイル", elem_classes="input-label")
@@ -1895,7 +1895,7 @@ def build_management_tab(pool):
                 csv_upload_result = gr.Markdown(visible=False)
             
             # Feature 3: SQL Bulk Execution
-            with gr.Accordion(label="3. SQL一括実行", open=False):
+            with gr.Accordion(label="3. SQL一括実行", open=True):
                 with gr.Row():
                     with gr.Column(scale=5):
                         with gr.Row():
@@ -1942,7 +1942,7 @@ def build_management_tab(pool):
                 with gr.Row():
                     data_sql_result = gr.Markdown(visible=False)
 
-                with gr.Accordion(label="AI分析と処理", open=False):
+                with gr.Accordion(label="AI分析と処理", open=True):
                     with gr.Row():
                         with gr.Column(scale=5):
                             with gr.Row():

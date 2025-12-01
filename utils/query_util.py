@@ -479,7 +479,7 @@ def build_query_tab(pool):
             with gr.Row():
                 result_style = gr.HTML(visible=False)
 
-            with gr.Accordion(label="AI分析と処理", open=False):
+            with gr.Accordion(label="AI分析と処理", open=True):
                 with gr.Row():
                     with gr.Column(scale=5):
                         with gr.Row():
