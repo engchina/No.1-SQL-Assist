@@ -545,6 +545,8 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
+                        with gr.Row():
+                            refresh_status = gr.Markdown(visible=False)
 
                         with gr.Row():
                             with gr.Column():
@@ -875,16 +877,17 @@ def build_selectai_tab(pool):
 
                 def refresh_sources_handler():
                     try:
+                        yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
                         t = _get_table_names(pool)
                         v = _get_view_names(pool)
-                        return gr.CheckboxGroup(choices=t, visible=True), gr.CheckboxGroup(choices=v, visible=True)
+                        yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=t, visible=True), gr.CheckboxGroup(choices=v, visible=True)
                     except Exception as e:
                         logger.error(f"refresh_sources_handler error: {e}")
-                        return gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
                 refresh_btn.click(
                     fn=refresh_sources_handler,
-                    outputs=[tables_input, views_input],
+                    outputs=[refresh_status, tables_input, views_input],
                 )
 
                 build_btn.click(
@@ -1840,7 +1843,6 @@ def build_selectai_tab(pool):
                                 )
 
 
-                        dev_feedback_result = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("使用されたDBMS_CLOUD_AI.FEEDBACK", elem_classes="input-label")
@@ -1854,7 +1856,12 @@ def build_selectai_tab(pool):
                                     container=False,
                                 )
 
-                        dev_feedback_send_btn = gr.Button("フィードバック送信", variant="primary")
+                        with gr.Row():
+                            dev_feedback_send_btn = gr.Button("フィードバック送信", variant="primary")
+                        with gr.Row():
+                            dev_feedback_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            dev_feedback_result = gr.Markdown(visible=False)
 
                     def _build_showsql_stmt(prompt: str) -> str:
                         s = str(prompt or "")
@@ -2504,7 +2511,7 @@ def build_selectai_tab(pool):
 
                     def _send_feedback(fb_type, response_text, content_text, prompt_text, profile_name):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Markdown(visible=False), gr.Textbox(value="")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     prof = _resolve_profile_name(pool, str(profile_name or ""))
@@ -2512,7 +2519,7 @@ def build_selectai_tab(pool):
                                     if q.endswith(";"):
                                         q = q[:-1]
                                     if not q:
-                                        yield gr.Markdown(visible=True, value="⚠️ 質問が未入力のため、フィードバックを送信できませんでした")
+                                        yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 質問が未入力のため、フィードバックを送信できませんでした"), gr.Textbox(value="")
                                         return
                                     prompt_text = f"select ai showsql {q}"
                                     gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
@@ -2532,7 +2539,7 @@ def build_selectai_tab(pool):
                                         resp = str(response_text or "").strip()
                                         fc = str(content_text or "")
                                         if not resp:
-                                            yield gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
+                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
                                             return
                                     cursor.execute(
                                         """
@@ -2568,9 +2575,9 @@ def build_selectai_tab(pool):
                                         "  );\n"
                                         "END;"
                                     )
-                                    yield gr.Markdown(visible=True, value="✅ クエリに対するフィードバックを送信しました"), gr.Textbox(value=plsql)
+                                    yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="✅ クエリに対するフィードバックを送信しました"), gr.Textbox(value=plsql)
                         except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}"), gr.Textbox(value=str(e))
+                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}"), gr.Textbox(value=str(e))
 
                     dev_chat_execute_btn.click(
                         fn=_dev_step_generate,
@@ -2639,6 +2646,8 @@ def build_selectai_tab(pool):
                                         gr.Markdown("")
                         with gr.Row():
                             global_feedback_index_refresh_btn = gr.Button("最新エントリを取得", variant="primary")
+                        with gr.Row():
+                            global_feedback_index_refresh_status = gr.Markdown(visible=False)
 
                         with gr.Row():
                             global_feedback_index_df = gr.Dataframe(
@@ -2706,6 +2715,7 @@ def build_selectai_tab(pool):
 
                     def _view_feedback_index_global(profile_name: str):
                         try:
+                            yield gr.Markdown(visible=True, value="⏳ フィードバック索引を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=False)
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     prof = _resolve_profile_name(pool, str(profile_name or ""))
@@ -2744,11 +2754,12 @@ def build_selectai_tab(pool):
                                         cleaned_rows.append([_to_plain(v) for v in r])
                                     df = pd.DataFrame(cleaned_rows, columns=cols)
                                     if df.empty:
-                                        return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
-                                    return gr.Dataframe(visible=True, value=df), gr.Markdown(visible=False)
+                                        yield gr.Markdown(visible=False), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
+                                        return
+                                    yield gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df), gr.Markdown(visible=False)
                         except Exception as e:
                             logger.error(f"_view_feedback_index_global error: {e}")
-                            return gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
+                            yield gr.Markdown(visible=False), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません")
 
                     def _on_profile_select_change(profile_name: str):
                         try:
@@ -2771,7 +2782,7 @@ def build_selectai_tab(pool):
                     global_feedback_index_refresh_btn.click(
                         fn=_view_feedback_index_global,
                         inputs=[global_profile_select],
-                        outputs=[global_feedback_index_df, global_feedback_index_info],
+                        outputs=[global_feedback_index_refresh_status, global_feedback_index_df, global_feedback_index_info],
                     )
 
                     def on_index_row_select(evt: gr.SelectData, current_df):
@@ -2876,11 +2887,11 @@ def build_selectai_tab(pool):
                 with gr.TabItem(label="コメント管理"):
                     with gr.Accordion(label="1. オブジェクト選択", open=True):
                         with gr.Row():
-                            with gr.Column():
-                                cm_refresh_status = gr.Markdown(visible=False)
-                        with gr.Row():
                             with gr.Column():                        
                                 cm_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
+                        with gr.Row():
+                            with gr.Column():
+                                cm_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
                                 gr.Markdown("###### テーブル選択")
@@ -3008,6 +3019,7 @@ def build_selectai_tab(pool):
 
                     def _cm_refresh_objects():
                         try:
+                            yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
                             df_tab = _get_table_df_cached(pool, force=True)
                             df_view = _get_view_df_cached(pool, force=True)
                             names = []
@@ -3017,10 +3029,10 @@ def build_selectai_tab(pool):
                                 names.extend([str(x) for x in df_view["View Name"].tolist()])
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
+                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
                             logger.error(f"_cm_refresh_objects error: {e}")
-                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
                     def _cm_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text):
                         try:
@@ -3271,18 +3283,15 @@ def build_selectai_tab(pool):
                     dev_feedback_send_btn.click(
                         fn=_send_feedback,
                         inputs=[dev_feedback_type_select, dev_feedback_response_text, dev_feedback_content_text, dev_prompt_input, dev_profile_select],
-                        outputs=[dev_feedback_result, dev_feedback_used_sql_text],
+                        outputs=[dev_feedback_status, dev_feedback_result, dev_feedback_used_sql_text],
                     )
-
 
                 with gr.TabItem(label="アノテーション管理"):
                     with gr.Accordion(label="1. オブジェクト選択", open=True):
                         with gr.Row():
-                            with gr.Column():
-                                am_refresh_status = gr.Markdown(visible=False)
+                            am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
                         with gr.Row():
-                            with gr.Column():
-                                am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
+                            am_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
                                 gr.Markdown("###### テーブル選択")
@@ -3419,13 +3428,14 @@ def build_selectai_tab(pool):
 
                     def _am_refresh_objects():
                         try:
+                            yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
                             df_tab = _get_table_df_cached(pool, force=True)
                             df_view = _get_view_df_cached(pool, force=True)
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
+                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
-                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
                     def _am_fetch_structure(tables_selected, views_selected):
                         tables_selected = tables_selected or []
@@ -3790,10 +3800,10 @@ def build_selectai_tab(pool):
                                         gr.Markdown("")
                         with gr.Row():
                             with gr.Column():
-                                syn_refresh_status = gr.Markdown(visible=False)
+                                syn_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
                         with gr.Row():
                             with gr.Column():
-                                syn_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
+                                syn_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -3878,6 +3888,7 @@ def build_selectai_tab(pool):
 
                     def _syn_refresh_objects(profile_name):
                         try:
+                            yield gr.Markdown(visible=True, value="⏳ テーブル一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.Dropdown(visible=False, choices=[])
                             prof = _resolve_profile_name(pool, str(profile_name or ""))
                             df_tab = _get_table_df_cached(pool, force=True)
                             all_table_names = [str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]
@@ -3890,9 +3901,9 @@ def build_selectai_tab(pool):
                                     table_names = [t for t in table_names if t in prof_tables]
                             except Exception as e:
                                 logger.error(f"_syn_refresh_objects filter by profile error: {e}")
-                            return gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.Dropdown(choices=table_names)
+                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.Dropdown(choices=table_names)
                         except Exception as e:
-                            return gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
+                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
 
                     def _syn_build_prompt(tables_selected, rows_per_table, extra_text):
                         tbls = [str(t) for t in (tables_selected or []) if str(t).strip()]
@@ -4861,4 +4872,3 @@ def build_selectai_tab(pool):
             inputs=[profile_select],
             outputs=[profile_select],
         )
-
