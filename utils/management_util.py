@@ -161,12 +161,14 @@ def get_table_details(pool, table_name):
                     
                     # Add table comment
                     if table_comment:
-                        create_sql += f"\nCOMMENT ON TABLE {table_name.upper()} IS '{table_comment.replace("'", "''")}';\n"
+                        escaped_comment = table_comment.replace("'", "''")
+                        create_sql += f"\nCOMMENT ON TABLE {table_name.upper()} IS '{escaped_comment}';\n"
                     
                     # Add column comments
                     if col_comments:
                         for col_name, col_comment in col_comments:
-                            create_sql += f"COMMENT ON COLUMN {table_name.upper()}.{col_name} IS '{col_comment.replace("'", "''")}';\n"
+                            escaped_col_comment = col_comment.replace("'", "''")
+                            create_sql += f"COMMENT ON COLUMN {table_name.upper()}.{col_name} IS '{escaped_col_comment}';\n"
                 
                 logger.info(f"Retrieved details for table: {table_name}")
                 return col_df, create_sql
@@ -419,12 +421,14 @@ def get_view_details(pool, view_name):
                     create_sql += '\n'
                     
                     if view_comment:
-                        create_sql += f"\nCOMMENT ON TABLE {view_name.upper()} IS '{view_comment.replace("'", "''")}';\n"
+                        escaped_view_comment = view_comment.replace("'", "''")
+                        create_sql += f"\nCOMMENT ON TABLE {view_name.upper()} IS '{escaped_view_comment}';\n"
                     
                     # Add column comments
                     if col_comments:
                         for col_name, col_comment in col_comments:
-                            create_sql += f"COMMENT ON COLUMN {view_name.upper()}.{col_name} IS '{col_comment.replace("'", "''")}';\n"
+                            escaped_col_comment = col_comment.replace("'", "''")
+                            create_sql += f"COMMENT ON COLUMN {view_name.upper()}.{col_name} IS '{escaped_col_comment}';\n"
                 
                 logger.info(f"Retrieved details for view: {view_name}")
                 return col_df, create_sql
