@@ -229,7 +229,7 @@ def _load_profiles_from_json():
     try:
         json_path = _profiles_dir() / "selectai.json"
         if not json_path.exists():
-            return []
+            return [""]
         with json_path.open("r", encoding="utf-8") as f:
             profiles_data = json.load(f)
         # business_domainを優先して返す
@@ -239,11 +239,16 @@ def _load_profiles_from_json():
             if bd:
                 result.append(bd)
             else:
-                result.append(str(p.get("profile", "")))
+                pf = str(p.get("profile", "")).strip()
+                if pf or not bd:  # profileがあるか、両方空の場合も含める
+                    result.append(pf)
+        # 空の場合は空文字列を返す
+        if not result:
+            return [""]
         return result
     except Exception as e:
         logger.error(f"_load_profiles_from_json error: {e}")
-        return []
+        return [""]
         
 def get_db_profiles(pool) -> pd.DataFrame:
     try:
@@ -1610,9 +1615,14 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 dev_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="secondary")
                             with gr.Column(scale=5):
+                                # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                _dev_initial_choices = _dev_profile_names()
+                                if not _dev_initial_choices:
+                                    _dev_initial_choices = [""]
                                 dev_profile_select = gr.Dropdown(
                                     show_label=False,
-                                    choices=_dev_profile_names(),
+                                    choices=_dev_initial_choices,
+                                    value="" if "" in _dev_initial_choices else (_dev_initial_choices[0] if _dev_initial_choices else ""),
                                     interactive=True,
                                     container=False,
                                 )
@@ -2355,6 +2365,11 @@ def build_selectai_tab(pool):
                     def _predict_domain_and_set_profile(text):
                         """自然言語の質問から業務ドメインを予測し、対応するProfileを設定する"""
                         try:
+                            # プロフィール選択肢を取得
+                            profile_choices = _dev_profile_names()
+                            if not profile_choices:
+                                profile_choices = [""]
+                            
                             # 固定のモデル名を使用
                             mname = "business_domain"
                             sp_root = Path("./models")
@@ -2366,7 +2381,7 @@ def build_selectai_tab(pool):
                             
                             if not model_path.exists() or not meta_path.exists():
                                 logger.error(f"モデルファイルが見つかりません")
-                                return gr.Dropdown(value="")
+                                return gr.Dropdown(choices=profile_choices, value="")
                             
                             # メタ情報を読み込み
                             with meta_path.open("r", encoding="utf-8") as f:
@@ -2401,7 +2416,7 @@ def build_selectai_tab(pool):
                             profile_json_path = Path("./profiles/selectai.json")
                             if not profile_json_path.exists():
                                 logger.error("selectai.json not found")
-                                return gr.Dropdown(value="")
+                                return gr.Dropdown(choices=profile_choices, value="")
                             
                             with profile_json_path.open("r", encoding="utf-8") as f:
                                 profiles = json.load(f)
@@ -2413,22 +2428,23 @@ def build_selectai_tab(pool):
                                     matched_profile = str(item.get("profile", "")).strip()
                                     break
                             
-                            # プロフィール選択肢を取得
-                            profile_choices = _dev_profile_names()
-                            
                             # マッチしたprofileが選択肢に存在するか確認
                             if matched_profile and matched_profile in profile_choices:
                                 logger.info(f"Setting profile to: {matched_profile}")
-                                return gr.Dropdown(value=matched_profile)
+                                return gr.Dropdown(choices=profile_choices, value=matched_profile)
                             else:
                                 logger.warning(f"Profile '{matched_profile}' not found in choices, setting to empty")
-                                return gr.Dropdown(value="")
+                                return gr.Dropdown(choices=profile_choices, value="")
                             
                         except Exception as e:
                             logger.error(f"_predict_domain_and_set_profile error: {e}")
                             import traceback
                             logger.error(traceback.format_exc())
-                            return gr.Dropdown(value="")
+                            # エラー時もchoicesを指定する
+                            profile_choices = _dev_profile_names()
+                            if not profile_choices:
+                                profile_choices = [""]
+                            return gr.Dropdown(choices=profile_choices, value="")
 
                     def _append_comment(current_text: str, template: str):
                         s = str(current_text or "").strip()
@@ -2606,9 +2622,14 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("Profile", elem_classes="input-label")
                                     with gr.Column(scale=5):
+                                        # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                        _global_initial_choices = _global_profile_names()
+                                        if not _global_initial_choices:
+                                            _global_initial_choices = [""]
                                         global_profile_select = gr.Dropdown(
                                             show_label=False,
-                                            choices=_global_profile_names(),
+                                            choices=_global_initial_choices,
+                                            value="" if "" in _global_initial_choices else (_global_initial_choices[0] if _global_initial_choices else ""),
                                             interactive=True,
                                             container=False,
                                         )
@@ -3752,7 +3773,17 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("Profile", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        syn_profile_select = gr.Dropdown(show_label=False, choices=_load_profiles_from_json(), interactive=True, container=False)
+                                        # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                        _syn_initial_choices = _load_profiles_from_json()
+                                        if not _syn_initial_choices:
+                                            _syn_initial_choices = [""]
+                                        syn_profile_select = gr.Dropdown(
+                                            show_label=False,
+                                            choices=_syn_initial_choices,
+                                            value="" if "" in _syn_initial_choices else (_syn_initial_choices[0] if _syn_initial_choices else ""),
+                                            interactive=True,
+                                            container=False
+                                        )
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -4058,7 +4089,17 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("Profile", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        rev_profile_select = gr.Dropdown(show_label=False, choices=_load_profiles_from_json(), interactive=True, container=False)
+                                        # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                        _rev_initial_choices = _load_profiles_from_json()
+                                        if not _rev_initial_choices:
+                                            _rev_initial_choices = [""]
+                                        rev_profile_select = gr.Dropdown(
+                                            show_label=False,
+                                            choices=_rev_initial_choices,
+                                            value="" if "" in _rev_initial_choices else (_rev_initial_choices[0] if _rev_initial_choices else ""),
+                                            interactive=True,
+                                            container=False
+                                        )
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -4318,9 +4359,14 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
+                                        # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                        _initial_choices = _profile_names()
+                                        if not _initial_choices:
+                                            _initial_choices = [""]
                                         profile_select = gr.Dropdown(
                                             show_label=False,
-                                            choices=_profile_names(),
+                                            choices=_initial_choices,
+                                            value="" if "" in _initial_choices else (_initial_choices[0] if _initial_choices else ""),
                                             interactive=True,
                                             container=False,
                                         )
