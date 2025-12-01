@@ -235,68 +235,21 @@ def _lessons() -> List[Dict[str, str]]:
         },
         {
             "id": "L13",
-            "title": "ORDER BYとFETCH",
-            "desc": "給与が高い上位5名のみ取得します。",
-            "sql": "SELECT EMPLOYEE_NAME, SALARY FROM EMPLOYEE ORDER BY SALARY DESC FETCH FIRST 5 ROWS ONLY;",
-        },
-        {
-            "id": "L14",
             "title": "DISTINCT",
             "desc": "部門の一覧（重複なし）を取得します。",
             "sql": "SELECT DISTINCT DEPARTMENT_NAME FROM DEPARTMENT ORDER BY DEPARTMENT_NAME;",
         },
         {
-            "id": "L15",
-            "title": "ビュー活用（V_DEPT_PROJECT）",
-            "desc": "部門とプロジェクトの一覧を表示します。",
-            "sql": "SELECT DEPARTMENT_NAME, PROJECT_NAME, BUDGET FROM V_DEPT_PROJECT ORDER BY DEPARTMENT_NAME, PROJECT_NAME;",
-        },
-        {
-            "id": "L16",
+            "id": "L14",
             "title": "日付関数（今年開始のプロジェクト）",
             "desc": "当年開始のプロジェクトのみを抽出します。",
             "sql": "SELECT PROJECT_NAME, START_DATE, BUDGET FROM PROJECT WHERE EXTRACT(YEAR FROM START_DATE) = EXTRACT(YEAR FROM SYSDATE) ORDER BY START_DATE;",
         },
         {
-            "id": "L17",
+            "id": "L15",
             "title": "CASE式（給与帯ラベル）",
             "desc": "給与額に応じてS/M/Lのラベルを付けます。",
             "sql": "SELECT EMPLOYEE_NAME, SALARY, CASE WHEN SALARY >= 600000 THEN 'S' WHEN SALARY >= 500000 THEN 'M' ELSE 'L' END AS 給与帯 FROM EMPLOYEE ORDER BY SALARY DESC;",
-        },
-        {
-            "id": "L18",
-            "title": "日本拠点のみ（LOCATIONでフィルタ）",
-            "desc": "東京や大阪など主要拠点の部門のみを抽出します。",
-            "sql": "SELECT DEPARTMENT_NAME, LOCATION FROM DEPARTMENT WHERE LOCATION IN ('東京','大阪','名古屋','福岡') ORDER BY LOCATION, DEPARTMENT_NAME;",
-        },
-        {
-            "id": "L19",
-            "title": "部門別予算合計（プロジェクト集約）",
-            "desc": "部門ごとにプロジェクト予算の合計を確認します。",
-            "sql": "SELECT d.DEPARTMENT_NAME, SUM(p.BUDGET) AS 部門予算合計 FROM DEPARTMENT d JOIN PROJECT p ON d.DEPARTMENT_ID = p.DEPARTMENT_ID GROUP BY d.DEPARTMENT_NAME ORDER BY 部門予算合計 DESC;",
-        },
-        {
-            "id": "L20",
-            "title": "WITH句＋サブクエリの組み合わせ",
-            "desc": "高コストプロジェクトを持つ部門と、部門内平均給与を同時に確認します。",
-            "sql": (
-                "WITH high_budget AS (\n"
-                "  SELECT DEPARTMENT_ID, SUM(BUDGET) AS TOTAL_BUDGET\n"
-                "    FROM PROJECT\n"
-                "    GROUP BY DEPARTMENT_ID\n"
-                "),\n"
-                "dept_avg AS (\n"
-                "  SELECT DEPARTMENT_ID, AVG(SALARY) AS AVG_SAL\n"
-                "    FROM EMPLOYEE\n"
-                "    GROUP BY DEPARTMENT_ID\n"
-                ")\n"
-                "SELECT d.DEPARTMENT_NAME, hb.TOTAL_BUDGET, da.AVG_SAL\n"
-                "  FROM DEPARTMENT d\n"
-                "  LEFT JOIN high_budget hb ON d.DEPARTMENT_ID = hb.DEPARTMENT_ID\n"
-                "  LEFT JOIN dept_avg da ON d.DEPARTMENT_ID = da.DEPARTMENT_ID\n"
-                "  WHERE hb.TOTAL_BUDGET IS NOT NULL\n"
-                "  ORDER BY hb.TOTAL_BUDGET DESC;"
-            ),
         },
     ]
     return lessons
