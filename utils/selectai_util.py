@@ -22,6 +22,8 @@ import oci
 from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import EmbedTextDetails
 
+from utils.common_util import remove_comments
+
 from utils.management_util import (
     get_table_list,
     get_view_list,
@@ -4229,7 +4231,10 @@ def build_selectai_tab(pool):
                             if not region or not compartment_id:
                                 return gr.Textbox(value="ℹ️ OCI設定が不足しています")
                             ctx_comp = _rev_build_context_text(profile_name)
-                            s = str(sql_text or "").strip()
+                            
+                            # コメントを除去
+                            s = remove_comments(str(sql_text or "").strip())
+                            
                             prompt = (
                                 "与えられたSQLとデータベースの文脈から、そのSQLが生成されるような最適な日本語の質問を1つだけ作成してください。\n"
                                 "出力は質問文のみ。接頭辞や説明、コードブロック、Markdownは禁止。\n\n"

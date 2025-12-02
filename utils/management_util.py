@@ -10,6 +10,7 @@ import re
 
 import gradio as gr
 import pandas as pd
+from utils.common_util import remove_comments
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1241,8 +1242,9 @@ def build_management_tab(pool):
             
             def execute_create(sql):
                 """Execute CREATE TABLE and refresh list."""
+                sql_no_comment = remove_comments(sql)
                 yield gr.Markdown(visible=True, value="⏳ テーブル作成を実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
-                result = execute_create_table(pool, sql)
+                result = execute_create_table(pool, sql_no_comment)
                 new_list = get_table_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
                 yield status_md, gr.Dataframe(value=new_list, visible=True)
@@ -1588,8 +1590,9 @@ def build_management_tab(pool):
             
             def execute_create_view_handler(sql):
                 """Execute CREATE VIEW and refresh list."""
+                sql_no_comment = remove_comments(sql)
                 yield gr.Markdown(visible=True, value="⏳ ビュー作成を実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
-                result = execute_create_view(pool, sql)
+                result = execute_create_view(pool, sql_no_comment)
                 new_list = get_view_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
                 yield status_md, gr.Dataframe(value=new_list, visible=True)
@@ -2045,8 +2048,9 @@ def build_management_tab(pool):
             
             def execute_sql(sql):
                 """Execute SQL statements."""
+                sql_no_comment = remove_comments(sql)
                 yield gr.Markdown(visible=True, value="⏳ SQL一括実行中..."), gr.Markdown(visible=False)
-                result = execute_data_sql(pool, sql)
+                result = execute_data_sql(pool, sql_no_comment)
                 yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=result)
             
             def clear_sql():

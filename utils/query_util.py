@@ -13,6 +13,7 @@ import gradio as gr
 import pandas as pd
 import oracledb
 from oracledb import DatabaseError
+from utils.common_util import remove_comments
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -588,7 +589,8 @@ def build_query_tab(pool):
         def on_execute(sql, limit):
             try:
                 yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
-                result_info, result_df, result_style = execute_sql_general(pool, sql, limit)
+                sql_no_comment = remove_comments(sql)
+                result_info, result_df, result_style = execute_sql_general(pool, sql_no_comment, limit)
                 yield result_info, result_df, result_style
             except Exception as e:
                 yield gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {str(e)}"), gr.Dataframe(visible=False), gr.HTML(visible=False, value="")

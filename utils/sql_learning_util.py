@@ -14,6 +14,7 @@ import gradio as gr
 import pandas as pd
 
 from utils.query_util import execute_sql_general, execute_select_sql
+from utils.common_util import remove_comments
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -428,7 +429,8 @@ def build_sql_learning_tab(pool):
 
         def _run_lesson(sql_text: str):
             try:
-                info_md, df_comp, style_html = execute_select_sql(pool, sql_text, limit=1000)
+                sql_no_comment = remove_comments(sql_text)
+                info_md, df_comp, style_html = execute_select_sql(pool, sql_no_comment, limit=1000)
                 # データが返却されなかった場合はDataFrameを非表示にする
                 df_value = df_comp.value if hasattr(df_comp, 'value') else df_comp
                 if df_value is None or (isinstance(df_value, pd.DataFrame) and df_value.empty):
