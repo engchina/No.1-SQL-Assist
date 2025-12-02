@@ -20,7 +20,7 @@ import logging
 
 from utils.auth_util import do_auth
 from utils.css_util import custom_css
-from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab
+from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab, build_openai_settings_tab
 from utils.chat_util import build_oci_chat_test_tab
 from utils.management_util import build_management_tab
 from utils.selectai_util import build_selectai_tab
@@ -210,6 +210,9 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
 
             # OCI GenAI Embeddingテストタブを構築
             build_oci_embedding_test_tab(pool)
+
+            # OpenAI設定タブを構築
+            build_openai_settings_tab()
 
         with gr.TabItem(label="データベース管理"):
             # 管理機能タブを構築

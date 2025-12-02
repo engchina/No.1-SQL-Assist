@@ -611,6 +611,106 @@ def build_oci_embedding_test_tab(pool):
 
     return tab_test_oci_cred
 
+
+def build_openai_settings_tab():
+    """OpenAI設定タブのUIを構築する.
+
+    Returns:
+        gr.TabItem: OpenAI設定タブ
+    """
+
+    def load_openai_settings():
+        """設定をロードする"""
+        # .envから値を再読み込み
+        env_path = find_dotenv(usecwd=True)
+        load_dotenv(env_path, override=True)
+        
+        base_url = os.getenv("OPENAI_BASE_URL", "")
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        
+        # API Keyは表示しない（プレースホルダーのみ）
+        masked_key = ""
+        if api_key:
+            masked_key = "sk-..." # 存在することを示す
+            
+        return base_url, "" # API Keyはセキュリティのため空で返す（変更時のみ入力させる）
+
+    def save_openai_settings(base_url, api_key):
+        """設定を保存する"""
+        if not base_url:
+            return gr.Markdown(visible=True, value="❌ Base URLは必須です")
+        if not api_key:
+            # 既存のキーがあるか確認し、なければエラー
+            # ここでは要件に従い「変更する場合は再入力必須」とし、空の場合はエラーとする
+            return gr.Markdown(visible=True, value="❌ API Keyは必須です")
+
+        try:
+            env_path = find_dotenv(usecwd=True)
+            if not env_path:
+                # .envがない場合は作成
+                env_path = Path(os.getcwd()) / ".env"
+                env_path.touch()
+            
+            set_key(env_path, "OPENAI_BASE_URL", str(base_url).strip())
+            set_key(env_path, "OPENAI_API_KEY", str(api_key).strip())
+            
+            # 環境変数をリロード
+            load_dotenv(env_path, override=True)
+            
+            return gr.Markdown(visible=True, value="✅ 設定を保存しました")
+        except Exception as e:
+            logger.error(f"Error saving OpenAI settings: {e}")
+            return gr.Markdown(visible=True, value=f"❌ 保存に失敗しました: {e}")
+
+    with gr.TabItem(label="OpenAI設定") as tab_openai_settings:
+        with gr.Accordion(label="", open=True):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("Base URL*", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    openai_base_url_input = gr.Textbox(
+                        show_label=False,
+                        lines=1,
+                        interactive=True,
+                        container=False,
+                        placeholder="https://api.openai.com/v1"
+                    )
+
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("API Key*", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    openai_api_key_input = gr.Textbox(
+                        show_label=False,
+                        lines=1,
+                        interactive=True,
+                        container=False,
+                        type="password",
+                        placeholder="入力すると更新されます"
+                    )
+
+            with gr.Row():
+                with gr.Column():
+                    openai_save_btn = gr.Button(value="保存", variant="primary")
+            
+            with gr.Row():
+                openai_status_md = gr.Markdown(visible=False)
+
+        # 初期ロード
+        tab_openai_settings.select(
+            load_openai_settings,
+            outputs=[openai_base_url_input, openai_api_key_input]
+        )
+        
+        # 保存アクション
+        openai_save_btn.click(
+            save_openai_settings,
+            inputs=[openai_base_url_input, openai_api_key_input],
+            outputs=[openai_status_md]
+        )
+
+    return tab_openai_settings
+
 def create_oci_db_credential_from_config(pool=None):
     try:
         yield gr.Button(value="作成中...", interactive=False), gr.Markdown(visible=True, value="⏳ OCI_CRED作成中..."), gr.Textbox(value="")
