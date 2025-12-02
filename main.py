@@ -212,7 +212,7 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
             build_oci_embedding_test_tab(pool)
 
             # OpenAI設定タブを構築
-            build_openai_settings_tab()
+            build_openai_settings_tab(pool)
 
         with gr.TabItem(label="データベース管理"):
             # 管理機能タブを構築

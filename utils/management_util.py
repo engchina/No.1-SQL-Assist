@@ -1142,6 +1142,8 @@ def build_management_tab(pool):
                                             "xai.grok-4",
                                             "xai.grok-4-fast-non-reasoning",
                                             "meta.llama-4-scout-17b-16e-instruct",
+                                            "gpt-4o",
+                                            "gpt-5.1",
                                         ],
                                         value="xai.grok-code-fast-1",
                                         interactive=True,
@@ -1284,14 +1286,15 @@ def build_management_tab(pool):
             )
 
             async def _table_ai_analyze_async(model_name, create_sql_text, exec_result_text):
-                from utils.chat_util import get_oci_region, get_compartment_id
-                region = get_oci_region()
-                compartment_id = get_compartment_id()
-                if not region or not compartment_id:
-                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
+                if not model_name.startswith("gpt-"):
+                    from utils.chat_util import get_oci_region, get_compartment_id
+                    region = get_oci_region()
+                    compartment_id = get_compartment_id()
+                    if not region or not compartment_id:
+                        return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
                     import pandas as pd
-                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                    
                     sql_part = str(create_sql_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
@@ -1302,20 +1305,34 @@ def build_management_tab(pool):
                         + ("SQL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
                         + ("実行結果:\n" + result_part + "\n" if result_part else "")
                     )
-                    client = AsyncOciOpenAI(
-                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                        auth=OciUserPrincipalAuth(),
-                        compartment_id=compartment_id,
-                    )
+                    
                     messages = [
                         {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                         {"role": "user", "content": prompt},
                     ]
-                    resp = await client.chat.completions.create(model=model_name, messages=messages)
-                    text = ""
-                    if getattr(resp, "choices", None):
-                        msg = resp.choices[0].message
-                        text = msg.content if hasattr(msg, "content") else ""
+
+                    if model_name.startswith("gpt-"):
+                        from openai import AsyncOpenAI
+                        client = AsyncOpenAI()
+                        # Use Chat Completions API instead of Responses API to avoid 404 errors
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        text = ""
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            text = msg.content if hasattr(msg, "content") else ""
+                    else:
+                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                        client = AsyncOciOpenAI(
+                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                            auth=OciUserPrincipalAuth(),
+                            compartment_id=compartment_id,
+                        )
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        text = ""
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            text = msg.content if hasattr(msg, "content") else ""
+                            
                     return gr.Markdown(visible=True, value=text or "分析結果が空です")
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
@@ -1423,6 +1440,8 @@ def build_management_tab(pool):
                                         "xai.grok-4",
                                         "xai.grok-4-fast-non-reasoning",
                                         "meta.llama-4-scout-17b-16e-instruct",
+                                        "gpt-4o",
+                                        "gpt-5.1",
                                     ],
                                     value="xai.grok-code-fast-1",
                                     interactive=True,
@@ -1493,9 +1512,11 @@ def build_management_tab(pool):
                                             "xai.grok-3-fast",
                                             "xai.grok-4",
                                             "xai.grok-4-fast-non-reasoning",
-                                            "meta.llama-4-scout-17b-16e-instruct",
-                                        ],
-                                        value="xai.grok-code-fast-1",
+                                        "meta.llama-4-scout-17b-16e-instruct",
+                                        "gpt-4o",
+                                        "gpt-5.1",
+                                    ],
+                                    value="xai.grok-code-fast-1",
                                         interactive=True,
                                         container=False,
                                     )
@@ -1621,11 +1642,12 @@ def build_management_tab(pool):
             )
 
             async def _view_join_where_ai_extract_async(model_name, ddl_text):
-                from utils.chat_util import get_oci_region, get_compartment_id
-                region = get_oci_region()
-                compartment_id = get_compartment_id()
-                if not region or not compartment_id:
-                    return gr.Textbox(value=""), gr.Textbox(value="")
+                if not model_name.startswith("gpt-"):
+                    from utils.chat_util import get_oci_region, get_compartment_id
+                    region = get_oci_region()
+                    compartment_id = get_compartment_id()
+                    if not region or not compartment_id:
+                        return gr.Textbox(value=""), gr.Textbox(value="")
                 try:
                     s = str(ddl_text or "").strip()
                     if not s:
@@ -1633,12 +1655,7 @@ def build_management_tab(pool):
                     m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", s, flags=re.IGNORECASE)
                     if m:
                         s = m.group(0)
-                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                    client = AsyncOciOpenAI(
-                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                        auth=OciUserPrincipalAuth(),
-                        compartment_id=compartment_id,
-                    )
+                    
                     prompt = (
                         "Extract ONLY JOIN and WHERE conditions from the SQL query below.\n"
                         "Output in STRICT format (no explanations, no markdown, no extra text):\n\n"
@@ -1661,17 +1678,37 @@ def build_management_tab(pool):
                         {"role": "system", "content": "You are a SQL parser. Output ONLY the requested format. No explanations."},
                         {"role": "user", "content": prompt},
                     ]
-                    resp = await client.chat.completions.create(model=model_name, messages=messages)
+                    
+                    if model_name.startswith("gpt-"):
+                        from openai import AsyncOpenAI
+                        client = AsyncOpenAI()
+                        # Use Chat Completions API instead of Responses API to avoid 404 errors
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        out = ""
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            out = msg.content if hasattr(msg, "content") else ""
+                    else:
+                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                        client = AsyncOciOpenAI(
+                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                            auth=OciUserPrincipalAuth(),
+                            compartment_id=compartment_id,
+                        )
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            out = msg.content if hasattr(msg, "content") else ""
+                        else:
+                            out = ""
+
                     join_text = ""
                     where_text = ""
-                    if getattr(resp, "choices", None):
-                        msg = resp.choices[0].message
-                        out = msg.content if hasattr(msg, "content") else ""
-                        s2 = re.sub(r"```+\w*", "", str(out or ""))
-                        m2 = re.search(r"JOIN:\s*([\s\S]*?)\n\s*WHERE:\s*([\s\S]*)$", s2, flags=re.IGNORECASE)
-                        if m2:
-                            join_text = m2.group(1).strip()
-                            where_text = m2.group(2).strip()
+                    s2 = re.sub(r"```+\w*", "", str(out or ""))
+                    m2 = re.search(r"JOIN:\s*([\s\S]*?)\n\s*WHERE:\s*([\s\S]*)$", s2, flags=re.IGNORECASE)
+                    if m2:
+                        join_text = m2.group(1).strip()
+                        where_text = m2.group(2).strip()
                     if not join_text:
                         join_text = "None"
                     if not where_text:
@@ -1719,14 +1756,15 @@ def build_management_tab(pool):
             )
 
             async def _view_ai_analyze_async(model_name, create_sql_text, exec_result_text):
-                from utils.chat_util import get_oci_region, get_compartment_id
-                region = get_oci_region()
-                compartment_id = get_compartment_id()
-                if not region or not compartment_id:
-                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
+                if not model_name.startswith("gpt-"):
+                    from utils.chat_util import get_oci_region, get_compartment_id
+                    region = get_oci_region()
+                    compartment_id = get_compartment_id()
+                    if not region or not compartment_id:
+                        return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
                     import pandas as pd
-                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                    
                     sql_part = str(create_sql_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
@@ -1737,20 +1775,33 @@ def build_management_tab(pool):
                         + ("SQL/DDL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
                         + ("実行結果:\n" + result_part + "\n" if result_part else "")
                     )
-                    client = AsyncOciOpenAI(
-                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                        auth=OciUserPrincipalAuth(),
-                        compartment_id=compartment_id,
-                    )
                     messages = [
                         {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                         {"role": "user", "content": prompt},
                     ]
-                    resp = await client.chat.completions.create(model=model_name, messages=messages)
-                    text = ""
-                    if getattr(resp, "choices", None):
-                        msg = resp.choices[0].message
-                        text = msg.content if hasattr(msg, "content") else ""
+                    
+                    if model_name.startswith("gpt-"):
+                        from openai import AsyncOpenAI
+                        client = AsyncOpenAI()
+                        # Use Chat Completions API instead of Responses API to avoid 404 errors
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        text = ""
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            text = msg.content if hasattr(msg, "content") else ""
+                    else:
+                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                        client = AsyncOciOpenAI(
+                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                            auth=OciUserPrincipalAuth(),
+                            compartment_id=compartment_id,
+                        )
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        text = ""
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            text = msg.content if hasattr(msg, "content") else ""
+                            
                     return gr.Markdown(visible=True, value=text or "分析結果が空です")
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
@@ -1971,6 +2022,8 @@ def build_management_tab(pool):
                                             "xai.grok-4",
                                             "xai.grok-4-fast-non-reasoning",
                                             "meta.llama-4-scout-17b-16e-instruct",
+                                            "gpt-4o",
+                                            "gpt-5.1",
                                         ],
                                         value="xai.grok-code-fast-1",
                                         interactive=True,
@@ -2126,14 +2179,15 @@ def build_management_tab(pool):
             )
 
             async def _data_ai_analyze_async(model_name, create_sql_text, exec_result_text):
-                from utils.chat_util import get_oci_region, get_compartment_id
-                region = get_oci_region()
-                compartment_id = get_compartment_id()
-                if not region or not compartment_id:
-                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
+                if not model_name.startswith("gpt-"):
+                    from utils.chat_util import get_oci_region, get_compartment_id
+                    region = get_oci_region()
+                    compartment_id = get_compartment_id()
+                    if not region or not compartment_id:
+                        return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
                     import pandas as pd
-                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                    
                     sql_part = str(create_sql_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
                     prompt = (
@@ -2144,20 +2198,34 @@ def build_management_tab(pool):
                         + ("SQL:\n```sql\n" + sql_part + "\n```\n" if sql_part else "")
                         + ("実行結果:\n" + result_part + "\n" if result_part else "")
                     )
-                    client = AsyncOciOpenAI(
-                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                        auth=OciUserPrincipalAuth(),
-                        compartment_id=compartment_id,
-                    )
+                    
                     messages = [
                         {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                         {"role": "user", "content": prompt},
                     ]
-                    resp = await client.chat.completions.create(model=model_name, messages=messages)
-                    text = ""
-                    if getattr(resp, "choices", None):
-                        msg = resp.choices[0].message
-                        text = msg.content if hasattr(msg, "content") else ""
+                    
+                    if model_name.startswith("gpt-"):
+                        from openai import AsyncOpenAI
+                        client = AsyncOpenAI()
+                        # Use Chat Completions API instead of Responses API to avoid 404 errors
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        text = ""
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            text = msg.content if hasattr(msg, "content") else ""
+                    else:
+                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                        client = AsyncOciOpenAI(
+                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                            auth=OciUserPrincipalAuth(),
+                            compartment_id=compartment_id,
+                        )
+                        resp = await client.chat.completions.create(model=model_name, messages=messages)
+                        text = ""
+                        if getattr(resp, "choices", None):
+                            msg = resp.choices[0].message
+                            text = msg.content if hasattr(msg, "content") else ""
+                            
                     return gr.Markdown(visible=True, value=text or "分析結果が空です")
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")

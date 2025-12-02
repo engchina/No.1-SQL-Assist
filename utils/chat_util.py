@@ -9,6 +9,7 @@ from typing import List
 
 import gradio as gr
 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+from openai import AsyncOpenAI
 from dotenv import find_dotenv, get_key
 import asyncio
 import os
@@ -74,24 +75,25 @@ async def send_chat_message_async(
         return
 
     try:
-        # Get region and compartment ID
-        region = get_oci_region()
-        compartment_id = get_compartment_id()
-        
-        if not region:
-            logger.error("OCI region not found")
-            logger.info("=" * 50)
-            yield history, message
-            return
-        
-        if not compartment_id:
-            logger.error("Compartment ID not found")
-            logger.info("=" * 50)
-            yield history, message
-            return
-
-        logger.info(f"Using region: {region}")
-        logger.info(f"Using compartment: {compartment_id[:20]}...")
+        if not chat_model.startswith("gpt-"):
+            # Get region and compartment ID
+            region = get_oci_region()
+            compartment_id = get_compartment_id()
+            
+            if not region:
+                logger.error("OCI region not found")
+                logger.info("=" * 50)
+                yield history, message
+                return
+            
+            if not compartment_id:
+                logger.error("Compartment ID not found")
+                logger.info("=" * 50)
+                yield history, message
+                return
+    
+            logger.info(f"Using region: {region}")
+            logger.info(f"Using compartment: {compartment_id[:20]}...")
 
         # Build messages for the API from history
         messages = []
@@ -101,38 +103,65 @@ async def send_chat_message_async(
         # Add current message
         messages.append({"role": "user", "content": message})
 
-        # Create OCI OpenAI client
-        client = AsyncOciOpenAI(
-            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-            auth=OciUserPrincipalAuth(),
-            compartment_id=compartment_id,
-        )
-
-        logger.info("Calling OCI GenAI API with streaming...")
-        
-        # Call the API with streaming
-        stream = await client.chat.completions.create(
-            model=chat_model,
-            messages=messages,
-            stream=True,
-        )
-
         # Add user message to history first
         history.append({"role": "user", "content": message})
         # Then add empty assistant message for streaming
         history.append({"role": "assistant", "content": ""})
-        
-        # Collect streaming response
-        response_text = ""
-        
-        async for chunk in stream:
-            if chunk.choices and len(chunk.choices) > 0:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    response_text += delta.content
-                    # Update the last message in history with accumulated response
-                    history[-1] = {"role": "assistant", "content": response_text}
-                    yield history, ""
+
+        if chat_model.startswith("gpt-"):
+            logger.info(f"Using OpenAI client for model: {chat_model}")
+            client = AsyncOpenAI()
+            
+            # Use standard Chat Completions API which is stable and widely supported
+            # Responses API (v1/responses) is in preview and may not be available in all regions/accounts
+            # causing 404 Not Found errors.
+            logger.info("Calling OpenAI Chat Completions API...")
+            stream = await client.chat.completions.create(
+                model=chat_model,
+                messages=messages,
+                stream=True
+            )
+            
+            # Collect streaming response
+            response_text = ""
+            
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        response_text += delta.content
+                        # Update the last message in history with accumulated response
+                        history[-1] = {"role": "assistant", "content": response_text}
+                        yield history, ""
+            
+        else:
+            # Create OCI OpenAI client
+            client = AsyncOciOpenAI(
+                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                auth=OciUserPrincipalAuth(),
+                compartment_id=compartment_id,
+            )
+    
+            logger.info("Calling OCI GenAI API with streaming...")
+            
+            # Call the API with streaming
+            stream = await client.chat.completions.create(
+                model=chat_model,
+                messages=messages,
+                stream=True,
+            )
+    
+            # Collect streaming response
+            response_text = ""
+            
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        response_text += delta.content
+                        # Update the last message in history with accumulated response
+                        history[-1] = {"role": "assistant", "content": response_text}
+                        yield history, ""
         
         if not response_text:
             logger.warning("Empty response from API")
@@ -220,6 +249,8 @@ def build_oci_chat_test_tab(pool):
                                             "xai.grok-4",
                                             "xai.grok-4-fast-non-reasoning",
                                             "meta.llama-4-scout-17b-16e-instruct",
+                                            "gpt-4o",
+                                            "gpt-5.1",
                                         ],
                                         value="xai.grok-code-fast-1",
                                         interactive=True,
@@ -264,11 +295,14 @@ def build_oci_chat_test_tab(pool):
                         # empty message
                         yield gr.Markdown(visible=True, value="⚠️ メッセージを入力してください"), history, message
                         return
-                    region = get_oci_region()
-                    compartment_id = get_compartment_id()
-                    if not region or not compartment_id:
-                        yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), history, message
-                        return
+                    
+                    if not chat_model.startswith("gpt-"):
+                        region = get_oci_region()
+                        compartment_id = get_compartment_id()
+                        if not region or not compartment_id:
+                            yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), history, message
+                            return
+
                     yield gr.Markdown(visible=True, value="⏳ 送信中..."), history, message
                     last_hist, last_msg = history, message
                     for h, m in send_chat_message(message, history, chat_model):

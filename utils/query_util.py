@@ -496,6 +496,8 @@ def build_query_tab(pool):
                                         "xai.grok-4",
                                         "xai.grok-4-fast-non-reasoning",
                                         "meta.llama-4-scout-17b-16e-instruct",
+                                        "gpt-4o",
+                                        "gpt-5.1",
                                     ],
                                     value="xai.grok-code-fast-1",
                                     interactive=True,
@@ -511,14 +513,15 @@ def build_query_tab(pool):
                     ai_result_md = gr.Markdown(visible=False)
 
         async def _ai_analyze_async(model_name, sql_text, result_info_text, result_df_val=None):
-            from utils.chat_util import get_oci_region, get_compartment_id
-            region = get_oci_region()
-            compartment_id = get_compartment_id()
-            if not region or not compartment_id:
-                return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
+            if not model_name.startswith("gpt-"):
+                from utils.chat_util import get_oci_region, get_compartment_id
+                region = get_oci_region()
+                compartment_id = get_compartment_id()
+                if not region or not compartment_id:
+                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
             try:
                 import pandas as pd
-                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                
                 q = (sql_text or "").strip()
                 if q.endswith(";"):
                     q = q[:-1]
@@ -539,20 +542,34 @@ def build_query_tab(pool):
                     + ("実行結果メッセージ:\n" + info_text + "\n" if info_text else "")
                     + ("実行結果データ:\n" + df_text + "\n" if df_text else "")
                 )
-                client = AsyncOciOpenAI(
-                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                    auth=OciUserPrincipalAuth(),
-                    compartment_id=compartment_id,
-                )
+                
                 messages = [
                     {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                     {"role": "user", "content": prompt},
                 ]
-                resp = await client.chat.completions.create(model=model_name, messages=messages)
-                text = ""
-                if getattr(resp, "choices", None):
-                    msg = resp.choices[0].message
-                    text = msg.content if hasattr(msg, "content") else ""
+                
+                if model_name.startswith("gpt-"):
+                    from openai import AsyncOpenAI
+                    client = AsyncOpenAI()
+                    # Use Chat Completions API instead of Responses API to avoid 404 errors
+                    resp = await client.chat.completions.create(model=model_name, messages=messages)
+                    text = ""
+                    if getattr(resp, "choices", None):
+                        msg = resp.choices[0].message
+                        text = msg.content if hasattr(msg, "content") else ""
+                else:
+                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                    client = AsyncOciOpenAI(
+                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                        auth=OciUserPrincipalAuth(),
+                        compartment_id=compartment_id,
+                    )
+                    resp = await client.chat.completions.create(model=model_name, messages=messages)
+                    text = ""
+                    if getattr(resp, "choices", None):
+                        msg = resp.choices[0].message
+                        text = msg.content if hasattr(msg, "content") else ""
+                        
                 return gr.Markdown(visible=True, value=text or "分析結果が空です")
             except Exception as e:
                 return gr.Markdown(visible=True, value=f"❌ エラー: {e}")

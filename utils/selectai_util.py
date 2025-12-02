@@ -452,12 +452,44 @@ def create_db_profile(
         "object_list": [],
     }
 
+    # gpt-* モデルの場合は provider と credential_name を変更
+    if str(model).startswith("gpt-"):
+        if "provider" in attrs:
+            del attrs["provider"]
+        # attrs["provider"] = "openai"
+        env_path = find_dotenv()
+        load_dotenv(env_path, override=True)
+        base_url = os.getenv("OPENAI_BASE_URL", "")
+        
+        # provider_endpoint の整形: プロトコルと /v1 サフィックスを除去
+        endpoint = base_url.replace("https://", "").replace("http://", "")
+        if endpoint.endswith("/v1"):
+            endpoint = endpoint[:-3]
+        if endpoint.endswith("/"):
+            endpoint = endpoint[:-1]
+            
+        if ":" in endpoint:
+             endpoint = endpoint.split(":")[0]
+
+        attrs["provider_endpoint"] = endpoint
+        attrs["credential_name"] = "OPENAI_CRED"
+        # openai provider usually doesn't need region/compartment in attributes 
+        # but keeping them might not hurt or might be ignored.
+        # However, for safety and cleaner config:
+        if "oci_compartment_id" in attrs:
+            del attrs["oci_compartment_id"]
+        if "region" in attrs:
+            del attrs["region"]
+
     for t in tables or []:
         attrs["object_list"].append({"owner": "ADMIN", "name": t})
     for v in views or []:
         attrs["object_list"].append({"owner": "ADMIN", "name": v})
 
     attr_str = json.dumps(attrs, ensure_ascii=False)
+    
+    if "provider_endpoint" in attrs:
+        logger.info(f"provider_endpoint: {attrs['provider_endpoint']}")
 
     with pool.acquire() as conn:
         with conn.cursor() as cursor:
@@ -591,6 +623,8 @@ def build_selectai_tab(pool):
                                             show_label=False,
                                             choices=[
                                                 "cohere.embed-v4.0",
+                                                "text-embedding-ada-002",
+                                                "text-embedding-3-large",
                                             ],
                                             value="cohere.embed-v4.0",
                                             interactive=True,
@@ -616,6 +650,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
                                                 "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
                                             ],
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
@@ -818,14 +854,14 @@ def build_selectai_tab(pool):
 
                 def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, business_domain):
                     if not tables and not views:
-                        yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください"), gr.Dataframe(value=get_db_profiles(pool)), gr.Textbox(value=str(name or "")), gr.Textbox(value=str(business_domain or "")), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください"), gr.Dataframe(value=get_db_profiles(pool))
                         return
                     bd = str(business_domain or "").strip()
                     if not bd:
-                        yield gr.Markdown(visible=True, value="⚠️ 業務ドメイン名を入力してください"), gr.Dataframe(value=get_db_profiles(pool)), gr.Textbox(value=str(name or "")), gr.Textbox(value=str(business_domain or "")), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value="⚠️ 業務ドメイン名を入力してください"), gr.Dataframe(value=get_db_profiles(pool))
                         return
                     try:
-                        yield gr.Markdown(visible=True, value="⏳ 作成中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.Textbox(value=str(name or "")), gr.Textbox(value=bd), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value="⏳ 作成中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"]))
                         bool_map = {"true": True, "false": False}
                         eol = bool_map.get(str(enforce_object_list).lower(), True)
                         com = bool_map.get(str(comments).lower(), True)
@@ -850,9 +886,23 @@ def build_selectai_tab(pool):
                         # JSONファイルを更新
                         _save_profiles_to_json(pool)
                         sql = _generate_create_sql_from_attrs(name, attrs, desc)
-                        yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool), visible=True), gr.Textbox(value=str(name or "")), gr.Textbox(value=desc), gr.Textbox(value=sql)
+                        yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool), visible=True)
                     except Exception as e:
-                        yield gr.Markdown(visible=True, value=f"❌ 作成に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool), visible=False), gr.Textbox(value=str(name or "")), gr.Textbox(value=str(business_domain or "")), gr.Textbox(value="")
+                        msg = f"❌ 作成に失敗しました: {str(e)}"
+                        # gpt-* モデルで provider_endpoint が原因のエラーの場合、値を表示
+                        if str(model).startswith("gpt-") and "provider_endpoint" in str(e):
+                            env_path = find_dotenv()
+                            load_dotenv(env_path, override=True)
+                            base_url = os.getenv("OPENAI_BASE_URL", "")
+                            
+                            endpoint = base_url.replace("https://", "").replace("http://", "")
+                            if endpoint.endswith("/v1"):
+                                endpoint = endpoint[:-3]
+                            if endpoint.endswith("/"):
+                                endpoint = endpoint[:-1]
+                            msg += f"\n\nprovider_endpoint: {endpoint}"
+                        
+                        yield gr.Markdown(visible=True, value=msg), gr.Dataframe(value=get_db_profiles(pool), visible=False)
 
                 profile_refresh_btn.click(
                     fn=refresh_profiles,
@@ -868,7 +918,7 @@ def build_selectai_tab(pool):
                 profile_delete_btn.click(
                     fn=delete_selected_profile,
                     inputs=[selected_profile_name],
-                    outputs=[create_info, profile_list_df, selected_profile_name, business_domain_text, profile_json_text],
+                    outputs=[create_info, profile_list_df],
                 )
 
                 profile_update_btn.click(
@@ -908,7 +958,7 @@ def build_selectai_tab(pool):
                         annotations_input,
                         business_domain_input,
                     ],
-                    outputs=[create_info, profile_list_df, selected_profile_name, business_domain_text, profile_json_text],
+                    outputs=[create_info, profile_list_df],
                 )
 
                 def _profile_names():
@@ -1753,6 +1803,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
                                                 "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
                                             ],
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
@@ -2018,15 +2070,22 @@ def build_selectai_tab(pool):
                                     loop = asyncio.new_event_loop()
                                     asyncio.set_event_loop(loop)
                                     try:
-                                        client = AsyncOciOpenAI(
-                                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                            auth=OciUserPrincipalAuth(),
-                                            compartment_id=compartment_id,
-                                        )
                                         messages = [{"role": "user", "content": step1_prompt}]
-                                        resp = loop.run_until_complete(
-                                            client.chat.completions.create(model=model_name, messages=messages)
-                                        )
+                                        if str(model_name).startswith("gpt-"):
+                                            from openai import AsyncOpenAI
+                                            client = AsyncOpenAI()
+                                            resp = loop.run_until_complete(
+                                                client.chat.completions.create(model=model_name, messages=messages)
+                                            )
+                                        else:
+                                            client = AsyncOciOpenAI(
+                                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                                auth=OciUserPrincipalAuth(),
+                                                compartment_id=compartment_id,
+                                            )
+                                            resp = loop.run_until_complete(
+                                                client.chat.completions.create(model=model_name, messages=messages)
+                                            )
                                         if resp.choices and len(resp.choices) > 0:
                                             step1_result = resp.choices[0].message.content.strip()
                                     finally:
@@ -2069,21 +2128,29 @@ def build_selectai_tab(pool):
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
                             try:
-                                client = AsyncOciOpenAI(
-                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                    auth=OciUserPrincipalAuth(),
-                                    compartment_id=compartment_id,
-                                )
                                 messages = [{"role": "user", "content": step2_prompt}]
-                                resp = loop.run_until_complete(
-                                    client.chat.completions.create(model=model_name, messages=messages)
-                                )
+                                if str(model_name).startswith("gpt-"):
+                                    from openai import AsyncOpenAI
+                                    client = AsyncOpenAI()
+                                    resp = loop.run_until_complete(
+                                        client.chat.completions.create(model=model_name, messages=messages)
+                                    )
+                                else:
+                                    client = AsyncOciOpenAI(
+                                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                        auth=OciUserPrincipalAuth(),
+                                        compartment_id=compartment_id,
+                                    )
+                                    resp = loop.run_until_complete(
+                                        client.chat.completions.create(model=model_name, messages=messages)
+                                    )
                                 if resp.choices and len(resp.choices) > 0:
                                     final_result = str(step1_result) + "\n\n" + resp.choices[0].message.content.strip()
                                 else:
                                     final_result = step1_result
                             finally:
                                 loop.close()
+
                             
                             yield gr.Markdown(visible=True, value="✅ 書き換え完了"), gr.Textbox(value=final_result)
                             
@@ -2159,11 +2226,15 @@ def build_selectai_tab(pool):
                                             show_text = "\n".join(show_cells)
                                     except Exception as e:
                                         logger.error(f"dev showsql generate error: {e}")
+                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
                                         show_text = ""
+                                        return
                                     try:
                                         cursor.execute(showsql_stmt)
                                     except Exception as e:
                                         logger.error(f"dev showsql execute error: {e}")
+                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                                        return
                                     _ = _get_sql_id_for_text(showsql_stmt)
                                     def _extract_sql(text: str) -> str:
                                         if not text:
@@ -2281,12 +2352,17 @@ def build_selectai_tab(pool):
                             s = str(sql_text or "").strip()
                             if not s:
                                 return gr.Markdown(visible=True, value="⚠️ SQL文が空です"), gr.Textbox(value=""), gr.Textbox(value="")
-                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                            client = AsyncOciOpenAI(
-                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                auth=OciUserPrincipalAuth(),
-                                compartment_id=compartment_id,
-                            )
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
 
                             prompt = (
                                 "Extract ONLY JOIN and WHERE conditions from the SQL query below.\n"
@@ -2952,6 +3028,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
                                                 "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
                                             ],
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
@@ -3361,6 +3439,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
                                                 "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
                                             ],
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
@@ -3535,12 +3615,17 @@ def build_selectai_tab(pool):
                             if not region or not compartment_id:
                                 logger.error("_am_generate_async missing OCI configuration: region or compartment_id is empty")
                                 return gr.Textbox(value="ℹ️ OCI設定が不足しています")
-                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                            client = AsyncOciOpenAI(
-                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                auth=OciUserPrincipalAuth(),
-                                compartment_id=compartment_id,
-                            )
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
                             messages = [
                                 {
                                     "role": "system",
@@ -3645,7 +3730,6 @@ def build_selectai_tab(pool):
                         if not region or not compartment_id:
                             return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                         try:
-                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             s = str(sql_text or "").strip()
                             r = str(exec_result_text or "").strip()
                             prompt = (
@@ -3656,11 +3740,18 @@ def build_selectai_tab(pool):
                                 + ("SQL:\n```sql\n" + s + "\n```\n" if s else "")
                                 + ("実行結果:\n" + r + "\n" if r else "")
                             )
-                            client = AsyncOciOpenAI(
-                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                auth=OciUserPrincipalAuth(),
-                                compartment_id=compartment_id,
-                            )
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                            
                             messages = [
                                 {"role": "system", "content": "あなたはシニアDBエンジニアです。ALTER ... ANNOTATIONS の診断に特化し、必要最小限の要点のみを簡潔に提示してください。"},
                                 {"role": "user", "content": prompt},
@@ -4132,6 +4223,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
                                                 "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
                                             ],
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
@@ -4241,12 +4334,18 @@ def build_selectai_tab(pool):
                                 "前提コンテキスト:\n" + str(ctx_comp or "") + "\n\n"
                                 "対象SQL:\n```sql\n" + s + "\n```"
                             )
-                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                            client = AsyncOciOpenAI(
-                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                auth=OciUserPrincipalAuth(),
-                                compartment_id=compartment_id,
-                            )
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                            
                             messages = [
                                 {"role": "system", "content": "あなたはBIアナリストです。ユーザーがSQL生成エージェントに投げる自然言語の質問文を短く具体的に作ることが仕事です。出力は質問文のみ。"},
                                 {"role": "user", "content": prompt},
@@ -4569,11 +4668,15 @@ def build_selectai_tab(pool):
                                     show_text = "\n".join(show_cells)
                             except Exception as e:
                                 logger.error(f"user showsql generate error: {e}")
+                                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
                                 show_text = ""
+                                return
                             try:
                                 cursor.execute(showsql_stmt)
                             except Exception as e:
                                 logger.error(f"user showsql execute error: {e}")
+                                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                                return
                             _ = _get_sql_id_for_text(showsql_stmt)
                             def _extract_sql(text: str) -> str:
                                 if not text:

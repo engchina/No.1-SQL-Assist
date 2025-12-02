@@ -241,7 +241,6 @@ BEGIN
 END;
 
 BEGIN dbms_vector.drop_credential('OCI_CRED'); END;
-
 BEGIN
     dbms_vector.create_credential(
         credential_name => 'OCI_CRED',
@@ -612,52 +611,120 @@ def build_oci_embedding_test_tab(pool):
     return tab_test_oci_cred
 
 
-def build_openai_settings_tab():
-    """OpenAI設定タブのUIを構築する.
-
-    Returns:
-        gr.TabItem: OpenAI設定タブ
-    """
-
+def build_openai_settings_tab(pool=None):
     def load_openai_settings():
-        """設定をロードする"""
-        # .envから値を再読み込み
-        env_path = find_dotenv(usecwd=True)
-        load_dotenv(env_path, override=True)
-        
-        base_url = os.getenv("OPENAI_BASE_URL", "")
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        
-        # API Keyは表示しない（プレースホルダーのみ）
-        masked_key = ""
-        if api_key:
-            masked_key = "sk-..." # 存在することを示す
-            
-        return base_url, "" # API Keyはセキュリティのため空で返す（変更時のみ入力させる）
+        try:
+            env_path = find_dotenv()
+            if not env_path:
+                return "", ""
+            base_url = get_key(env_path, "OPENAI_BASE_URL")
+            api_key = get_key(env_path, "OPENAI_API_KEY")
+            return base_url or "", api_key or ""
+        except Exception as e:
+            logger.error(f"Error loading OpenAI settings: {e}")
+            return "", ""
 
     def save_openai_settings(base_url, api_key):
-        """設定を保存する"""
-        if not base_url:
-            return gr.Markdown(visible=True, value="❌ Base URLは必須です")
-        if not api_key:
-            # 既存のキーがあるか確認し、なければエラー
-            # ここでは要件に従い「変更する場合は再入力必須」とし、空の場合はエラーとする
-            return gr.Markdown(visible=True, value="❌ API Keyは必須です")
-
         try:
-            env_path = find_dotenv(usecwd=True)
+            env_path = find_dotenv()
             if not env_path:
                 # .envがない場合は作成
                 env_path = Path(os.getcwd()) / ".env"
                 env_path.touch()
             
-            set_key(env_path, "OPENAI_BASE_URL", str(base_url).strip())
-            set_key(env_path, "OPENAI_API_KEY", str(api_key).strip())
+            b_url = str(base_url).strip()
+            k_api = str(api_key).strip()
+
+            set_key(env_path, "OPENAI_BASE_URL", b_url)
+            set_key(env_path, "OPENAI_API_KEY", k_api)
             
             # 環境変数をリロード
             load_dotenv(env_path, override=True)
-            
-            return gr.Markdown(visible=True, value="✅ 設定を保存しました")
+
+            if pool is None:
+                return gr.Markdown(visible=True, value="✅ 設定を保存しました (DB接続なし)")
+
+            # DB操作: ACL設定とCREDENTIAL作成
+            msg = "✅ 設定を保存しました"
+            try:
+                with pool.acquire() as conn:
+                    with conn.cursor() as cursor:
+                        # 1. ACL設定 (Azure / OpenAI)
+                        # *.cognitiveservices.azure.com
+                        try:
+                            cursor.execute("""
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+    host => '*.cognitiveservices.azure.com',
+    ace  => xs$ace_type(privilege_list => xs$name_list('http'),
+                        principal_name => 'admin',
+                        principal_type => xs_acl.ptype_db));
+END;""")
+                        except Exception as e:
+                            logger.warning(f"ACL azure append failed (ignored): {e}")
+
+                        # api.openai.com
+                        try:
+                            cursor.execute("""
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+    host => 'api.openai.com',
+    ace  => xs$ace_type(privilege_list => xs$name_list('http'),
+                        principal_name => 'admin',
+                        principal_type => xs_acl.ptype_db));
+END;""")
+                        except Exception as e:
+                            logger.warning(f"ACL openai append failed (ignored): {e}")
+
+                        # Custom Endpoint if exists
+                        if b_url:
+                            try:
+                                # Extract host from b_url
+                                from urllib.parse import urlparse
+                                parsed = urlparse(b_url)
+                                host = parsed.hostname
+                                if host and host not in ["api.openai.com", "*.cognitiveservices.azure.com"]:
+                                    cursor.execute("""
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
+    host => :h,
+    ace  => xs$ace_type(privilege_list => xs$name_list('http'),
+                        principal_name => 'admin',
+                        principal_type => xs_acl.ptype_db));
+END;""", h=host)
+                            except Exception as e:
+                                logger.warning(f"ACL custom endpoint append failed (ignored): {e}")
+
+                        # 2. OPENAI_CRED 作成
+                        # 既存削除
+                        try:
+                            cursor.execute("BEGIN dbms_vector.drop_credential('OPENAI_CRED'); END;")
+                        except Exception as e:
+                            logger.error(f"Drop credential OPENAI_CRED failed: {e}")
+                        
+                        # 新規作成
+                        # dbms_vector.create_credential expects 'params' json
+                        # For OpenAI-compatible, usually we need 'access_token' or 'api_key'.
+                        # Checking Oracle docs, standard is {"access_token": "..."} for Bearer auth
+                        # or generic user/password. For OpenAI, usually access_token is used.
+                        cred_params = {
+                            "access_token": k_api
+                        }
+                        cursor.execute("""
+BEGIN
+   dbms_vector.create_credential(
+       credential_name => 'OPENAI_CRED',
+       params => json(:p)
+   );
+END;""", p=json.dumps(cred_params))
+                        conn.commit()
+                        msg += "\n✅ ACL設定とOPENAI_CREDを更新しました"
+
+            except Exception as e:
+                logger.error(f"DB operation failed in save_openai_settings: {e}")
+                msg += f"\n⚠️ DB設定の一部に失敗しました: {e}"
+
+            return gr.Markdown(visible=True, value=msg)
         except Exception as e:
             logger.error(f"Error saving OpenAI settings: {e}")
             return gr.Markdown(visible=True, value=f"❌ 保存に失敗しました: {e}")
