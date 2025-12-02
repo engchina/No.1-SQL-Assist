@@ -218,7 +218,9 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
             # 管理機能タブを構築
             build_management_tab(pool)
 
-        build_query_tab(pool)           
+        with gr.TabItem(label="SQLの実行"):
+            # SQLの実行タブを構築
+            build_query_tab(pool)           
 
         with gr.TabItem(label="SelectAI 連携"):
             build_selectai_tab(pool)
@@ -226,7 +228,8 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
         with gr.TabItem(label="SelectAIAgent 連携", visible=False):
             build_selectai_agent_tab(pool)
 
-        build_oci_chat_test_tab(pool)
+        with gr.TabItem(label="AI チャット"):
+            build_oci_chat_test_tab(pool)
 
     gr.Markdown(
         value="### 本ソフトウェアは検証評価用です。日常利用のための基本機能は備えていない点につきましてご理解をよろしくお願い申し上げます。",

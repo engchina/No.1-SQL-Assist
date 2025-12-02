@@ -229,110 +229,106 @@ def build_oci_chat_test_tab(pool):
     Returns:
         gr.TabItem: Chat UIタブ
     """
+    with gr.Accordion(label="ℹ️ AI は不正確な情報を表示することがあるため、生成された回答を再確認するようにしてください。", open=True):
+        with gr.Row():
+            with gr.Column():
+                with gr.Row():
+                    with gr.Column(scale=5):
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("モデル", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                chat_model_input = gr.Dropdown(
+                                    show_label=False,
+                                    choices=[
+                                        "xai.grok-code-fast-1",
+                                        "xai.grok-3",
+                                        "xai.grok-3-fast",
+                                        "xai.grok-4",
+                                        "xai.grok-4-fast-non-reasoning",
+                                        "meta.llama-4-scout-17b-16e-instruct",
+                                        "gpt-4o",
+                                        "gpt-5.1",
+                                    ],
+                                    value="xai.grok-code-fast-1",
+                                    interactive=True,
+                                    container=False,
+                                )
+                    with gr.Column(scale=5):
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        chatbot = gr.Chatbot(
+                            label="会話履歴",
+                            height=400,
+                            show_copy_button=True,
+                            avatar_images=(None, None),
+                            type='messages',
+                        )
 
-    with gr.TabItem(label="AI チャット") as tab_chat:
-        with gr.Accordion(label="ℹ️ AI は不正確な情報を表示することがあるため、生成された回答を再確認するようにしてください。", open=True):
-            with gr.Row():
-                with gr.Column():
-                    with gr.Row():
-                        with gr.Column(scale=5):
-                            with gr.Row():
-                                with gr.Column(scale=1):
-                                    gr.Markdown("モデル", elem_classes="input-label")
-                                with gr.Column(scale=5):
-                                    chat_model_input = gr.Dropdown(
-                                        show_label=False,
-                                        choices=[
-                                            "xai.grok-code-fast-1",
-                                            "xai.grok-3",
-                                            "xai.grok-3-fast",
-                                            "xai.grok-4",
-                                            "xai.grok-4-fast-non-reasoning",
-                                            "meta.llama-4-scout-17b-16e-instruct",
-                                            "gpt-4o",
-                                            "gpt-5.1",
-                                        ],
-                                        value="xai.grok-code-fast-1",
-                                        interactive=True,
-                                        container=False,
-                                    )
-                        with gr.Column(scale=5):
-                            with gr.Row():
-                                with gr.Column(scale=1):
-                                    gr.Markdown("")
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            chatbot = gr.Chatbot(
-                                label="会話履歴",
-                                height=400,
-                                show_copy_button=True,
-                                avatar_images=(None, None),
-                                type='messages',
-                            )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        msg_input = gr.Textbox(
+                            value="こんにちわ",
+                            label="💬 メッセージ",
+                            placeholder="メッセージを入力してください（Enterで改行、Shift＋Enterで送信）",
+                            lines=2,
+                            max_lines=8,
+                            container=False,
+                        )
 
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            msg_input = gr.Textbox(
-                                value="こんにちわ",
-                                label="💬 メッセージ",
-                                placeholder="メッセージを入力してください（Enterで改行、Shift＋Enterで送信）",
-                                lines=2,
-                                max_lines=8,
-                                container=False,
-                            )
+                with gr.Row():
+                    clear_btn = gr.Button("クリア", scale=1)
+                    send_btn = gr.Button("送信", variant="primary", scale=1)
+                with gr.Row():
+                    chat_status_md = gr.Markdown(visible=False)
 
-                    with gr.Row():
-                        clear_btn = gr.Button("クリア", scale=1)
-                        send_btn = gr.Button("送信", variant="primary", scale=1)
-                    with gr.Row():
-                        chat_status_md = gr.Markdown(visible=False)
-
-            # Event handlers with status markdown under the button
-            def send_chat_with_status(message, history, chat_model):
-                try:
-                    from utils.chat_util import get_oci_region, get_compartment_id
-                    if not str(message or "").strip():
-                        # empty message
-                        yield gr.Markdown(visible=True, value="⚠️ メッセージを入力してください"), history, message
+        # Event handlers with status markdown under the button
+        def send_chat_with_status(message, history, chat_model):
+            try:
+                from utils.chat_util import get_oci_region, get_compartment_id
+                if not str(message or "").strip():
+                    # empty message
+                    yield gr.Markdown(visible=True, value="⚠️ メッセージを入力してください"), history, message
+                    return
+                
+                if not chat_model.startswith("gpt-"):
+                    region = get_oci_region()
+                    compartment_id = get_compartment_id()
+                    if not region or not compartment_id:
+                        yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), history, message
                         return
-                    
-                    if not chat_model.startswith("gpt-"):
-                        region = get_oci_region()
-                        compartment_id = get_compartment_id()
-                        if not region or not compartment_id:
-                            yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), history, message
-                            return
 
-                    yield gr.Markdown(visible=True, value="⏳ 送信中..."), history, message
-                    last_hist, last_msg = history, message
-                    for h, m in send_chat_message(message, history, chat_model):
-                        last_hist, last_msg = h, m
-                        yield gr.Markdown(visible=True, value="⏳ 送信中..."), h, m
-                    yield gr.Markdown(visible=True, value="✅ 完了"), last_hist, last_msg
-                except Exception as e:
-                    logger.error(f"send_chat_with_status error: {e}")
-                    yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), history, message
+                yield gr.Markdown(visible=True, value="⏳ 送信中..."), history, message
+                last_hist, last_msg = history, message
+                for h, m in send_chat_message(message, history, chat_model):
+                    last_hist, last_msg = h, m
+                    yield gr.Markdown(visible=True, value="⏳ 送信中..."), h, m
+                yield gr.Markdown(visible=True, value="✅ 完了"), last_hist, last_msg
+            except Exception as e:
+                logger.error(f"send_chat_with_status error: {e}")
+                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), history, message
 
-            def clear_chat_with_status():
-                h, m = clear_chat()
-                return gr.Markdown(visible=False), h, m
+        def clear_chat_with_status():
+            h, m = clear_chat()
+            return gr.Markdown(visible=False), h, m
 
-            send_btn.click(
-                send_chat_with_status,
-                inputs=[msg_input, chatbot, chat_model_input],
-                outputs=[chat_status_md, chatbot, msg_input],
-            )
+        send_btn.click(
+            send_chat_with_status,
+            inputs=[msg_input, chatbot, chat_model_input],
+            outputs=[chat_status_md, chatbot, msg_input],
+        )
 
-            msg_input.submit(
-                send_chat_with_status,
-                inputs=[msg_input, chatbot, chat_model_input],
-                outputs=[chat_status_md, chatbot, msg_input],
-            )
+        msg_input.submit(
+            send_chat_with_status,
+            inputs=[msg_input, chatbot, chat_model_input],
+            outputs=[chat_status_md, chatbot, msg_input],
+        )
 
-            clear_btn.click(
-                clear_chat_with_status,
-                inputs=[],
-                outputs=[chat_status_md, chatbot, msg_input],
-            )
-
-    return tab_chat
+        clear_btn.click(
+            clear_chat_with_status,
+            inputs=[],
+            outputs=[chat_status_md, chatbot, msg_input],
+        )

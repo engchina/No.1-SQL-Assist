@@ -426,213 +426,211 @@ def execute_sql_general(pool, sql: str, limit: int):
 
 def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
-    with gr.TabItem(label="SQLの実行") as tab_query:
-        with gr.Accordion(label="1. SQLの入力", open=True):
-            gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/(PL/SQL)/EXECは複数文をセミコロンで区切って同時実行可能。")
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("SQL文", elem_classes="input-label")
-                with gr.Column(scale=5):
-                    sql_input = gr.Textbox(
-                        show_label=False,
-                        placeholder="",
-                        lines=8,
-                        max_lines=15,
-                        show_copy_button=True,
-                        container=False,
-                    )
+    with gr.Accordion(label="1. SQLの入力", open=True):
+        gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/(PL/SQL)/EXECは複数文をセミコロンで区切って同時実行可能。")
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("SQL文", elem_classes="input-label")
+            with gr.Column(scale=5):
+                sql_input = gr.Textbox(
+                    show_label=False,
+                    placeholder="",
+                    lines=8,
+                    max_lines=15,
+                    show_copy_button=True,
+                    container=False,
+                )
 
+        with gr.Row():
+            with gr.Column(scale=5):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("取得件数", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        limit_input = gr.Number(
+                            show_label=False,
+                            value=100,
+                            minimum=1,
+                            maximum=1000,
+                            container=False,
+                        )
+            with gr.Column(scale=5):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("")
+
+        with gr.Row():
+            clear_btn = gr.Button("クリア", variant="secondary")
+            execute_btn = gr.Button("実行", variant="primary")
+        with gr.Row():
+            result_info = gr.Markdown(visible=False)
+
+    with gr.Accordion(label="2. 実行結果の表示", open=True):
+        with gr.Row():
+            result_df = gr.Dataframe(
+                label="実行結果",
+                interactive=False,
+                wrap=True,
+                visible=False,
+                value=pd.DataFrame(),
+                elem_id="query_result_df",
+            )
+
+        with gr.Row():
+            result_style = gr.HTML(visible=False)
+
+        with gr.Accordion(label="AI分析と処理", open=True):
             with gr.Row():
                 with gr.Column(scale=5):
                     with gr.Row():
                         with gr.Column(scale=1):
-                            gr.Markdown("取得件数", elem_classes="input-label")
+                            gr.Markdown("モデル", elem_classes="input-label")
                         with gr.Column(scale=5):
-                            limit_input = gr.Number(
+                            ai_model_input = gr.Dropdown(
                                 show_label=False,
-                                value=100,
-                                minimum=1,
-                                maximum=1000,
+                                choices=[
+                                    "xai.grok-code-fast-1",
+                                    "xai.grok-3",
+                                    "xai.grok-3-fast",
+                                    "xai.grok-4",
+                                    "xai.grok-4-fast-non-reasoning",
+                                    "meta.llama-4-scout-17b-16e-instruct",
+                                    "gpt-4o",
+                                    "gpt-5.1",
+                                ],
+                                value="xai.grok-code-fast-1",
+                                interactive=True,
                                 container=False,
                             )
                 with gr.Column(scale=5):
                     with gr.Row():
                         with gr.Column(scale=1):
-                            gr.Markdown("")
-
+                            ai_analyze_btn = gr.Button("AI分析", variant="primary")
             with gr.Row():
-                clear_btn = gr.Button("クリア", variant="secondary")
-                execute_btn = gr.Button("実行", variant="primary")
+                ai_status_md = gr.Markdown(visible=False)
             with gr.Row():
-                result_info = gr.Markdown(visible=False)
+                ai_result_md = gr.Markdown(visible=False)
 
-        with gr.Accordion(label="2. 実行結果の表示", open=True):
-            with gr.Row():
-                result_df = gr.Dataframe(
-                    label="実行結果",
-                    interactive=False,
-                    wrap=True,
-                    visible=False,
-                    value=pd.DataFrame(),
-                    elem_id="query_result_df",
-                )
-
-            with gr.Row():
-                result_style = gr.HTML(visible=False)
-
-            with gr.Accordion(label="AI分析と処理", open=True):
-                with gr.Row():
-                    with gr.Column(scale=5):
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("モデル", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                ai_model_input = gr.Dropdown(
-                                    show_label=False,
-                                    choices=[
-                                        "xai.grok-code-fast-1",
-                                        "xai.grok-3",
-                                        "xai.grok-3-fast",
-                                        "xai.grok-4",
-                                        "xai.grok-4-fast-non-reasoning",
-                                        "meta.llama-4-scout-17b-16e-instruct",
-                                        "gpt-4o",
-                                        "gpt-5.1",
-                                    ],
-                                    value="xai.grok-code-fast-1",
-                                    interactive=True,
-                                    container=False,
-                                )
-                    with gr.Column(scale=5):
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                ai_analyze_btn = gr.Button("AI分析", variant="primary")
-                with gr.Row():
-                    ai_status_md = gr.Markdown(visible=False)
-                with gr.Row():
-                    ai_result_md = gr.Markdown(visible=False)
-
-        async def _ai_analyze_async(model_name, sql_text, result_info_text, result_df_val=None):
-            if not model_name.startswith("gpt-"):
-                from utils.chat_util import get_oci_region, get_compartment_id
-                region = get_oci_region()
-                compartment_id = get_compartment_id()
-                if not region or not compartment_id:
-                    return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
-            try:
-                import pandas as pd
-                
-                q = (sql_text or "").strip()
-                if q.endswith(";"):
-                    q = q[:-1]
-                info_text = str(result_info_text or "").strip()
-                
-                # DataFrameの内容をテキスト化
-                df_text = ""
-                if result_df_val is not None and isinstance(result_df_val, pd.DataFrame) and not result_df_val.empty:
-                    # 行数が多い場合は先頭のみを表示するなどの制限を入れる
-                    df_text = result_df_val.to_markdown(index=False)
-                
-                prompt = (
-                    "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
-                    "1) エラー原因(該当する場合)\n"
-                    "2) 解決方法(修正案や具体的手順)\n"
-                    "3) 簡潔な結論(不要な詳細は省略)\n\n"
-                    + ("SQL:\n```sql\n" + q + "\n```\n" if q else "")
-                    + ("実行結果メッセージ:\n" + info_text + "\n" if info_text else "")
-                    + ("実行結果データ:\n" + df_text + "\n" if df_text else "")
-                )
-                
-                messages = [
-                    {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
-                    {"role": "user", "content": prompt},
-                ]
-                
-                if model_name.startswith("gpt-"):
-                    from openai import AsyncOpenAI
-                    client = AsyncOpenAI()
-                    # Use Chat Completions API instead of Responses API to avoid 404 errors
-                    resp = await client.chat.completions.create(model=model_name, messages=messages)
-                    text = ""
-                    if getattr(resp, "choices", None):
-                        msg = resp.choices[0].message
-                        text = msg.content if hasattr(msg, "content") else ""
-                else:
-                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                    client = AsyncOciOpenAI(
-                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                        auth=OciUserPrincipalAuth(),
-                        compartment_id=compartment_id,
-                    )
-                    resp = await client.chat.completions.create(model=model_name, messages=messages)
-                    text = ""
-                    if getattr(resp, "choices", None):
-                        msg = resp.choices[0].message
-                        text = msg.content if hasattr(msg, "content") else ""
-                        
-                return gr.Markdown(visible=True, value=text or "分析結果が空です")
-            except Exception as e:
-                return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
-
-        def ai_analyze(model_name, sql_text, result_info_text, result_df_val=None):
-            import asyncio
-            # 必須入力項目のチェック
-            if not model_name or not str(model_name).strip():
-                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
-                return
-            if not sql_text or not str(sql_text).strip():
-                yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
-                return
+    async def _ai_analyze_async(model_name, sql_text, result_info_text, result_df_val=None):
+        if not model_name.startswith("gpt-"):
+            from utils.chat_util import get_oci_region, get_compartment_id
+            region = get_oci_region()
+            compartment_id = get_compartment_id()
+            if not region or not compartment_id:
+                return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
+        try:
+            import pandas as pd
             
-            # 実行結果メッセージもデータフレームも無い場合はエラーとする
-            has_info = result_info_text and str(result_info_text).strip()
-            has_df = result_df_val is not None and isinstance(result_df_val, pd.DataFrame) and not result_df_val.empty
-            if not has_info and not has_df:
-                yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQL文を実行してください"), gr.Markdown(visible=False)
-                return
+            q = (sql_text or "").strip()
+            if q.endswith(";"):
+                q = q[:-1]
+            info_text = str(result_info_text or "").strip()
             
-            logger.info(f"AI分析を開始します: model={model_name}, sql_length={len(str(sql_text or ''))}, result_info_length={len(str(result_info_text or ''))}")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, result_info_text, result_df_val))
-                yield gr.Markdown(visible=True, value="✅ 完了"), result_md
-            except Exception as e:
-                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
-            finally:
-                loop.close()
+            # DataFrameの内容をテキスト化
+            df_text = ""
+            if result_df_val is not None and isinstance(result_df_val, pd.DataFrame) and not result_df_val.empty:
+                # 行数が多い場合は先頭のみを表示するなどの制限を入れる
+                df_text = result_df_val.to_markdown(index=False)
+            
+            prompt = (
+                "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
+                "1) エラー原因(該当する場合)\n"
+                "2) 解決方法(修正案や具体的手順)\n"
+                "3) 簡潔な結論(不要な詳細は省略)\n\n"
+                + ("SQL:\n```sql\n" + q + "\n```\n" if q else "")
+                + ("実行結果メッセージ:\n" + info_text + "\n" if info_text else "")
+                + ("実行結果データ:\n" + df_text + "\n" if df_text else "")
+            )
+            
+            messages = [
+                {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
+                {"role": "user", "content": prompt},
+            ]
+            
+            if model_name.startswith("gpt-"):
+                from openai import AsyncOpenAI
+                client = AsyncOpenAI()
+                # Use Chat Completions API instead of Responses API to avoid 404 errors
+                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                text = ""
+                if getattr(resp, "choices", None):
+                    msg = resp.choices[0].message
+                    text = msg.content if hasattr(msg, "content") else ""
+            else:
+                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                client = AsyncOciOpenAI(
+                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                    auth=OciUserPrincipalAuth(),
+                    compartment_id=compartment_id,
+                )
+                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                text = ""
+                if getattr(resp, "choices", None):
+                    msg = resp.choices[0].message
+                    text = msg.content if hasattr(msg, "content") else ""
+                    
+            return gr.Markdown(visible=True, value=text or "分析結果が空です")
+        except Exception as e:
+            return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-        def on_execute(sql, limit):
-            try:
-                yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
-                sql_no_comment = remove_comments(sql)
-                result_info, result_df, result_style = execute_sql_general(pool, sql_no_comment, limit)
-                yield result_info, result_df, result_style
-            except Exception as e:
-                yield gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {str(e)}"), gr.Dataframe(visible=False), gr.HTML(visible=False, value="")
+    def ai_analyze(model_name, sql_text, result_info_text, result_df_val=None):
+        import asyncio
+        # 必須入力項目のチェック
+        if not model_name or not str(model_name).strip():
+            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
+            return
+        if not sql_text or not str(sql_text).strip():
+            yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+            return
+        
+        # 実行結果メッセージもデータフレームも無い場合はエラーとする
+        has_info = result_info_text and str(result_info_text).strip()
+        has_df = result_df_val is not None and isinstance(result_df_val, pd.DataFrame) and not result_df_val.empty
+        if not has_info and not has_df:
+            yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQL文を実行してください"), gr.Markdown(visible=False)
+            return
+        
+        logger.info(f"AI分析を開始します: model={model_name}, sql_length={len(str(sql_text or ''))}, result_info_length={len(str(result_info_text or ''))}")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
+            result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, result_info_text, result_df_val))
+            yield gr.Markdown(visible=True, value="✅ 完了"), result_md
+        except Exception as e:
+            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
+        finally:
+            loop.close()
 
-        def on_clear():
-            return ""
+    def on_execute(sql, limit):
+        try:
+            yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
+            sql_no_comment = remove_comments(sql)
+            result_info, result_df, result_style = execute_sql_general(pool, sql_no_comment, limit)
+            yield result_info, result_df, result_style
+        except Exception as e:
+            yield gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {str(e)}"), gr.Dataframe(visible=False), gr.HTML(visible=False, value="")
 
-        execute_btn.click(
-            fn=on_execute,
-            inputs=[sql_input, limit_input],
-            outputs=[result_info, result_df, result_style],
-        )
+    def on_clear():
+        return ""
 
-        ai_analyze_btn.click(
-            fn=ai_analyze,
-            inputs=[ai_model_input, sql_input, result_info, result_df],
-            outputs=[ai_status_md, ai_result_md],
-        )
+    execute_btn.click(
+        fn=on_execute,
+        inputs=[sql_input, limit_input],
+        outputs=[result_info, result_df, result_style],
+    )
 
-        clear_btn.click(
-            fn=on_clear,
-            outputs=[sql_input],
-        )
+    ai_analyze_btn.click(
+        fn=ai_analyze,
+        inputs=[ai_model_input, sql_input, result_info, result_df],
+        outputs=[ai_status_md, ai_result_md],
+    )
 
-    return tab_query
+    clear_btn.click(
+        fn=on_clear,
+        outputs=[sql_input],
+    )
+
 def _fetch_dbms_output(cursor, batch: int = 1000) -> str:
     try:
         lines = []
