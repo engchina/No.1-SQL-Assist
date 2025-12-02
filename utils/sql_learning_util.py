@@ -269,8 +269,8 @@ def build_sql_learning_tab(pool):
         with gr.Accordion(label="1. 学習用スキーマの準備", open=True):
             schema_help_md = gr.Markdown(
                 value=(
-                    "ℹ️ このセクションでは学習用の3つの表（DEPARTMENT/EMPLOYEE/PROJECT）と2つのビュー（V_EMP_DEPT/V_DEPT_PROJECT）を作成し、\n\n"
-                    "ℹ️ サンプルデータを投入します。各ステップは『SQLの表示』→『実行』の2段階です。"
+                    "ℹ️ このセクションでは学習用の3つの表（DEPARTMENT/EMPLOYEE/PROJECT）と2つのビュー（V_EMP_DEPT/V_DEPT_PROJECT）を作成し、サンプルデータを投入します。\n\n"
+                    "ℹ️ 各ステップは『SQLの表示』→『実行』の2段階です。"
                 ),
                 visible=True,
             )

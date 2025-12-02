@@ -1079,7 +1079,7 @@ def build_management_tab(pool):
                     table_drop_result = gr.Markdown(visible=False)
                 
                 with gr.Row():
-                    with gr.Column():
+                    with gr.Column(scale=5):
                         gr.Markdown("### CREATE TABLE SQL")
                         table_ddl_text = gr.Textbox(
                             label="DDL",
@@ -1089,8 +1089,9 @@ def build_management_tab(pool):
                             interactive=False,
                             show_copy_button=True,
                             autoscroll=False,
+                            container=True,
                         )
-                    with gr.Column():
+                    with gr.Column(scale=5):
                         gr.Markdown("### 列情報")
                         table_columns_df = gr.Dataframe(
                             label="列情報",
@@ -1393,6 +1394,7 @@ def build_management_tab(pool):
                             interactive=False,
                             show_copy_button=True,
                             autoscroll=False,
+                            container=True,
                         )
                     with gr.Column():
                         gr.Markdown("### 列情報")

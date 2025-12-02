@@ -390,7 +390,7 @@ def build_oci_genai_tab(pool):
     
     # UIコンポーネントの構築
     with gr.TabItem(label="OCI 認証情報設定") as tab_create_oci_cred:
-        with gr.Accordion(label="OCI 認証情報設定", open=True):
+        with gr.Accordion(label="", open=True):
             with gr.Row():
                 with gr.Column(scale=1):
                      gr.Markdown("User OCID*", elem_classes="input-label")
@@ -404,9 +404,9 @@ def build_oci_genai_tab(pool):
 
             with gr.Row():
                 with gr.Column(scale=1):
-                     gr.Markdown("Tenancy OCID*", elem_classes="input-label")
+                     gr.Markdown("Fingerprint*", elem_classes="input-label")
                 with gr.Column(scale=5):
-                    tab_create_oci_cred_tenancy_ocid_text = gr.Textbox(
+                    tab_create_oci_cred_fingerprint_text = gr.Textbox(
                         show_label=False,
                         lines=1,
                         interactive=True,
@@ -415,9 +415,9 @@ def build_oci_genai_tab(pool):
 
             with gr.Row():
                 with gr.Column(scale=1):
-                     gr.Markdown("Fingerprint*", elem_classes="input-label")
+                     gr.Markdown("Tenancy OCID*", elem_classes="input-label")
                 with gr.Column(scale=5):
-                    tab_create_oci_cred_fingerprint_text = gr.Textbox(
+                    tab_create_oci_cred_tenancy_ocid_text = gr.Textbox(
                         show_label=False,
                         lines=1,
                         interactive=True,
@@ -504,7 +504,7 @@ def build_oci_embedding_test_tab(pool):
         logger.info(f"Model selected: {embed_model}")
         logger.info(f"Text preview: {str(test_query_text)[:80]}")
         try:
-            yield gr.Markdown(visible=True, value="⏳ テスト中..."), gr.Textbox(value="")
+            yield gr.Markdown(visible=True, value="⏳ Embedding生成中..."), gr.Textbox(value="")
             res = test_oci_cred(test_query_text, embed_model, pool)
             logger.info("Embedding test completed")
             yield gr.Markdown(visible=True, value="✅ 完了"), res
@@ -514,8 +514,8 @@ def build_oci_embedding_test_tab(pool):
     
     # UIコンポーネントの構築
     with gr.TabItem(label="Embeddingテスト") as tab_test_oci_cred:
-        with gr.Accordion(label="OCI Credentialの作成", open=True):
-            with gr.Accordion(label="生成されたSQL", open=False):
+        with gr.Accordion(label="", open=True):
+            with gr.Accordion(label="OCI Credentialを作成で生成されたSQL", open=False):
                 with gr.Column():
                     tab_auto_create_sql_text = gr.Textbox(
                         label="SQL",
@@ -761,7 +761,7 @@ def _stop_adb(region: str, adb_id: str):
 
 def build_oracle_ai_database_tab(pool=None):
     with gr.TabItem(label="Oracle AI Database") as tab_adb:
-        with gr.Accordion(label="Oracle AI Database", open=True):
+        with gr.Accordion(label="", open=True):
             with gr.Row():
                 with gr.Column(scale=5):
                     with gr.Row():

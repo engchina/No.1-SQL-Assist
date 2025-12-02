@@ -509,7 +509,7 @@ def build_query_tab(pool):
                 with gr.Row():
                     ai_result_md = gr.Markdown(visible=False)
 
-        async def _ai_analyze_async(model_name, sql_text, result_info_text):
+        async def _ai_analyze_async(model_name, sql_text, result_info_text, result_df_val=None):
             from utils.chat_util import get_oci_region, get_compartment_id
             region = get_oci_region()
             compartment_id = get_compartment_id()
@@ -522,13 +522,21 @@ def build_query_tab(pool):
                 if q.endswith(";"):
                     q = q[:-1]
                 info_text = str(result_info_text or "").strip()
+                
+                # DataFrameの内容をテキスト化
+                df_text = ""
+                if result_df_val is not None and isinstance(result_df_val, pd.DataFrame) and not result_df_val.empty:
+                    # 行数が多い場合は先頭のみを表示するなどの制限を入れる
+                    df_text = result_df_val.to_markdown(index=False)
+                
                 prompt = (
                     "以下のSQLと実行結果を分析してください。出力は次の3点に限定します。\n"
                     "1) エラー原因(該当する場合)\n"
                     "2) 解決方法(修正案や具体的手順)\n"
                     "3) 簡潔な結論(不要な詳細は省略)\n\n"
                     + ("SQL:\n```sql\n" + q + "\n```\n" if q else "")
-                    + ("実行結果:\n" + info_text + "\n" if info_text else "")
+                    + ("実行結果メッセージ:\n" + info_text + "\n" if info_text else "")
+                    + ("実行結果データ:\n" + df_text + "\n" if df_text else "")
                 )
                 client = AsyncOciOpenAI(
                     service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -548,7 +556,7 @@ def build_query_tab(pool):
             except Exception as e:
                 return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-        def ai_analyze(model_name, sql_text, result_info_text):
+        def ai_analyze(model_name, sql_text, result_info_text, result_df_val=None):
             import asyncio
             # 必須入力項目のチェック
             if not model_name or not str(model_name).strip():
@@ -557,7 +565,11 @@ def build_query_tab(pool):
             if not sql_text or not str(sql_text).strip():
                 yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
                 return
-            if not result_info_text or not str(result_info_text).strip():
+            
+            # 実行結果メッセージもデータフレームも無い場合はエラーとする
+            has_info = result_info_text and str(result_info_text).strip()
+            has_df = result_df_val is not None and isinstance(result_df_val, pd.DataFrame) and not result_df_val.empty
+            if not has_info and not has_df:
                 yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQL文を実行してください"), gr.Markdown(visible=False)
                 return
             
@@ -566,7 +578,7 @@ def build_query_tab(pool):
             asyncio.set_event_loop(loop)
             try:
                 yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Markdown(visible=False)
-                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, result_info_text))
+                result_md = loop.run_until_complete(_ai_analyze_async(model_name, sql_text, result_info_text, result_df_val))
                 yield gr.Markdown(visible=True, value="✅ 完了"), result_md
             except Exception as e:
                 yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Markdown(visible=False)
@@ -592,7 +604,7 @@ def build_query_tab(pool):
 
         ai_analyze_btn.click(
             fn=ai_analyze,
-            inputs=[ai_model_input, sql_input, result_info],
+            inputs=[ai_model_input, sql_input, result_info, result_df],
             outputs=[ai_status_md, ai_result_md],
         )
 
