@@ -58,6 +58,18 @@ def get_region():
         return None
 
 
+def load_openai_settings():
+    try:
+        env_path = find_dotenv()
+        if not env_path:
+            return "", ""
+        base_url = get_key(env_path, "OPENAI_BASE_URL")
+        api_key = get_key(env_path, "OPENAI_API_KEY")
+        return base_url or "", api_key or ""
+    except Exception:
+        return "", ""
+
+
 def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
     """OCI設定ファイルを更新する.
     
@@ -388,7 +400,7 @@ def build_oci_genai_tab(pool):
         return update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region)
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="OCI 認証情報設定") as tab_create_oci_cred:
+    with gr.Accordion(label="", open=True):
         with gr.Accordion(label="", open=True):
             with gr.Row():
                 with gr.Column(scale=1):
@@ -484,8 +496,6 @@ def build_oci_genai_tab(pool):
             outputs=[tab_create_oci_config_status_md],
         )
 
-        return tab_create_oci_cred
-
 
 def build_oci_embedding_test_tab(pool):
     """OCI GenAI EmbeddingテストタブのUIを構築する.
@@ -512,7 +522,7 @@ def build_oci_embedding_test_tab(pool):
             yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
     
     # UIコンポーネントの構築
-    with gr.TabItem(label="Embeddingテスト") as tab_test_oci_cred:
+    with gr.Accordion(label="", open=True):
         with gr.Accordion(label="", open=True):
             with gr.Accordion(label="OCI Credentialを作成で生成されたSQL", open=False):
                 with gr.Column():
@@ -608,24 +618,8 @@ def build_oci_embedding_test_tab(pool):
             outputs=[tab_auto_create_btn, tab_auto_create_status_md, tab_auto_create_sql_text],
         )
 
-    return tab_test_oci_cred
-
 
 def build_openai_settings_tab(pool=None):
-    def load_openai_settings():
-        try:
-            logger.info("OpenAI設定の読み込みを開始します")
-            env_path = find_dotenv()
-            if not env_path:
-                logger.info(".env が見つかりません。空の設定を返します")
-                return "", ""
-            base_url = get_key(env_path, "OPENAI_BASE_URL")
-            api_key = get_key(env_path, "OPENAI_API_KEY")
-            logger.info(f"読み込み結果: base_url={str(base_url or '').strip()[:80]} , api_key_provided={bool(api_key)}")
-            return base_url or "", api_key or ""
-        except Exception as e:
-            logger.error(f"Error loading OpenAI settings: {e}")
-            return "", ""
 
     def save_openai_settings(base_url, api_key):
         try:
@@ -636,7 +630,7 @@ def build_openai_settings_tab(pool=None):
                 env_path = Path(os.getcwd()) / ".env"
                 env_path.touch()
                 logger.info(f".env を新規作成しました: {env_path}")
-            
+
             b_url = str(base_url).strip()
             k_api = str(api_key).strip()
             logger.info(f"保存入力: base_url={b_url[:120]} , api_key_provided={bool(k_api)}")
@@ -644,7 +638,7 @@ def build_openai_settings_tab(pool=None):
             set_key(env_path, "OPENAI_BASE_URL", b_url)
             set_key(env_path, "OPENAI_API_KEY", k_api)
             logger.info(".env に OPENAI_BASE_URL と OPENAI_API_KEY を保存しました")
-            
+
             # 環境変数をリロード
             load_dotenv(env_path, override=True)
             logger.info("環境変数を再読み込みしました")
@@ -714,7 +708,7 @@ END;""", h=host)
                             cursor.execute("BEGIN dbms_vector.drop_credential('OPENAI_CRED'); END;")
                         except Exception as e:
                             logger.error(f"Drop credential OPENAI_CRED failed: {e}")
-                        
+
                         # 新規作成
                         # dbms_vector.create_credential expects 'params' json
                         # For OpenAI-compatible, usually we need 'access_token' or 'api_key'.
@@ -745,54 +739,46 @@ END;""", p=json.dumps(cred_params))
             logger.error(f"Error saving OpenAI settings: {e}")
             return gr.Markdown(visible=True, value=f"❌ 保存に失敗しました: {e}")
 
-    with gr.TabItem(label="OpenAI設定") as tab_openai_settings:
-        with gr.Accordion(label="", open=True):
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("Base URL*", elem_classes="input-label")
-                with gr.Column(scale=5):
-                    openai_base_url_input = gr.Textbox(
-                        show_label=False,
-                        lines=1,
-                        interactive=True,
-                        container=False,
-                        placeholder="https://api.openai.com/v1"
-                    )
+    with gr.Accordion(label="", open=True):
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("Base URL*", elem_classes="input-label")
+            with gr.Column(scale=5):
+                openai_base_url_input = gr.Textbox(
+                    show_label=False,
+                    lines=1,
+                    interactive=True,
+                    container=False,
+                    placeholder="https://api.openai.com/v1",
+                )
 
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("API Key*", elem_classes="input-label")
-                with gr.Column(scale=5):
-                    openai_api_key_input = gr.Textbox(
-                        show_label=False,
-                        lines=1,
-                        interactive=True,
-                        container=False,
-                        type="password",
-                        placeholder="入力すると更新されます"
-                    )
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("API Key*", elem_classes="input-label")
+            with gr.Column(scale=5):
+                openai_api_key_input = gr.Textbox(
+                    show_label=False,
+                    lines=1,
+                    interactive=True,
+                    container=False,
+                    type="password",
+                    placeholder="入力すると更新されます",
+                )
 
-            with gr.Row():
-                with gr.Column():
-                    openai_save_btn = gr.Button(value="保存", variant="primary")
-            
-            with gr.Row():
-                openai_status_md = gr.Markdown(visible=False)
+        with gr.Row():
+            with gr.Column():
+                openai_save_btn = gr.Button(value="保存", variant="primary")
 
-        # 初期ロード
-        tab_openai_settings.select(
-            load_openai_settings,
-            outputs=[openai_base_url_input, openai_api_key_input]
-        )
-        
-        # 保存アクション
-        openai_save_btn.click(
-            save_openai_settings,
-            inputs=[openai_base_url_input, openai_api_key_input],
-            outputs=[openai_status_md]
-        )
+        with gr.Row():
+            openai_status_md = gr.Markdown(visible=False)
 
-    return tab_openai_settings
+    openai_save_btn.click(
+        save_openai_settings,
+        inputs=[openai_base_url_input, openai_api_key_input],
+        outputs=[openai_status_md],
+    )
+
+    return openai_base_url_input, openai_api_key_input
 
 def create_oci_db_credential_from_config(pool=None):
     try:
@@ -943,30 +929,29 @@ def _stop_adb(region: str, adb_id: str):
 
 
 def build_oracle_ai_database_tab(pool=None):
-    with gr.TabItem(label="Oracle AI Database") as tab_adb:
-        with gr.Accordion(label="", open=True):
-            with gr.Row():
-                with gr.Column(scale=5):
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            gr.Markdown("リージョン", elem_classes="input-label")
-                        with gr.Column(scale=5):
-                            region_input = gr.Dropdown(show_label=False, choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True, container=False)
-                with gr.Column(scale=5):
-                    with gr.Row():
-                        with gr.Column(scale=5):
-                            gr.Markdown("")
-            with gr.Row():
-                fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
-            with gr.Row():
-                adb_status_md = gr.Markdown(visible=False)
-            with gr.Row():
-                adb_list_df = gr.Dataframe(label="ADB一覧（件数: 0）", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
-            with gr.Row():
-                start_btn = gr.Button(value="起動", interactive=False, variant="primary")
-                stop_btn = gr.Button(value="停止", interactive=False, variant="primary")
-            with gr.Row():
-                btn_status_md = gr.Markdown(visible=False)
+    with gr.Accordion(label="", open=True):
+        with gr.Row():
+            with gr.Column(scale=5):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("リージョン", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        region_input = gr.Dropdown(show_label=False, choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True, container=False)
+            with gr.Column(scale=5):
+                with gr.Row():
+                    with gr.Column(scale=5):
+                        gr.Markdown("")
+        with gr.Row():
+            fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
+        with gr.Row():
+            adb_status_md = gr.Markdown(visible=False)
+        with gr.Row():
+            adb_list_df = gr.Dataframe(label="ADB一覧（件数: 0）", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
+        with gr.Row():
+            start_btn = gr.Button(value="起動", interactive=False, variant="primary")
+            stop_btn = gr.Button(value="停止", interactive=False, variant="primary")
+        with gr.Row():
+            btn_status_md = gr.Markdown(visible=False)
         adb_map_state = gr.State({})
         adb_selected_id = gr.State("")
 
@@ -1138,5 +1123,3 @@ def build_oracle_ai_database_tab(pool=None):
             inputs=[region_input, adb_selected_id, adb_map_state],
             outputs=[btn_status_md, start_btn, stop_btn, adb_map_state, adb_list_df],
         )
-
-    return tab_adb

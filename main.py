@@ -20,11 +20,11 @@ import logging
 
 from utils.auth_util import do_auth
 from utils.css_util import custom_css
-from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab, build_openai_settings_tab
+# from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab, build_openai_settings_tab
 from utils.chat_util import build_oci_chat_test_tab
+from utils.settings_tab import build_settings_tab
 from utils.management_util import build_management_tab
 from utils.selectai_util import build_selectai_tab
-from utils.selectai_agent_util import build_selectai_agent_tab
 from utils.query_util import build_query_tab
 
 # Suppress NumPy warnings about longdouble on certain platforms
@@ -202,17 +202,8 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
 
     with gr.Tabs():
         with gr.TabItem(label="環境設定"):
-            # OCI GenAI設定タブを構築
-            build_oci_genai_tab(pool)
-
-            # Oracle AI Database タブを追加
-            build_oracle_ai_database_tab(pool)
-
-            # OCI GenAI Embeddingテストタブを構築
-            build_oci_embedding_test_tab(pool)
-
-            # OpenAI設定タブを構築
-            build_openai_settings_tab(pool)
+            # 環境設定関連のタブを構築
+            build_settings_tab(pool)
 
         with gr.TabItem(label="データベース管理"):
             # 管理機能タブを構築
@@ -224,9 +215,6 @@ with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
 
         with gr.TabItem(label="SelectAI 連携"):
             build_selectai_tab(pool)
-
-        with gr.TabItem(label="SelectAIAgent 連携", visible=False):
-            build_selectai_agent_tab(pool)
 
         with gr.TabItem(label="AI チャット"):
             build_oci_chat_test_tab(pool)

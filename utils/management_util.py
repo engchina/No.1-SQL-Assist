@@ -1037,6 +1037,8 @@ def execute_annotation_sql(pool, sql_statements):
         logger.error(f"Error executing annotation SQL: {e}")
         logger.error(traceback.format_exc())
         return f"❌ エラー: {str(e)}"
+
+
 def build_management_tab(pool):
     """Build the Management Function tab with three sub-functions.
     
