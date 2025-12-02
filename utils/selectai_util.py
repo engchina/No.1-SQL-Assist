@@ -2226,7 +2226,28 @@ def build_selectai_tab(pool):
                                             show_text = "\n".join(show_cells)
                                     except Exception as e:
                                         logger.error(f"dev showsql generate error: {e}")
-                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                                        # エラーレスポンスのJSONからメッセージを抽出して表示
+                                        err_msg = str(e)
+                                        try:
+                                            import re
+                                            m = re.search(r'Error response - ({.*})', err_msg)
+                                            if m:
+                                                err_json = json.loads(m.group(1))
+                                                if "message" in err_json:
+                                                    inner_msg = err_json["message"]
+                                                    # 内側のJSON文字列をパース
+                                                    try:
+                                                        inner_json = json.loads(inner_msg)
+                                                        if "error" in inner_json:
+                                                            err_msg = inner_json["error"]
+                                                        elif "code" in inner_json and "message" in inner_json:
+                                                            err_msg = f"{inner_json['code']}: {inner_json['message']}"
+                                                    except:
+                                                        err_msg = inner_msg
+                                        except Exception as parse_err:
+                                            logger.error(f"Error parsing error message: {parse_err}")
+                                            
+                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {err_msg}"), gr.Textbox(value="")
                                         show_text = ""
                                         return
                                     try:
