@@ -613,27 +613,6 @@ def build_selectai_tab(pool):
                                 with gr.Row():
                                     with gr.Column(scale=1):
                                         gr.Markdown("")
-                        with gr.Row():
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("Embedding_Model", elem_classes="input-label")
-                                    with gr.Column(scale=5):
-                                        embedding_model_input = gr.Dropdown(
-                                            show_label=False,
-                                            choices=[
-                                                "cohere.embed-v4.0",
-                                                "text-embedding-ada-002",
-                                                "text-embedding-3-large",
-                                            ],
-                                            value="cohere.embed-v4.0",
-                                            interactive=True,
-                                            container=False,
-                                        )
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("")
 
                         with gr.Row():
                             with gr.Column(scale=5):
@@ -671,6 +650,28 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             container=False,
                                         )
+
+                        with gr.Row():
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Embedding_Model", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        embedding_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "cohere.embed-v4.0",
+                                                "text-embedding-ada-002",
+                                                "text-embedding-3-large",
+                                            ],
+                                            value="cohere.embed-v4.0",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
 
                         with gr.Row():
                             with gr.Column(scale=5):
