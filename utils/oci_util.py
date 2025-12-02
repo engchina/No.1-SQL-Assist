@@ -614,11 +614,14 @@ def build_oci_embedding_test_tab(pool):
 def build_openai_settings_tab(pool=None):
     def load_openai_settings():
         try:
+            logger.info("OpenAI設定の読み込みを開始します")
             env_path = find_dotenv()
             if not env_path:
+                logger.info(".env が見つかりません。空の設定を返します")
                 return "", ""
             base_url = get_key(env_path, "OPENAI_BASE_URL")
             api_key = get_key(env_path, "OPENAI_API_KEY")
+            logger.info(f"読み込み結果: base_url={str(base_url or '').strip()[:80]} , api_key_provided={bool(api_key)}")
             return base_url or "", api_key or ""
         except Exception as e:
             logger.error(f"Error loading OpenAI settings: {e}")
@@ -626,22 +629,28 @@ def build_openai_settings_tab(pool=None):
 
     def save_openai_settings(base_url, api_key):
         try:
+            logger.info("OpenAI設定: 保存ボタンがクリックされました")
             env_path = find_dotenv()
             if not env_path:
                 # .envがない場合は作成
                 env_path = Path(os.getcwd()) / ".env"
                 env_path.touch()
+                logger.info(f".env を新規作成しました: {env_path}")
             
             b_url = str(base_url).strip()
             k_api = str(api_key).strip()
+            logger.info(f"保存入力: base_url={b_url[:120]} , api_key_provided={bool(k_api)}")
 
             set_key(env_path, "OPENAI_BASE_URL", b_url)
             set_key(env_path, "OPENAI_API_KEY", k_api)
+            logger.info(".env に OPENAI_BASE_URL と OPENAI_API_KEY を保存しました")
             
             # 環境変数をリロード
             load_dotenv(env_path, override=True)
+            logger.info("環境変数を再読み込みしました")
 
             if pool is None:
+                logger.info("DB接続なしのためファイル保存のみ完了しました")
                 return gr.Markdown(visible=True, value="✅ 設定を保存しました (DB接続なし)")
 
             # DB操作: ACL設定とCREDENTIAL作成
@@ -651,6 +660,7 @@ def build_openai_settings_tab(pool=None):
                     with conn.cursor() as cursor:
                         # 1. ACL設定 (Azure / OpenAI)
                         # *.cognitiveservices.azure.com
+                        logger.info("ACLを更新します: *.cognitiveservices.azure.com")
                         try:
                             cursor.execute("""
 BEGIN
@@ -664,6 +674,7 @@ END;""")
                             logger.warning(f"ACL azure append failed (ignored): {e}")
 
                         # api.openai.com
+                        logger.info("ACLを更新します: api.openai.com")
                         try:
                             cursor.execute("""
 BEGIN
@@ -684,6 +695,7 @@ END;""")
                                 parsed = urlparse(b_url)
                                 host = parsed.hostname
                                 if host and host not in ["api.openai.com", "*.cognitiveservices.azure.com"]:
+                                    logger.info(f"ACLを更新します: {host}")
                                     cursor.execute("""
 BEGIN
   DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
@@ -697,6 +709,7 @@ END;""", h=host)
 
                         # 2. OPENAI_CRED 作成
                         # 既存削除
+                        logger.info("既存の OPENAI_CRED を削除します")
                         try:
                             cursor.execute("BEGIN dbms_vector.drop_credential('OPENAI_CRED'); END;")
                         except Exception as e:
@@ -710,6 +723,7 @@ END;""", h=host)
                         cred_params = {
                             "access_token": k_api
                         }
+                        logger.info("OPENAI_CRED を作成します")
                         cursor.execute("""
 BEGIN
    dbms_vector.create_credential(
@@ -718,12 +732,14 @@ BEGIN
    );
 END;""", p=json.dumps(cred_params))
                         conn.commit()
+                        logger.info("DBコミットが完了しました")
                         msg += "\n✅ ACL設定とOPENAI_CREDを更新しました"
 
             except Exception as e:
                 logger.error(f"DB operation failed in save_openai_settings: {e}")
                 msg += f"\n⚠️ DB設定の一部に失敗しました: {e}"
 
+            logger.info("OpenAI設定の保存処理が完了しました")
             return gr.Markdown(visible=True, value=msg)
         except Exception as e:
             logger.error(f"Error saving OpenAI settings: {e}")
@@ -945,7 +961,7 @@ def build_oracle_ai_database_tab(pool=None):
             with gr.Row():
                 adb_status_md = gr.Markdown(visible=False)
             with gr.Row():
-                adb_list_df = gr.Dataframe(label="ADB一覧", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
+                adb_list_df = gr.Dataframe(label="ADB一覧（件数: 0）", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
             with gr.Row():
                 start_btn = gr.Button(value="起動", interactive=False, variant="primary")
                 stop_btn = gr.Button(value="停止", interactive=False, variant="primary")
@@ -969,11 +985,11 @@ def build_oracle_ai_database_tab(pool=None):
             comp = os.environ.get("OCI_COMPARTMENT_OCID", "")
             region_code = region
             if not comp:
-                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
-                yield gr.Markdown(visible=True, value="❌ OCI_COMPARTMENT_OCIDが見つかりません"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
+                yield gr.Markdown(visible=True, value="❌ OCI_COMPARTMENT_OCIDが見つかりません"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
                 return
             try:
-                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
                 items = _list_adb(region_code, comp)
                 rows = []
                 mp = {}
@@ -989,12 +1005,12 @@ def build_oracle_ai_database_tab(pool=None):
                 status_lines = []
                 status_lines.append(f"リージョン: {region_code}")
                 status_lines.append(f"取得件数: {len(rows)}")
-                status_md = "\n".join(status_lines)
-                yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df), mp, ""
+                status_md = "✅ 取得完了\n" + "\n".join(status_lines)
+                yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df, label=f"ADB一覧（件数: {len(df)}）"), mp, ""
             except Exception as e:
                 logger.error(f"_fetch error: {e}")
-                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
-                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"])), {}, ""
+                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
+                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
 
         def _on_row_select(evt: gr.SelectData, current_df, mp):
             try:
@@ -1054,9 +1070,9 @@ def build_oracle_ai_database_tab(pool=None):
             region_code = region
             mpv = _state_to_val(mp)
             if not selected_id:
-                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
                 return
-            yield gr.Markdown(visible=True, value="⏳ 起動をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+            yield gr.Markdown(visible=True, value="⏳ 起動をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
             try:
                 _start_adb(region_code, selected_id)
                 st = "STARTING"
@@ -1067,18 +1083,18 @@ def build_oracle_ai_database_tab(pool=None):
                 can_start = False
                 can_stop = True
                 msg = "⏳ 起動リクエストを送信しました。数分後に『ADB一覧を取得』で最新状態を確認してください"
-                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
             except Exception as e:
                 logger.error(f"_start エラー: {e}")
-                yield gr.Markdown(visible=True, value=f"❌ 起動エラー: {e}"), gr.Button(interactive=True), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                yield gr.Markdown(visible=True, value=f"❌ 起動エラー: {e}"), gr.Button(interactive=True), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
 
         def _stop(region, selected_id, mp):
             region_code = region
             mpv = _state_to_val(mp)
             if not selected_id:
-                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
                 return
-            yield gr.Markdown(visible=True, value="⏳ 停止をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+            yield gr.Markdown(visible=True, value="⏳ 停止をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
             try:
                 try:
                     if pool is not None:
@@ -1097,10 +1113,10 @@ def build_oracle_ai_database_tab(pool=None):
                 can_start = False
                 can_stop = False
                 msg = "⏳ 停止リクエストを送信しました。数分後に『ADB一覧を取得』で最新状態を確認してください"
-                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
             except Exception as e:
                 logger.error(f"_stop エラー: {e}")
-                yield gr.Markdown(visible=True, value=f"❌ 停止エラー: {e}"), gr.Button(interactive=False), gr.Button(interactive=True), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv))
+                yield gr.Markdown(visible=True, value=f"❌ 停止エラー: {e}"), gr.Button(interactive=False), gr.Button(interactive=True), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
 
         fetch_btn.click(
             _fetch,
