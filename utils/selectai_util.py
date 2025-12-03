@@ -259,6 +259,64 @@ def _profile_names():
     except Exception:
         return [("", "")]
 
+def _predict_business_domain_label(text):
+    try:
+        mname = "business_domain"
+        sp_root = Path("./models")
+        model_path = sp_root / f"{mname}.joblib"
+        meta_path = sp_root / f"{mname}.meta.json"
+        if not model_path.exists() or not meta_path.exists():
+            return ""
+        with meta_path.open("r", encoding="utf-8") as f:
+            meta = json.load(f)
+        embed_model = (
+            str(meta.get("embed_model", "cohere.embed-v4.0"))
+            if isinstance(meta, dict)
+            else "cohere.embed-v4.0"
+        )
+        classifier = joblib.load(model_path)
+        embed_text_detail = EmbedTextDetails(
+            compartment_id=_COMPARTMENT_ID,
+            inputs=[str(text or "")],
+            serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
+            truncate="END",
+            input_type="CLASSIFICATION",
+        )
+        embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
+        embedding = np.array(embed_text_response.data.embeddings[0])
+        prediction = classifier.predict([embedding])
+        return str(prediction[0]).strip().lower()
+    except Exception:
+        return ""
+
+def _map_domain_to_profile(predicted_domain, choices):
+    try:
+        profile_json_path = Path("./profiles/selectai.json")
+        if not predicted_domain or not profile_json_path.exists():
+            return gr.Dropdown(choices=choices, value=choices[0][1])
+        with profile_json_path.open("r", encoding="utf-8") as f:
+            profiles = json.load(f)
+        matched_profile = ""
+        for item in profiles:
+            bd_item = str(item.get("business_domain", "")).strip().lower()
+            if bd_item == predicted_domain:
+                matched_profile = str(item.get("profile", "")).strip()
+                break
+        if matched_profile:
+            val_lower = matched_profile.strip().lower()
+            exists = any(str(val).strip().lower() == val_lower for _, val in choices)
+            if not exists:
+                bd_display = ""
+                for item in profiles:
+                    if str(item.get("profile", "")).strip().lower() == val_lower:
+                        bd_display = str(item.get("business_domain", "")).strip()
+                        break
+                choices.append((bd_display, matched_profile))
+            return gr.Dropdown(choices=choices, value=matched_profile)
+        return gr.Dropdown(choices=choices, value=choices[0][1])
+    except Exception:
+        return gr.Dropdown(choices=choices, value=choices[0][1])
+
 def get_db_profiles(pool) -> pd.DataFrame:
     try:
         with pool.acquire() as conn:
@@ -519,50 +577,60 @@ def create_db_profile(
 def _predict_domain_and_set_profile(text):
     try:
         ch = _load_profiles_from_json() or [("", "")]
-        mname = "business_domain"
-        sp_root = Path("./models")
-        model_path = sp_root / f"{mname}.joblib"
-        meta_path = sp_root / f"{mname}.meta.json"
-        if not model_path.exists() or not meta_path.exists():
-            return gr.Dropdown(choices=ch, value=ch[0][1])
-        with meta_path.open("r", encoding="utf-8") as f:
-            meta = json.load(f)
-        embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
-        classifier = joblib.load(model_path)
-        embed_text_detail = EmbedTextDetails(
-            compartment_id=_COMPARTMENT_ID,
-            inputs=[str(text or "")],
-            serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
-            truncate="END",
-            input_type="CLASSIFICATION",
-        )
-        embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
-        embedding = np.array(embed_text_response.data.embeddings[0])
-        prediction = classifier.predict([embedding])
-        predicted_domain = str(prediction[0]).strip().lower()
-        profile_json_path = Path("./profiles/selectai.json")
-        if not profile_json_path.exists():
-            return gr.Dropdown(choices=ch, value=ch[0][1])
-        with profile_json_path.open("r", encoding="utf-8") as f:
-            profiles = json.load(f)
-        matched_profile = ""
-        for item in profiles:
-            bd_item = str(item.get("business_domain", "")).strip().lower()
-            if bd_item == predicted_domain:
-                matched_profile = str(item.get("profile", "")).strip()
-                break
-        if matched_profile:
-            val_lower = matched_profile.strip().lower()
-            exists = any(str(val).strip().lower() == val_lower for _, val in ch)
-            if not exists:
-                bd_display = ""
-                for item in profiles:
-                    if str(item.get("profile", "")).strip().lower() == val_lower:
-                        bd_display = str(item.get("business_domain", "")).strip()
-                        break
-                ch.append((bd_display, matched_profile))
-            return gr.Dropdown(choices=ch, value=matched_profile)
-        return gr.Dropdown(choices=ch, value=ch[0][1])
+        def _predict_business_domain(text_input: str):
+            mname = "business_domain"
+            sp_root = Path("./models")
+            model_path = sp_root / f"{mname}.joblib"
+            meta_path = sp_root / f"{mname}.meta.json"
+            if not model_path.exists() or not meta_path.exists():
+                return ""
+            with meta_path.open("r", encoding="utf-8") as f:
+                meta = json.load(f)
+            embed_model = (
+                str(meta.get("embed_model", "cohere.embed-v4.0"))
+                if isinstance(meta, dict)
+                else "cohere.embed-v4.0"
+            )
+            classifier = joblib.load(model_path)
+            embed_text_detail = EmbedTextDetails(
+                compartment_id=_COMPARTMENT_ID,
+                inputs=[str(text_input or "")],
+                serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
+                truncate="END",
+                input_type="CLASSIFICATION",
+            )
+            embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
+            embedding = np.array(embed_text_response.data.embeddings[0])
+            prediction = classifier.predict([embedding])
+            return str(prediction[0]).strip().lower()
+
+        def _map_domain_to_profile(predicted_domain: str, choices):
+            profile_json_path = Path("./profiles/selectai.json")
+            if not predicted_domain or not profile_json_path.exists():
+                return gr.Dropdown(choices=choices, value=choices[0][1])
+            with profile_json_path.open("r", encoding="utf-8") as f:
+                profiles = json.load(f)
+            matched_profile = ""
+            for item in profiles:
+                bd_item = str(item.get("business_domain", "")).strip().lower()
+                if bd_item == predicted_domain:
+                    matched_profile = str(item.get("profile", "")).strip()
+                    break
+            if matched_profile:
+                val_lower = matched_profile.strip().lower()
+                exists = any(str(val).strip().lower() == val_lower for _, val in choices)
+                if not exists:
+                    bd_display = ""
+                    for item in profiles:
+                        if str(item.get("profile", "")).strip().lower() == val_lower:
+                            bd_display = str(item.get("business_domain", "")).strip()
+                            break
+                    choices.append((bd_display, matched_profile))
+                return gr.Dropdown(choices=choices, value=matched_profile)
+            return gr.Dropdown(choices=choices, value=choices[0][1])
+
+        pdomain = _predict_business_domain(text)
+        return _map_domain_to_profile(pdomain, ch)
     except Exception:
         ch = _load_profiles_from_json() or [("", "")]
         return gr.Dropdown(choices=ch, value=ch[0][1])
@@ -2520,63 +2588,8 @@ def build_selectai_tab(pool):
                     def _predict_domain_and_set_profile(text):
                         try:
                             ch = _dev_profile_names() or [("", "")]
-                            mname = "business_domain"
-                            sp_root = Path("./models")
-                            model_path = sp_root / f"{mname}.joblib"
-                            meta_path = sp_root / f"{mname}.meta.json"
-                            if not model_path.exists() or not meta_path.exists():
-                                return gr.Dropdown(choices=ch, value=ch[0][1])
-                            with meta_path.open("r", encoding="utf-8") as f:
-                                meta = json.load(f)
-                            embed_model = (
-                                str(meta.get("embed_model", "cohere.embed-v4.0"))
-                                if isinstance(meta, dict)
-                                else "cohere.embed-v4.0"
-                            )
-                            classifier = joblib.load(model_path)
-                            embed_text_detail = EmbedTextDetails(
-                                compartment_id=_COMPARTMENT_ID,
-                                inputs=[str(text or "")],
-                                serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
-                                truncate="END",
-                                input_type="CLASSIFICATION",
-                            )
-                            embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
-                            embedding = np.array(embed_text_response.data.embeddings[0])
-                            prediction = classifier.predict([embedding])
-                            predicted_domain = str(prediction[0]).strip().lower()
-                            profile_json_path = Path("./profiles/selectai.json")
-                            if not profile_json_path.exists():
-                                return gr.Dropdown(choices=ch, value=ch[0][1])
-                            with profile_json_path.open("r", encoding="utf-8") as f:
-                                profiles = json.load(f)
-                            matched_profile = ""
-                            for item in profiles:
-                                bd_item = str(item.get("business_domain", "")).strip().lower()
-                                if bd_item == predicted_domain:
-                                    matched_profile = str(item.get("profile", "")).strip()
-                                    break
-                            if matched_profile:
-                                # ensure value is profile, display is business_domain
-                                # find tuple from choices by value(profile) or label(business_domain)
-                                val_lower = matched_profile.strip().lower()
-                                target_val = None
-                                for lbl, val in ch:
-                                    if str(val).strip().lower() == val_lower:
-                                        target_val = val
-                                        break
-                                if target_val is None:
-                                    # add to choices if missing
-                                    # find bd for profile
-                                    bd_display = ""
-                                    for item in profiles:
-                                        if str(item.get("profile", "")).strip().lower() == val_lower:
-                                            bd_display = str(item.get("business_domain", "")).strip()
-                                            break
-                                    ch.append((bd_display, matched_profile))
-                                    target_val = matched_profile
-                                return gr.Dropdown(choices=ch, value=target_val)
-                            return gr.Dropdown(choices=ch, value=ch[0][1])
+                            pdomain = _predict_business_domain_label(text)
+                            return _map_domain_to_profile(pdomain, ch)
                         except Exception:
                             ch = _dev_profile_names() or [("", "")]
                             return gr.Dropdown(choices=ch, value=ch[0][1])
@@ -4868,50 +4881,8 @@ def build_selectai_tab(pool):
             def _user_predict_domain_and_set_profile(text):
                 try:
                     ch = _load_profiles_from_json() or [("", "")]
-                    mname = "business_domain"
-                    sp_root = Path("./models")
-                    model_path = sp_root / f"{mname}.joblib"
-                    meta_path = sp_root / f"{mname}.meta.json"
-                    if not model_path.exists() or not meta_path.exists():
-                        return gr.Dropdown(choices=ch, value=ch[0][1])
-                    with meta_path.open("r", encoding="utf-8") as f:
-                        meta = json.load(f)
-                    embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
-                    classifier = joblib.load(model_path)
-                    embed_text_detail = EmbedTextDetails(
-                        compartment_id=_COMPARTMENT_ID,
-                        inputs=[str(text or "")],
-                        serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
-                        truncate="END",
-                        input_type="CLASSIFICATION",
-                    )
-                    embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
-                    embedding = np.array(embed_text_response.data.embeddings[0])
-                    prediction = classifier.predict([embedding])
-                    predicted_domain = str(prediction[0]).strip().lower()
-                    profile_json_path = Path("./profiles/selectai.json")
-                    if not profile_json_path.exists():
-                        return gr.Dropdown(choices=ch, value=ch[0][1])
-                    with profile_json_path.open("r", encoding="utf-8") as f:
-                        profiles = json.load(f)
-                    matched_profile = ""
-                    for item in profiles:
-                        bd_item = str(item.get("business_domain", "")).strip().lower()
-                        if bd_item == predicted_domain:
-                            matched_profile = str(item.get("profile", "")).strip()
-                            break
-                    if matched_profile:
-                        val_lower = matched_profile.strip().lower()
-                        exists = any(str(val).strip().lower() == val_lower for _, val in ch)
-                        if not exists:
-                            bd_display = ""
-                            for item in profiles:
-                                if str(item.get("profile", "")).strip().lower() == val_lower:
-                                    bd_display = str(item.get("business_domain", "")).strip()
-                                    break
-                            ch.append((bd_display, matched_profile))
-                        return gr.Dropdown(choices=ch, value=matched_profile)
-                    return gr.Dropdown(choices=ch, value=ch[0][1])
+                    pdomain = _predict_business_domain_label(text)
+                    return _map_domain_to_profile(pdomain, ch)
                 except Exception:
                     ch = _profile_names() or [("", "")]
                     return gr.Dropdown(choices=ch, value=ch[0][1])
