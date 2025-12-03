@@ -227,31 +227,38 @@ def _save_profiles_to_json(pool):
 
 
 def _load_profiles_from_json():
-    """保存されたselectai.jsonからプロファイル一覧を読み込む"""
     try:
         json_path = _profiles_dir() / "selectai.json"
         if not json_path.exists():
-            return [""]
+            return [("", "")]
         with json_path.open("r", encoding="utf-8") as f:
             profiles_data = json.load(f)
-        # business_domainを優先して返す
         result = []
         for p in profiles_data:
             bd = str(p.get("business_domain", "") or "").strip()
-            if bd:
-                result.append(bd)
-            else:
-                pf = str(p.get("profile", "")).strip()
-                if pf or not bd:  # profileがあるか、両方空の場合も含める
-                    result.append(pf)
-        # 空の場合は空文字列を返す
+            pf = str(p.get("profile", "") or "").strip()
+            result.append((bd, pf))
         if not result:
-            return [""]
+            return [("", "")]
         return result
     except Exception as e:
         logger.error(f"_load_profiles_from_json error: {e}")
-        return [""]
-        
+        return [("", "")]
+
+def _dev_profile_names():
+    try:
+        pairs = _load_profiles_from_json()
+        return [(str(bd), str(pf)) for bd, pf in pairs]
+    except Exception:
+        return [("", "")]
+
+def _profile_names():
+    try:
+        pairs = _load_profiles_from_json()
+        return [(str(bd), str(pf)) for bd, pf in pairs]
+    except Exception:
+        return [("", "")]
+
 def get_db_profiles(pool) -> pd.DataFrame:
     try:
         with pool.acquire() as conn:
@@ -508,6 +515,57 @@ def create_db_profile(
             )
             logger.info(f"Created profile: {name}")
 
+
+def _predict_domain_and_set_profile(text):
+    try:
+        ch = _load_profiles_from_json() or [("", "")]
+        mname = "business_domain"
+        sp_root = Path("./models")
+        model_path = sp_root / f"{mname}.joblib"
+        meta_path = sp_root / f"{mname}.meta.json"
+        if not model_path.exists() or not meta_path.exists():
+            return gr.Dropdown(choices=ch, value=ch[0][1])
+        with meta_path.open("r", encoding="utf-8") as f:
+            meta = json.load(f)
+        embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
+        classifier = joblib.load(model_path)
+        embed_text_detail = EmbedTextDetails(
+            compartment_id=_COMPARTMENT_ID,
+            inputs=[str(text or "")],
+            serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
+            truncate="END",
+            input_type="CLASSIFICATION",
+        )
+        embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
+        embedding = np.array(embed_text_response.data.embeddings[0])
+        prediction = classifier.predict([embedding])
+        predicted_domain = str(prediction[0]).strip().lower()
+        profile_json_path = Path("./profiles/selectai.json")
+        if not profile_json_path.exists():
+            return gr.Dropdown(choices=ch, value=ch[0][1])
+        with profile_json_path.open("r", encoding="utf-8") as f:
+            profiles = json.load(f)
+        matched_profile = ""
+        for item in profiles:
+            bd_item = str(item.get("business_domain", "")).strip().lower()
+            if bd_item == predicted_domain:
+                matched_profile = str(item.get("profile", "")).strip()
+                break
+        if matched_profile:
+            val_lower = matched_profile.strip().lower()
+            exists = any(str(val).strip().lower() == val_lower for _, val in ch)
+            if not exists:
+                bd_display = ""
+                for item in profiles:
+                    if str(item.get("profile", "")).strip().lower() == val_lower:
+                        bd_display = str(item.get("business_domain", "")).strip()
+                        break
+                ch.append((bd_display, matched_profile))
+            return gr.Dropdown(choices=ch, value=matched_profile)
+        return gr.Dropdown(choices=ch, value=ch[0][1])
+    except Exception:
+        ch = _load_profiles_from_json() or [("", "")]
+        return gr.Dropdown(choices=ch, value=ch[0][1])
 
 def build_selectai_tab(pool):
     with gr.Tabs():
@@ -1634,11 +1692,14 @@ def build_selectai_tab(pool):
                     with gr.Accordion(label="1. チャット", open=True):
                         def _dev_profile_names():
                             try:
-                                # JSONファイルから読み込む
-                                return _load_profiles_from_json()
+                                pairs = _load_profiles_from_json()
+                                labels = [str(bd) for bd, _ in pairs]
+                                # Gradio Dropdown supports label/value pairs via choices=[(label,value),...]
+                                # We return pairs so that display is business_domain, value is profile
+                                return [(str(bd), str(pf)) for bd, pf in pairs]
                             except Exception as e:
                                 logger.error(f"_dev_profile_names error: {e}")
-                            return []
+                            return [("", "")]
 
                         with gr.Row():
                             with gr.Column(scale=1):
@@ -1660,11 +1721,11 @@ def build_selectai_tab(pool):
                                 # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
                                 _dev_initial_choices = _dev_profile_names()
                                 if not _dev_initial_choices:
-                                    _dev_initial_choices = [""]
+                                    _dev_initial_choices = [("", "")]
                                 dev_profile_select = gr.Dropdown(
                                     show_label=False,
                                     choices=_dev_initial_choices,
-                                    value="" if "" in _dev_initial_choices else (_dev_initial_choices[0] if _dev_initial_choices else ""),
+                                    value=_dev_initial_choices[0][1] if _dev_initial_choices and isinstance(_dev_initial_choices[0], tuple) else "",
                                     interactive=True,
                                     container=False,
                                 )
@@ -2230,8 +2291,8 @@ def build_selectai_tab(pool):
                                         # エラーレスポンスのJSONからメッセージを抽出して表示
                                         err_msg = str(e)
                                         try:
-                                            import re
-                                            m = re.search(r'Error response - ({.*})', err_msg)
+                                            import re as _re
+                                            m = _re.search(r'Error response - ({.*})', err_msg)
                                             if m:
                                                 err_json = json.loads(m.group(1))
                                                 if "message" in err_json:
@@ -2453,91 +2514,72 @@ def build_selectai_tab(pool):
                             loop.close()
 
                     def _on_dev_chat_clear():
-                        return "", gr.Dropdown(choices=_dev_profile_names())
+                        ch = _dev_profile_names() or [("", "")]
+                        return "", gr.Dropdown(choices=ch, value=ch[0][1])
 
                     def _predict_domain_and_set_profile(text):
-                        """自然言語の質問から業務ドメインを予測し、対応するProfileを設定する"""
                         try:
-                            # プロフィール選択肢を取得
-                            profile_choices = _dev_profile_names()
-                            if not profile_choices:
-                                profile_choices = [""]
-                            
-                            # 固定のモデル名を使用
+                            ch = _dev_profile_names() or [("", "")]
                             mname = "business_domain"
                             sp_root = Path("./models")
-                            
-                            logger.info(f"Using model: {mname}")
-                            
                             model_path = sp_root / f"{mname}.joblib"
                             meta_path = sp_root / f"{mname}.meta.json"
-                            
                             if not model_path.exists() or not meta_path.exists():
-                                logger.error(f"モデルファイルが見つかりません")
-                                return gr.Dropdown(choices=profile_choices, value="")
-                            
-                            # メタ情報を読み込み
+                                return gr.Dropdown(choices=ch, value=ch[0][1])
                             with meta_path.open("r", encoding="utf-8") as f:
                                 meta = json.load(f)
-                            
-                            embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
-                            
-                            # モデルを読み込み
+                            embed_model = (
+                                str(meta.get("embed_model", "cohere.embed-v4.0"))
+                                if isinstance(meta, dict)
+                                else "cohere.embed-v4.0"
+                            )
                             classifier = joblib.load(model_path)
-                            
-                            # テキストの埋め込みベクトルを取得
                             embed_text_detail = EmbedTextDetails(
                                 compartment_id=_COMPARTMENT_ID,
                                 inputs=[str(text or "")],
-                                serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(
-                                    model_id=embed_model
-                                ),
+                                serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
                                 truncate="END",
-                                input_type="CLASSIFICATION"
+                                input_type="CLASSIFICATION",
                             )
-                            
                             embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
                             embedding = np.array(embed_text_response.data.embeddings[0])
-                            
-                            # 予測を実行
                             prediction = classifier.predict([embedding])
-                            predicted_domain = prediction[0]
-                            
-                            logger.info(f"Predicted domain: {predicted_domain}")
-                            
-                            # selectai.jsonから業務ドメインに対応するprofileを取得
+                            predicted_domain = str(prediction[0]).strip().lower()
                             profile_json_path = Path("./profiles/selectai.json")
                             if not profile_json_path.exists():
-                                logger.error("selectai.json not found")
-                                return gr.Dropdown(choices=profile_choices, value="")
-                            
+                                return gr.Dropdown(choices=ch, value=ch[0][1])
                             with profile_json_path.open("r", encoding="utf-8") as f:
                                 profiles = json.load(f)
-                            
-                            # 業務ドメインからprofileを検索
                             matched_profile = ""
                             for item in profiles:
-                                if str(item.get("business_domain", "")).strip() == str(predicted_domain).strip():
+                                bd_item = str(item.get("business_domain", "")).strip().lower()
+                                if bd_item == predicted_domain:
                                     matched_profile = str(item.get("profile", "")).strip()
                                     break
-                            
-                            # マッチしたprofileが選択肢に存在するか確認
-                            if matched_profile and matched_profile in profile_choices:
-                                logger.info(f"Setting profile to: {matched_profile}")
-                                return gr.Dropdown(choices=profile_choices, value=matched_profile)
-                            else:
-                                logger.warning(f"Profile '{matched_profile}' not found in choices, setting to empty")
-                                return gr.Dropdown(choices=profile_choices, value="")
-                            
-                        except Exception as e:
-                            logger.error(f"_predict_domain_and_set_profile error: {e}")
-                            import traceback
-                            logger.error(traceback.format_exc())
-                            # エラー時もchoicesを指定する
-                            profile_choices = _dev_profile_names()
-                            if not profile_choices:
-                                profile_choices = [""]
-                            return gr.Dropdown(choices=profile_choices, value="")
+                            if matched_profile:
+                                # ensure value is profile, display is business_domain
+                                # find tuple from choices by value(profile) or label(business_domain)
+                                val_lower = matched_profile.strip().lower()
+                                target_val = None
+                                for lbl, val in ch:
+                                    if str(val).strip().lower() == val_lower:
+                                        target_val = val
+                                        break
+                                if target_val is None:
+                                    # add to choices if missing
+                                    # find bd for profile
+                                    bd_display = ""
+                                    for item in profiles:
+                                        if str(item.get("profile", "")).strip().lower() == val_lower:
+                                            bd_display = str(item.get("business_domain", "")).strip()
+                                            break
+                                    ch.append((bd_display, matched_profile))
+                                    target_val = matched_profile
+                                return gr.Dropdown(choices=ch, value=target_val)
+                            return gr.Dropdown(choices=ch, value=ch[0][1])
+                        except Exception:
+                            ch = _dev_profile_names() or [("", "")]
+                            return gr.Dropdown(choices=ch, value=ch[0][1])
 
                     def _append_comment(current_text: str, template: str):
                         s = str(current_text or "").strip()
@@ -4457,11 +4499,11 @@ def build_selectai_tab(pool):
                     with gr.Accordion(label="1. チャット", open=True):
                         def _profile_names():
                             try:
-                                # JSONファイルから読み込む
-                                return _load_profiles_from_json()
+                                pairs = _load_profiles_from_json()
+                                return [(str(bd), str(pf)) for bd, pf in pairs]
                             except Exception as e:
                                 logger.error(f"_profile_names error: {e}")
-                            return []
+                            return [("", "")]
 
                         with gr.Row():
                             with gr.Column(scale=1):
@@ -4478,18 +4520,18 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             with gr.Column(scale=5):
-                                user_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="primary")
+                                user_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="secondary")
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
                                         # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
                                         _initial_choices = _profile_names()
                                         if not _initial_choices:
-                                            _initial_choices = [""]
+                                            _initial_choices = [("", "")]
                                         profile_select = gr.Dropdown(
                                             show_label=False,
                                             choices=_initial_choices,
-                                            value="" if "" in _initial_choices else (_initial_choices[0] if _initial_choices else ""),
+                                            value=_initial_choices[0][1] if _initial_choices and isinstance(_initial_choices[0], tuple) else "",
                                             interactive=True,
                                             container=False,
                                         )
@@ -4805,7 +4847,8 @@ def build_selectai_tab(pool):
                     yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
 
             def _on_chat_clear():
-                return "", gr.Dropdown(choices=_profile_names()), gr.Textbox(value="")
+                ch = _profile_names() or [("", "")]
+                return "", gr.Dropdown(choices=ch, value=ch[0][1]), gr.Textbox(value="")
             
             def _user_rewrite_query(model_name, profile_name, original_query, use_glossary, use_schema):
                 """ユーザー向けクエリ書き換え処理.
@@ -4823,92 +4866,55 @@ def build_selectai_tab(pool):
                 yield from _dev_rewrite_query(model_name, profile_name, original_query, use_glossary, use_schema)
 
             def _user_predict_domain_and_set_profile(text):
-                """ユーザータブ用: 自然言語の質問から業務ドメインを予測し、対応するProfileを設定する"""
                 try:
+                    ch = _load_profiles_from_json() or [("", "")]
+                    mname = "business_domain"
                     sp_root = Path("./models")
-                    
-                    # モデル一覧を取得
-                    models = _list_models()
-                    if not models:
-                        logger.warning("利用可能なモデルがありません")
-                        return gr.Dropdown(value="")
-                    
-                    # 最初のモデルを使用
-                    mname = str(models[0]).strip()
-                    if not mname:
-                        logger.warning("モデルが選択されていません")
-                        return gr.Dropdown(value="")
-                    
-                    logger.info(f"Using model: {mname}")
-                    
                     model_path = sp_root / f"{mname}.joblib"
                     meta_path = sp_root / f"{mname}.meta.json"
-                    
                     if not model_path.exists() or not meta_path.exists():
-                        logger.error(f"モデルファイルが見つかりません")
-                        return gr.Dropdown(value="")
-                    
-                    # メタ情報を読み込み
+                        return gr.Dropdown(choices=ch, value=ch[0][1])
                     with meta_path.open("r", encoding="utf-8") as f:
                         meta = json.load(f)
-                    
                     embed_model = str(meta.get("embed_model", "cohere.embed-v4.0"))
-                    
-                    # モデルを読み込み
                     classifier = joblib.load(model_path)
-                    
-                    # テキストの埋め込みベクトルを取得
                     embed_text_detail = EmbedTextDetails(
                         compartment_id=_COMPARTMENT_ID,
                         inputs=[str(text or "")],
-                        serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(
-                            model_id=embed_model
-                        ),
+                        serving_mode=oci.generative_ai_inference.models.OnDemandServingMode(model_id=embed_model),
                         truncate="END",
-                        input_type="CLASSIFICATION"
+                        input_type="CLASSIFICATION",
                     )
-                    
                     embed_text_response = _generative_ai_inference_client.embed_text(embed_text_detail)
                     embedding = np.array(embed_text_response.data.embeddings[0])
-                    
-                    # 予測を実行
                     prediction = classifier.predict([embedding])
-                    predicted_domain = prediction[0]
-                    
-                    logger.info(f"Predicted domain: {predicted_domain}")
-                    
-                    # selectai.jsonから業務ドメインに対応するprofileを取得
+                    predicted_domain = str(prediction[0]).strip().lower()
                     profile_json_path = Path("./profiles/selectai.json")
                     if not profile_json_path.exists():
-                        logger.error("selectai.json not found")
-                        return gr.Dropdown(value="")
-                    
+                        return gr.Dropdown(choices=ch, value=ch[0][1])
                     with profile_json_path.open("r", encoding="utf-8") as f:
                         profiles = json.load(f)
-                    
-                    # 業務ドメインからprofileを検索
                     matched_profile = ""
                     for item in profiles:
-                        if str(item.get("business_domain", "")).strip() == str(predicted_domain).strip():
+                        bd_item = str(item.get("business_domain", "")).strip().lower()
+                        if bd_item == predicted_domain:
                             matched_profile = str(item.get("profile", "")).strip()
                             break
-                    
-                    # プロフィール選択肢を取得
-                    profile_choices = _profile_names()
-                    
-                    # マッチしたprofileが選択肢に存在するか確認
-                    if matched_profile and matched_profile in profile_choices:
-                        logger.info(f"Setting profile to: {matched_profile}")
-                        return gr.Dropdown(value=matched_profile)
-                    else:
-                        logger.warning(f"Profile '{matched_profile}' not found in choices, setting to empty")
-                        return gr.Dropdown(value="")
-                    
-                except Exception as e:
-                    logger.error(f"_user_predict_domain_and_set_profile error: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    return gr.Dropdown(value="")
+                    if matched_profile:
+                        val_lower = matched_profile.strip().lower()
+                        exists = any(str(val).strip().lower() == val_lower for _, val in ch)
+                        if not exists:
+                            bd_display = ""
+                            for item in profiles:
+                                if str(item.get("profile", "")).strip().lower() == val_lower:
+                                    bd_display = str(item.get("business_domain", "")).strip()
+                                    break
+                            ch.append((bd_display, matched_profile))
+                        return gr.Dropdown(choices=ch, value=matched_profile)
+                    return gr.Dropdown(choices=ch, value=ch[0][1])
+                except Exception:
+                    ch = _profile_names() or [("", "")]
+                    return gr.Dropdown(choices=ch, value=ch[0][1])
 
             chat_execute_btn.click(
                 fn=_user_step_generate,
