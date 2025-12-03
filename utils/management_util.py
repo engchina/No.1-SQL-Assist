@@ -1092,7 +1092,7 @@ def build_management_tab(pool):
                             interactive=False,
                             show_copy_button=True,
                             autoscroll=False,
-                            container=True,
+                            container=False,
                         )
                     with gr.Column(scale=5):
                         gr.Markdown("### 列情報")
@@ -1415,7 +1415,7 @@ def build_management_tab(pool):
                             interactive=False,
                             show_copy_button=True,
                             autoscroll=False,
-                            container=True,
+                            container=False,
                         )
                     with gr.Column():
                         gr.Markdown("### 列情報")
