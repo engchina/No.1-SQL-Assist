@@ -230,6 +230,35 @@ def _split_sql_statements(sql: str):
                 in_bc = True
                 i += 2
                 continue
+            # SQL*Plus style delimiter: a line containing only '/'
+            if ch == '/':
+                # Check that this '/' is the only non-whitespace on its line
+                # Look backward to previous newline
+                j = i - 1
+                only_ws_before = True
+                while j >= 0 and s[j] != '\n':
+                    if not s[j].isspace():
+                        only_ws_before = False
+                        break
+                    j -= 1
+                # Look forward to next newline
+                k = i + 1
+                only_ws_after = True
+                while k < L and s[k] != '\n':
+                    if not s[k].isspace():
+                        only_ws_after = False
+                        break
+                    k += 1
+                if only_ws_before and only_ws_after:
+                    st = ''.join(buf).strip()
+                    if st:
+                        stmts.append(st)
+                    buf = []
+                    # Skip '/' and the rest of the line including newline
+                    i = k + 1 if k < L and s[k] == '\n' else k
+                    # Reset PL/SQL nesting just in case
+                    pl = 0
+                    continue
         if ch == "'" and not in_d:
             buf.append(ch)
             if in_s:
@@ -427,7 +456,7 @@ def execute_sql_general(pool, sql: str, limit: int):
 def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
     with gr.Accordion(label="1. SQLの入力", open=True):
-        gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/(PL/SQL)/EXECは複数文をセミコロンで区切って同時実行可能。")
+        gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。")
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("SQL文", elem_classes="input-label")
