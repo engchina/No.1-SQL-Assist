@@ -4383,12 +4383,12 @@ def build_selectai_tab(pool):
                         except Exception as e:
                             return gr.Textbox(value=f"❌ エラー: {e}")
 
-                    async def _rev_generate_async(model_name, profile_name, sql_text, use_glossary):
+                    async def _rev_generate_async(model_name, context_text, sql_text, use_glossary):
                         """SQL→質問逆生成処理.
                         
                         Args:
                             model_name: 使用するLLMモデル
-                            profile_name: Profile名
+                            context_text: スキーマやDDLのコンテキスト
                             sql_text: 対象SQL
                             use_glossary: 用語集を利用するか
                         
@@ -4401,7 +4401,7 @@ def build_selectai_tab(pool):
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
                                 return gr.Textbox(value="ℹ️ OCI設定が不足しています")
-                            ctx_comp = _rev_build_context_text(profile_name)
+                            ctx_comp = str(context_text or "")
                             
                             # コメントを除去
                             s = remove_comments(str(sql_text or "").strip())
@@ -4472,12 +4472,12 @@ def build_selectai_tab(pool):
                             logger.error(traceback.format_exc())
                             return gr.Textbox(value=f"❌ エラー: {e}")
 
-                    def _rev_generate(model_name, profile_name, sql_text, use_glossary):
+                    def _rev_generate(model_name, context_text, sql_text, use_glossary):
                         """SQL→質問逆生成のラッパー関数.
                         
                         Args:
                             model_name: 使用するLLMモデル
-                            profile_name: Profile名
+                            context_text: スキーマやDDLのコンテキスト
                             sql_text: 対象SQL
                             use_glossary: 用語集を利用するか
                         
@@ -4488,7 +4488,7 @@ def build_selectai_tab(pool):
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            return loop.run_until_complete(_rev_generate_async(model_name, profile_name, sql_text, use_glossary))
+                            return loop.run_until_complete(_rev_generate_async(model_name, context_text, sql_text, use_glossary))
                         finally:
                             loop.close()
 
@@ -4503,11 +4503,11 @@ def build_selectai_tab(pool):
 
                     rev_generate_btn.click(
                         fn=_rev_generate,
-                        inputs=[rev_model_input, rev_profile_select, rev_sql_input, rev_use_glossary],
+                        inputs=[rev_model_input, rev_context_text, rev_sql_input, rev_use_glossary],
                         outputs=[rev_question_output],
                     )
 
-        with gr.TabItem(label="ユーザー機能") as user_function_tab:
+        with gr.TabItem(label="ユーザー機能"):
             with gr.Tabs():
                 with gr.TabItem(label="基本機能") as user_basic_tab:
                     with gr.Accordion(label="1. チャット", open=True):
