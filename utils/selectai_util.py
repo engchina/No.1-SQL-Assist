@@ -1656,7 +1656,7 @@ def build_selectai_tab(pool):
                         up_dir.mkdir(parents=True, exist_ok=True)
                         _p = up_dir / "terms.xlsx"
                         if not _p.exists():
-                            _df = pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+                            _df = pd.DataFrame(columns=["TERM", "DEFINITION"])
                             with pd.ExcelWriter(_p) as _writer:
                                 _df.to_excel(_writer, sheet_name="terms", index=False)
     
@@ -1680,35 +1680,35 @@ def build_selectai_tab(pool):
                                 interactive=False,
                                 wrap=True,
                                 visible=False,
-                                value=pd.DataFrame(columns=["TERM", "DESCRIPTION"]),
+                                value=pd.DataFrame(columns=["TERM", "DEFINITION"]),
                             )
 
                     def _term_list():
                         try:
                             p = Path("uploads") / "terms.xlsx"
                             if not p.exists():
-                                return pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+                                return pd.DataFrame(columns=["TERM", "DEFINITION"])
                             df = pd.read_excel(str(p))
                             cols_map = {str(c).upper(): c for c in df.columns.tolist()}
                             t_col = cols_map.get("TERM")
-                            d_col = cols_map.get("DESCRIPTION")
+                            d_col = cols_map.get("DEFINITION")
                             if not t_col or not d_col:
-                                return pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+                                return pd.DataFrame(columns=["TERM", "DEFINITION"])
                             out = pd.DataFrame({
                                 "TERM": df[t_col].astype(str),
-                                "DESCRIPTION": df[d_col].astype(str),
+                                "DEFINITION": df[d_col].astype(str),
                             })
                             return out
                         except Exception as e:
                             logger.error(f"用語集一覧の取得に失敗しました: {e}")
-                            return pd.DataFrame(columns=["TERM", "DESCRIPTION"])
+                            return pd.DataFrame(columns=["TERM", "DEFINITION"])
 
                     def _term_refresh():
                         try:
                             yield gr.Markdown(visible=True, value="⏳ 用語集を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
                             df = _term_list()
                             if df is None or df.empty:
-                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["TERM", "DESCRIPTION"]))
+                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["TERM", "DEFINITION"]))
                                 return
                             yield gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df)
                         except Exception as e:
@@ -1723,12 +1723,12 @@ def build_selectai_tab(pool):
                             except Exception:
                                 return gr.Textbox(visible=True, value="Excel読み込みに失敗しました")
                             cols_map = {str(c).upper(): c for c in df.columns.tolist()}
-                            required = {"TERM", "DESCRIPTION"}
+                            required = {"TERM", "DEFINITION"}
                             if not required.issubset(set(cols_map.keys())):
                                 return gr.Textbox(visible=True, value="列名は TERM, DESCRIPTION が必要です")
                             out_df = pd.DataFrame({
                                 "TERM": df[cols_map["TERM"]],
-                                "DESCRIPTION": df[cols_map["DESCRIPTION"]],
+                                "DEFINITION": df[cols_map["DEFINITION"]],
                             })
                             up_dir = Path("uploads")
                             up_dir.mkdir(parents=True, exist_ok=True)
@@ -2119,7 +2119,7 @@ def build_selectai_tab(pool):
                             df = pd.read_excel(str(p))
                             cols_map = {str(c).upper(): c for c in df.columns.tolist()}
                             t_col = cols_map.get("TERM")
-                            d_col = cols_map.get("DESCRIPTION")
+                            d_col = cols_map.get("DEFINITION")
                             if not t_col or not d_col:
                                 return {}
                             terms = {}
@@ -2179,21 +2179,22 @@ def build_selectai_tab(pool):
                                 if terms:
                                     # 用語集を使ってLLMで分析
                                     terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
-                                    step1_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集を参照して、ユーザーの質問を分析し、より明確な表現に修正してください。
+                                    step1_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集は「A（TERM）→B（定義・推奨表現）」の最適化指針です。本ステップでは正方向の最適化を行い、元の質問に含まれるA側の用語をB側の推奨表現へ明確化・正規化してください。
 
-**用語集:**
+用語集:
 {terms_text}
 
-**元の質問:**
+元の質問:
 {original_query}
 
-**指示:**
-1. 用語集に含まれる言葉が使われている場合は、その定義に沿って修正してください。
-2. 曖昧な表現は、より具体的な表現に改めてください。
-3. 質問の元の意図を変えない範囲で、内容を明確にしてください。
-4. 出力は修正後の質問文のみとし、余計な説明は含めないでください。
+指示:
+1. TERM（A側）が含まれる場合は、その定義・推奨表現（B側）に置換し、意味を明確化してください。
+2. 曖昧な表現は、対象・条件・期間などを可能な限り具体的な言い回しに整えてください。
+3. 質問の意図・条件・対象は維持し、不要な追加・削除は行わないでください。
+4. 数値・日付・範囲などの具体値は変更しないでください。
+5. 出力は修正後の質問文のみ。説明や前置きは不要です。
 
-**修正後の質問:**"""
+修正後の質問:"""
                                     
                                     loop = asyncio.new_event_loop()
                                     asyncio.set_event_loop(loop)
@@ -4332,14 +4333,6 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 rev_question_output = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=False, show_copy_button=True, container=False)
 
-                    def _rev_profile_names():
-                        try:
-                            # JSONファイルから読み込む
-                            return _load_profiles_from_json()
-                        except Exception as e:
-                            logger.error(f"_rev_profile_names error: {e}")
-                        return []
-
                     def _rev_build_context_text(profile_name):
                         try:
                             prof = _resolve_profile_name(pool, str(profile_name or ""))
@@ -4449,21 +4442,21 @@ def build_selectai_tab(pool):
                                 if terms:
                                     # 用語集を使ってLLMで書き換え（逆処理）
                                     terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
-                                    glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集を参照して、自然言語の質問をより明確な表現に修正してください。
+                                    glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集は通常「A（TERM）→B（定義・推奨表現）」の最適化指針です。本タスクでは逆最適化を行い、元の質問に含まれるB側の表現をA側の正式用語（TERM）へ正規化してください。
 
-**用語集:**
+用語集:
 {terms_text}
 
-**元の質問:**
+元の質問:
 {out_text}
 
-**指示:**
-1. 用語集に含まれる言葉が使われている場合は、その定義に沿って修正してください。
-2. 曖昧な表現は、より具体的な表現に改めてください。
-3. 質問の元の意図を変えない範囲で、内容を明確にしてください。
-4. 出力は修正後の質問文のみとし、余計な説明は含めないでください。
+指示:
+1. 定義や推奨表現、別名、略称などB側に該当する語句は対応する正式用語（A/TERM）に置換してください。
+2. 意図・条件・対象は維持し、語彙のみを正規化してください。
+3. 数値・日付・範囲などの具体値は変更しないでください。
+4. 出力は正規化後の質問文のみ。説明や前置きは不要です。
 
-**修正後の質問:**"""
+正規化後の質問:"""
                                     
                                     messages = [{"role": "user", "content": glossary_prompt}]
                                     glossary_resp = await client.chat.completions.create(model=model_name, messages=messages)
