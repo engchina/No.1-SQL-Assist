@@ -1228,17 +1228,14 @@ def build_management_tab(pool):
                 """Drop the selected table and refresh list."""
                 yield (
                     gr.Markdown(visible=True, value="⏳ テーブルを削除中..."),
-                    gr.Dataframe(visible=False, value=pd.DataFrame()),
                     gr.Textbox(value=str(table_name or "")),
                     gr.Dataframe(visible=False, value=pd.DataFrame()),
                     gr.Textbox(value=""),
                 )
                 result = drop_table(pool, table_name)
-                new_list = get_table_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
                 yield (
                     status_md,
-                    gr.Dataframe(value=new_list, visible=True),
                     gr.Textbox(value=""),
                     gr.Dataframe(value=pd.DataFrame()),
                     gr.Textbox(value=""),
@@ -1247,11 +1244,10 @@ def build_management_tab(pool):
             def execute_create(sql):
                 """Execute CREATE TABLE and refresh list."""
                 sql_no_comment = remove_comments(sql)
-                yield gr.Markdown(visible=True, value="⏳ テーブル作成を実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
+                yield gr.Markdown(visible=True, value="⏳ テーブル作成を実行中...")
                 result = execute_create_table(pool, sql_no_comment)
-                new_list = get_table_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
-                yield status_md, gr.Dataframe(value=new_list, visible=True)
+                yield status_md
             
             def clear_sql():
                 """Clear the SQL input."""
@@ -1272,14 +1268,19 @@ def build_management_tab(pool):
             table_drop_btn.click(
                 fn=drop_selected_table,
                 inputs=[selected_table_name],
-                outputs=[table_drop_result, table_list_df, selected_table_name, 
-                        table_columns_df, table_ddl_text]
+                outputs=[table_drop_result, selected_table_name, table_columns_df, table_ddl_text]
+            ).then(
+                fn=refresh_table_list,
+                outputs=[table_refresh_status, table_list_df]
             )
             
             create_table_btn.click(
                 fn=execute_create,
                 inputs=[create_table_sql],
-                outputs=[create_table_result, table_list_df]
+                outputs=[create_table_result]
+            ).then(
+                fn=refresh_table_list,
+                outputs=[table_refresh_status, table_list_df]
             )
             
             clear_sql_btn.click(
@@ -1599,7 +1600,6 @@ def build_management_tab(pool):
                 """Drop the selected view and refresh list."""
                 yield (
                     gr.Markdown(visible=True, value="⏳ ビューを削除中..."),
-                    gr.Dataframe(visible=False, value=pd.DataFrame()),
                     "",
                     pd.DataFrame(),
                     "",
@@ -1607,18 +1607,16 @@ def build_management_tab(pool):
                     "",
                 )
                 result = drop_view(pool, view_name)
-                new_list = get_view_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
-                yield result, gr.Dataframe(value=new_list, visible=True), "", pd.DataFrame(), "", "", ""
+                yield status_md, "", pd.DataFrame(), "", "", ""
             
             def execute_create_view_handler(sql):
                 """Execute CREATE VIEW and refresh list."""
                 sql_no_comment = remove_comments(sql)
-                yield gr.Markdown(visible=True, value="⏳ ビュー作成を実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
+                yield gr.Markdown(visible=True, value="⏳ ビュー作成を実行中...")
                 result = execute_create_view(pool, sql_no_comment)
-                new_list = get_view_list(pool)
                 status_md = gr.Markdown(visible=True, value=result)
-                yield status_md, gr.Dataframe(value=new_list, visible=True)
+                yield status_md
             
             def clear_view_sql():
                 """Clear the SQL input."""
@@ -1639,8 +1637,11 @@ def build_management_tab(pool):
             view_drop_btn.click(
                 fn=drop_selected_view,
                 inputs=[selected_view_name],
-                outputs=[view_drop_result, view_list_df, selected_view_name, 
+                outputs=[view_drop_result, selected_view_name, 
                         view_columns_df, view_ddl_text, view_join_text, view_where_text]
+            ).then(
+                fn=refresh_view_list,
+                outputs=[view_refresh_status, view_list_df]
             )
 
             async def _view_join_where_ai_extract_async(model_name, ddl_text):
@@ -1749,7 +1750,10 @@ def build_management_tab(pool):
             create_view_btn.click(
                 fn=execute_create_view_handler,
                 inputs=[create_view_sql],
-                outputs=[create_view_result, view_list_df]
+                outputs=[create_view_result]
+            ).then(
+                fn=refresh_view_list,
+                outputs=[view_refresh_status, view_list_df]
             )
             
             clear_view_sql_btn.click(
@@ -1853,7 +1857,8 @@ def build_management_tab(pool):
                             with gr.Column(scale=5):
                                 data_table_select = gr.Dropdown(
                                     show_label=False,
-                                    choices=[],
+                                    choices=[("","")],
+                                    value="",
                                     interactive=True,
                                     container=False,
                                 )

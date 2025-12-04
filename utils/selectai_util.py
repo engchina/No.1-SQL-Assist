@@ -2773,11 +2773,15 @@ def build_selectai_tab(pool):
                                         # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
                                         _global_initial_choices = _global_profile_names()
                                         if not _global_initial_choices:
-                                            _global_initial_choices = [""]
+                                            _global_initial_choices = [("", "")]
                                         global_profile_select = gr.Dropdown(
                                             show_label=False,
                                             choices=_global_initial_choices,
-                                            value="" if "" in _global_initial_choices else (_global_initial_choices[0] if _global_initial_choices else ""),
+                                            value=(
+                                                _global_initial_choices[0][1]
+                                                if (_global_initial_choices and isinstance(_global_initial_choices[0], tuple))
+                                                else (_global_initial_choices[0] if _global_initial_choices else "")
+                                            ),
                                             interactive=True,
                                             container=False,
                                         )
@@ -3942,11 +3946,15 @@ def build_selectai_tab(pool):
                                         # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
                                         _syn_initial_choices = _load_profiles_from_json()
                                         if not _syn_initial_choices:
-                                            _syn_initial_choices = [""]
+                                            _syn_initial_choices = [("", "")]
                                         syn_profile_select = gr.Dropdown(
                                             show_label=False,
                                             choices=_syn_initial_choices,
-                                            value="" if "" in _syn_initial_choices else (_syn_initial_choices[0] if _syn_initial_choices else ""),
+                                            value=(
+                                                _syn_initial_choices[0][1]
+                                                if (_syn_initial_choices and isinstance(_syn_initial_choices[0], tuple))
+                                                else (_syn_initial_choices[0] if _syn_initial_choices else "")
+                                            ),
                                             interactive=True,
                                             container=False
                                         )
@@ -4259,11 +4267,15 @@ def build_selectai_tab(pool):
                                         # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
                                         _rev_initial_choices = _load_profiles_from_json()
                                         if not _rev_initial_choices:
-                                            _rev_initial_choices = [""]
+                                            _rev_initial_choices = [("", "")]
                                         rev_profile_select = gr.Dropdown(
                                             show_label=False,
                                             choices=_rev_initial_choices,
-                                            value="" if "" in _rev_initial_choices else (_rev_initial_choices[0] if _rev_initial_choices else ""),
+                                            value=(
+                                                _rev_initial_choices[0][1]
+                                                if (_rev_initial_choices and isinstance(_rev_initial_choices[0], tuple))
+                                                else (_rev_initial_choices[0] if _rev_initial_choices else "")
+                                            ),
                                             interactive=True,
                                             container=False
                                         )
@@ -4917,19 +4929,17 @@ def build_selectai_tab(pool):
 
         # 各タブ選択時のProfileドロップダウン更新イベントハンドラー
         def _update_dropdown_from_json(current_value):
-            """
-            JSONファイルから読み込んでドロップダウンを更新。
-            現在の値がリストにない場合は空文字列に設定。
-            """
-            choices = _load_profiles_from_json()
+            choices = _load_profiles_from_json() or [("", "")]
+            if choices and isinstance(choices[0], tuple):
+                values = [c[1] for c in choices]
+                if current_value in values:
+                    return gr.Dropdown(choices=choices, value=current_value)
+                return gr.Dropdown(choices=choices, value=values[0])
             if not choices:
                 choices = [""]
-            # 現在の値がリストに存在するか確認
-            if current_value and current_value in choices:
+            if current_value in choices:
                 return gr.Dropdown(choices=choices, value=current_value)
-            else:
-                # リストにない場合は空文字列に設定
-                return gr.Dropdown(choices=choices, value="")
+            return gr.Dropdown(choices=choices, value=choices[0])
 
         # チャット・分析タブ
         dev_chat_tab.select(

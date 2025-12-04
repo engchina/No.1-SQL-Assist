@@ -523,100 +523,99 @@ def build_oci_embedding_test_tab(pool):
     
     # UIコンポーネントの構築
     with gr.Accordion(label="", open=True):
-        with gr.Accordion(label="", open=True):
-            with gr.Accordion(label="OCI Credentialを作成で生成されたSQL", open=False):
-                with gr.Column():
-                    tab_auto_create_sql_text = gr.Textbox(
-                        label="SQL",
-                        show_label=False,
-                        lines=15,
-                        max_lines=15,
-                        autoscroll=False,
-                        interactive=False,
-                        show_copy_button=True,
-                        container=False,
-                    )
-            with gr.Row():
-                tab_auto_create_btn = gr.Button(value="OCI Credentialを作成", variant="primary")
-            with gr.Row():
-                tab_auto_create_status_md = gr.Markdown(visible=False)
+        with gr.Accordion(label="OCI Credentialを作成で生成されたSQL", open=False):
+            with gr.Column():
+                tab_auto_create_sql_text = gr.Textbox(
+                    label="SQL",
+                    show_label=False,
+                    lines=15,
+                    max_lines=15,
+                    autoscroll=False,
+                    interactive=False,
+                    show_copy_button=True,
+                    container=False,
+                )
+        with gr.Row():
+            tab_auto_create_btn = gr.Button(value="OCI Credentialを作成", variant="primary")
+        with gr.Row():
+            tab_auto_create_status_md = gr.Markdown(visible=False)
             
-        with gr.Accordion(label="Embedding生成テスト", open=True):
-            with gr.Row():
-                with gr.Column(scale=5):
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            gr.Markdown("Embeddingモデル", elem_classes="input-label")
-                        with gr.Column(scale=5):
-                            tab_test_oci_cred_model_input = gr.Dropdown(
-                                show_label=False,
-                                choices=["cohere.embed-v4.0"],
-                                value="cohere.embed-v4.0",
-                                interactive=True,
-                                container=False,
-                            )
-                with gr.Column(scale=5):
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            gr.Markdown("")
+    with gr.Accordion(label="Embedding生成テスト", open=True):
+        with gr.Row():
+            with gr.Column(scale=5):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("Embeddingモデル", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        tab_test_oci_cred_model_input = gr.Dropdown(
+                            show_label=False,
+                            choices=["cohere.embed-v4.0"],
+                            value="cohere.embed-v4.0",
+                            interactive=True,
+                            container=False,
+                        )
+            with gr.Column(scale=5):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("")
 
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("入力テキスト", elem_classes="input-label")
-                with gr.Column(scale=5):
-                    tab_test_oci_cred_query_text = gr.Textbox(
-                        show_label=False,
-                        placeholder="Embeddingベクトルに変換するテキストを入力してください...",
-                        lines=2,
-                        max_lines=5,
-                        value="こんにちわ",
-                        container=False,
-                    )
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("入力テキスト", elem_classes="input-label")
+            with gr.Column(scale=5):
+                tab_test_oci_cred_query_text = gr.Textbox(
+                    show_label=False,
+                    placeholder="Embeddingベクトルに変換するテキストを入力してください...",
+                    lines=2,
+                    max_lines=5,
+                    value="こんにちわ",
+                    container=False,
+                )
 
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("ベクトル結果", elem_classes="input-label")
-                with gr.Column(scale=5):
-                    tab_test_oci_cred_vector_text = gr.Textbox(
-                        show_label=False,
-                        lines=8,
-                        max_lines=8,
-                        autoscroll=False,
-                        interactive=False,
-                        show_copy_button=True,
-                        container=False,
-                    )
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("ベクトル結果", elem_classes="input-label")
+            with gr.Column(scale=5):
+                tab_test_oci_cred_vector_text = gr.Textbox(
+                    show_label=False,
+                    lines=8,
+                    max_lines=8,
+                    autoscroll=False,
+                    interactive=False,
+                    show_copy_button=True,
+                    container=False,
+                )
 
-            with gr.Row():
-                with gr.Column():
-                    tab_test_clear_button = gr.ClearButton(
-                        value="クリア",
-                        components=[]
-                    )
-                with gr.Column():
-                    tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
-            with gr.Row():
-                tab_test_status_md = gr.Markdown(visible=False)
+        with gr.Row():
+            with gr.Column():
+                tab_test_clear_button = gr.ClearButton(
+                    value="クリア",
+                    components=[]
+                )
+            with gr.Column():
+                tab_test_oci_cred_button = gr.Button(value="テスト", variant="primary")
+        with gr.Row():
+            tab_test_status_md = gr.Markdown(visible=False)
 
-        # イベントハンドラーの設定
-        tab_test_clear_button.add(
-            components=[tab_test_oci_cred_query_text, tab_test_oci_cred_vector_text]
-        )
-        
-        tab_test_oci_cred_button.click(
-            test_oci_cred_wrapper,
-            inputs=[tab_test_oci_cred_query_text, tab_test_oci_cred_model_input],
-            outputs=[tab_test_status_md, tab_test_oci_cred_vector_text],
-        )
+    # イベントハンドラーの設定
+    tab_test_clear_button.add(
+        components=[tab_test_oci_cred_query_text, tab_test_oci_cred_vector_text]
+    )
+    
+    tab_test_oci_cred_button.click(
+        test_oci_cred_wrapper,
+        inputs=[tab_test_oci_cred_query_text, tab_test_oci_cred_model_input],
+        outputs=[tab_test_status_md, tab_test_oci_cred_vector_text],
+    )
 
-        def create_oci_cred_from_config_wrapper():
-            for _vals in create_oci_db_credential_from_config(pool):
-                yield _vals
+    def create_oci_cred_from_config_wrapper():
+        for _vals in create_oci_db_credential_from_config(pool):
+            yield _vals
 
-        tab_auto_create_btn.click(
-            create_oci_cred_from_config_wrapper,
-            outputs=[tab_auto_create_btn, tab_auto_create_status_md, tab_auto_create_sql_text],
-        )
+    tab_auto_create_btn.click(
+        create_oci_cred_from_config_wrapper,
+        outputs=[tab_auto_create_btn, tab_auto_create_status_md, tab_auto_create_sql_text],
+    )
 
 
 def build_openai_settings_tab(pool=None):
