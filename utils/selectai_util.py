@@ -683,6 +683,8 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             profile_update_btn = gr.Button("変更を保存", variant="primary")
                             profile_delete_btn = gr.Button("選択したProfileを削除", variant="stop")
+                        with gr.Row():
+                            profile_action_status = gr.Markdown(visible=False)
 
                     with gr.Accordion(label="3. プロファイル作成", open=True):
                         with gr.Row():
@@ -863,11 +865,12 @@ def build_selectai_tab(pool):
                     try:
                         yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
                         df = get_db_profiles(pool)
-                        # JSONファイルに保存
                         _save_profiles_to_json(pool)
                         if df is None or df.empty:
                             empty_df = pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])
-                            yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True), gr.HTML(visible=False)
+                            count = 0
+                            label_text = f"プロファイル一覧(行をクリックして詳細を表示) - {count}件"
+                            yield gr.Markdown(value="✅ 取得完了（0件）", visible=True), gr.Dataframe(value=empty_df, visible=True, label=label_text), gr.HTML(visible=False)
                             return
                         sample = df.head(5)
                         widths = []
@@ -890,7 +893,9 @@ def build_selectai_tab(pool):
                             for idx, pct in enumerate(col_widths, start=1):
                                 rules.append(f"#profile_list_df table th:nth-child({idx}), #profile_list_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                             style_value = "<style>" + "\n".join(rules) + "</style>"
-                        yield gr.Markdown(visible=False), gr.Dataframe(value=df, visible=True), gr.HTML(visible=bool(style_value), value=style_value)
+                        count = len(df)
+                        label_text = f"プロファイル一覧(行をクリックして詳細を表示) - {count}件"
+                        yield gr.Markdown(visible=True, value=f"✅ 取得完了（{count}件）"), gr.Dataframe(value=df, visible=True, label=label_text), gr.HTML(visible=bool(style_value), value=style_value)
                     except Exception as e:
                         logger.error(f"refresh_profiles error: {e}")
                         yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"])), gr.HTML(visible=False)
@@ -935,10 +940,10 @@ def build_selectai_tab(pool):
                                 cursor.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :name); END;", name=name)
                         # JSONファイルを更新
                         _save_profiles_to_json(pool)
-                        return gr.Markdown(visible=True, value=f"🗑️ 削除しました: {name}"), gr.Dataframe(value=get_db_profiles(pool)), "", "", ""
+                        return gr.Markdown(visible=True, value=f"🗑️ 削除しました: {name}"), "", "", ""
                     except Exception as e:
                         logger.error(f"delete_selected_profile error: {e}")
-                        return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), name, "", ""
+                        return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {str(e)}"), name, "", ""
 
                 def update_selected_profile(original_name, edited_name, business_domain):
                     try:
@@ -948,13 +953,13 @@ def build_selectai_tab(pool):
                         if not orig:
                             attrs = {}
                             sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
-                            return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Dataframe(value=get_db_profiles(pool)), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
+                            return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
                         if not new:
                             new = orig
                         if not bd:
                             attrs = _get_profile_attributes(pool, orig) or {}
                             sql = _generate_create_sql_from_attrs(orig, attrs, "")
-                            return gr.Markdown(visible=True, value="⚠️ 業務ドメイン名を入力してください"), gr.Dataframe(value=get_db_profiles(pool)), new, gr.Textbox(value=bd), sql, orig
+                            return gr.Markdown(visible=True, value="⚠️ 業務ドメイン名を入力してください"), new, gr.Textbox(value=bd), sql, orig
                         attrs = _get_profile_attributes(pool, orig) or {}
                         attr_str = json.dumps(attrs, ensure_ascii=False)
                         with pool.acquire() as conn:
@@ -969,26 +974,26 @@ def build_selectai_tab(pool):
                         # JSONファイルを更新
                         _save_profiles_to_json(pool)
                         sql = _generate_create_sql_from_attrs(new, attrs, bd)
-                        return gr.Markdown(visible=True, value=f"✅ 更新しました: {new}"), gr.Dataframe(value=get_db_profiles(pool)), new, gr.Textbox(value=bd), sql, new
+                        return gr.Markdown(visible=True, value=f"✅ 更新しました: {new}"), new, gr.Textbox(value=bd), sql, new
                     except Exception as e:
                         logger.error(f"update_selected_profile error: {e}")
                         attrs = _get_profile_attributes(pool, orig or edited_name) or {}
                         sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
-                        return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), gr.Dataframe(value=get_db_profiles(pool)), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
+                        return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
 
                 def refresh_sources():
                     return gr.CheckboxGroup(choices=_get_table_names(pool), visible=True), gr.CheckboxGroup(choices=_get_view_names(pool), visible=True)
 
                 def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, business_domain):
                     if not tables and not views:
-                        yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください"), gr.Dataframe(value=get_db_profiles(pool))
+                        yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください")
                         return
                     bd = str(business_domain or "").strip()
                     if not bd:
-                        yield gr.Markdown(visible=True, value="⚠️ 業務ドメイン名を入力してください"), gr.Dataframe(value=get_db_profiles(pool))
+                        yield gr.Markdown(visible=True, value="⚠️ 業務ドメイン名を入力してください")
                         return
                     try:
-                        yield gr.Markdown(visible=True, value="⏳ 作成中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Status"]))
+                        yield gr.Markdown(visible=True, value="⏳ 作成中...")
                         bool_map = {"true": True, "false": False}
                         eol = bool_map.get(str(enforce_object_list).lower(), True)
                         com = bool_map.get(str(comments).lower(), True)
@@ -1013,7 +1018,7 @@ def build_selectai_tab(pool):
                         # JSONファイルを更新
                         _save_profiles_to_json(pool)
                         sql = _generate_create_sql_from_attrs(name, attrs, desc)
-                        yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}"), gr.Dataframe(value=get_db_profiles(pool), visible=True)
+                        yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}")
                     except Exception as e:
                         msg = f"❌ 作成に失敗しました: {str(e)}"
                         # gpt-* モデルで provider_endpoint が原因のエラーの場合、値を表示
@@ -1029,7 +1034,7 @@ def build_selectai_tab(pool):
                                 endpoint = endpoint[:-1]
                             msg += f"\n\nprovider_endpoint: {endpoint}"
                         
-                        yield gr.Markdown(visible=True, value=msg), gr.Dataframe(value=get_db_profiles(pool), visible=False)
+                        yield gr.Markdown(visible=True, value=msg)
 
                 profile_refresh_btn.click(
                     fn=refresh_profiles,
@@ -1042,16 +1047,38 @@ def build_selectai_tab(pool):
                     outputs=[selected_profile_name, business_domain_text, profile_json_text, selected_profile_original_name],
                 )
 
+                def _delete_profile_handler(name):
+                    try:
+                        yield gr.Markdown(visible=True, value="⏳ 削除中..."), name, gr.Textbox(value=""), gr.Textbox(value="")
+                        md, sel_name, bd_text, json_text = delete_selected_profile(name)
+                        yield md, sel_name, bd_text, json_text
+                    except Exception as e:
+                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), name, gr.Textbox(value=""), gr.Textbox(value="")
+
+                def _update_profile_handler(original_name, edited_name, business_domain):
+                    try:
+                        yield gr.Markdown(visible=True, value="⏳ 更新中..."), edited_name, gr.Textbox(value=business_domain), gr.Textbox(value=""), original_name
+                        md, sel_name, bd_text, sql_text, orig_out = update_selected_profile(original_name, edited_name, business_domain)
+                        yield md, sel_name, bd_text, sql_text, orig_out
+                    except Exception as e:
+                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), edited_name, gr.Textbox(value=business_domain), gr.Textbox(value=""), original_name
+
                 profile_delete_btn.click(
-                    fn=delete_selected_profile,
+                    fn=_delete_profile_handler,
                     inputs=[selected_profile_name],
-                    outputs=[create_info, profile_list_df],
+                    outputs=[profile_action_status, selected_profile_name, business_domain_text, profile_json_text],
+                ).then(
+                    fn=lambda: gr.Dataframe(value=get_db_profiles(pool)),
+                    outputs=[profile_list_df],
                 )
 
                 profile_update_btn.click(
-                    fn=update_selected_profile,
+                    fn=_update_profile_handler,
                     inputs=[selected_profile_original_name, selected_profile_name, business_domain_text],
-                    outputs=[create_info, profile_list_df, selected_profile_name, business_domain_text, profile_json_text, selected_profile_original_name],
+                    outputs=[profile_action_status, selected_profile_name, business_domain_text, profile_json_text, selected_profile_original_name],
+                ).then(
+                    fn=lambda: gr.Dataframe(value=get_db_profiles(pool)),
+                    outputs=[profile_list_df],
                 )
 
                 def refresh_sources_handler():
@@ -1085,7 +1112,10 @@ def build_selectai_tab(pool):
                         annotations_input,
                         business_domain_input,
                     ],
-                    outputs=[create_info, profile_list_df],
+                    outputs=[create_info],
+                ).then(
+                    fn=lambda: gr.Dataframe(value=get_db_profiles(pool)),
+                    outputs=[profile_list_df],
                 )
 
                 def _profile_names():
@@ -1119,53 +1149,21 @@ def build_selectai_tab(pool):
                         yield gr.Markdown(visible=True, value="⏳ 訓練データ一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
                         df = _td_list()
                         if df is None or df.empty:
-                            yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"]))
+                            count = 0
+                            label_text = f"訓練データ一覧 - {count}件"
+                            yield gr.Markdown(visible=True, value="✅ 取得完了（0件）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"]), label=label_text)
                             return
-                        # Display TEXT as a 200-char preview with ellipsis
                         try:
                             df_disp = df.copy()
                             df_disp["TEXT"] = df_disp["TEXT"].astype(str).map(lambda s: s if len(s) <= 200 else (s[:200] + " ..."))
                         except Exception as e:
                             logger.error(f"build training data preview failed: {e}")
                             df_disp = df
-                        yield gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df_disp)
+                        count = len(df_disp)
+                        label_text = f"訓練データ一覧 - {count}件"
+                        yield gr.Markdown(visible=True, value=f"✅ 取得完了（{count}件）"), gr.Dataframe(visible=True, value=df_disp, label=label_text)
                     except Exception as e:
                         yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
-
-                # 選択時の詳細取得は不要
-
-                def _td_create(business_domain, text):
-                    try:
-                        with pool.acquire() as conn:
-                            with conn.cursor() as cursor:
-                                cursor.execute("INSERT INTO ADMIN.TRAINING_DATA (BUSINESS_DOMAIN, TEXT) VALUES (:bd, :txt)", bd=business_domain, txt=str(text or ""))
-                                conn.commit()
-                        return gr.Markdown(visible=True, value="✅ 登録しました"), gr.Dataframe(value=_td_list(), visible=True)
-                    except Exception as e:
-                        logger.error(f"登録に失敗しました: {e}")
-                        return gr.Markdown(visible=True, value=f"❌ 登録に失敗しました: {e}"), gr.Dataframe(value=_td_list(), visible=True)
-
-                def _td_update(record_id, business_domain, text):
-                    try:
-                        with pool.acquire() as conn:
-                            with conn.cursor() as cursor:
-                                cursor.execute("UPDATE ADMIN.TRAINING_DATA SET BUSINESS_DOMAIN=:bd, TEXT=:txt WHERE RECORD_ID=:id", bd=business_domain, txt=str(text or ""), id=int(record_id or 0))
-                                conn.commit()
-                        return gr.Markdown(visible=True, value="✅ 更新しました"), gr.Dataframe(value=_td_list(), visible=True)
-                    except Exception as e:
-                        logger.error(f"更新に失敗しました: {e}")
-                        return gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {e}"), gr.Dataframe(value=_td_list(), visible=True)
-
-                def _td_delete(record_id):
-                    try:
-                        with pool.acquire() as conn:
-                            with conn.cursor() as cursor:
-                                cursor.execute("DELETE FROM ADMIN.TRAINING_DATA WHERE RECORD_ID=:id", id=int(record_id or 0))
-                                conn.commit()
-                        return gr.Markdown(visible=True, value="🗑️ 削除しました"), gr.Dataframe(value=_td_list(), visible=True), "", "", ""
-                    except Exception as e:
-                        logger.error(f"削除に失敗しました: {e}")
-                        return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {e}"), gr.Dataframe(value=_td_list(), visible=True), "", "", ""
 
                 def _td_train(embed_model):
                     """参照コード(No.1-Classifier)に基づいた分類器訓練関数"""
@@ -4065,21 +4063,21 @@ def build_selectai_tab(pool):
                                     table_names = [t for t in table_names if t in prof_tables]
                             except Exception as e:
                                 logger.error(f"_syn_refresh_objects filter by profile error: {e}")
-                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.Dropdown(choices=table_names)
+                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.Dropdown(choices=table_names, visible=True)
                         except Exception as e:
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
 
-                    def _syn_build_prompt(tables_selected, rows_per_table, extra_text):
-                        tbls = [str(t) for t in (tables_selected or []) if str(t).strip()]
-                        rp = int(rows_per_table or 0)
-                        base = (
-                            "以下のテーブルに対して合成データを生成してください。行数は各テーブルで指定値に近づけ、スキーマの制約と自然な分布を考慮してください。\n"
-                            + f"対象テーブル: {', '.join(tbls)}\n"
-                            + f"行数目安: {rp} 行/テーブル\n"
-                        )
-                        if str(extra_text or "").strip():
-                            base += "\n追加指示:\n" + str(extra_text).strip()
-                        return base
+                    # def _syn_build_prompt(tables_selected, rows_per_table, extra_text):
+                    #     tbls = [str(t) for t in (tables_selected or []) if str(t).strip()]
+                    #     rp = int(rows_per_table or 0)
+                    #     base = (
+                    #         "以下のテーブルに対して合成データを生成してください。行数は各テーブルで指定値に近づけ、スキーマの制約と自然な分布を考慮してください。\n"
+                    #         + f"対象テーブル: {', '.join(tbls)}\n"
+                    #         + f"行数目安: {rp} 行/テーブル\n"
+                    #     )
+                    #     if str(extra_text or "").strip():
+                    #         base += "\n追加指示:\n" + str(extra_text).strip()
+                    #     return base
 
                     def _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
                         if not profile_name or not str(profile_name).strip():
@@ -4254,8 +4252,6 @@ def build_selectai_tab(pool):
                         outputs=[syn_result_info, syn_result_df, syn_result_style],
                     )
 
-                # モデル管理タブは上へ移動しました
-
                 with gr.TabItem(label="SQL→質問 逆生成") as reverse_tab:
                     with gr.Accordion(label="1. 入力", open=True):
                         with gr.Row():
@@ -4364,22 +4360,22 @@ def build_selectai_tab(pool):
                                     continue
                                 if name in view_names:
                                     views.append(name)
-                                else:
+                                elif name in tab_names:
                                     tables.append(name)
                             chunks = []
                             # CREATE DDL + COMMENT statements (column level)
                             for t in sorted(set(tables)):
                                 try:
-                                    cols_df, ddl = get_table_details(pool, t)
+                                    _, ddl = get_table_details(pool, t)
                                 except Exception:
-                                    cols_df, ddl = pd.DataFrame(), ""
+                                    ddl = ""
                                 if ddl:
                                     chunks.append(str(ddl).strip())
                             for v in sorted(set(views)):
                                 try:
-                                    cols_df, ddl = get_view_details(pool, v)
+                                    _, ddl = get_view_details(pool, v)
                                 except Exception:
-                                    cols_df, ddl = pd.DataFrame(), ""
+                                    ddl = ""
                                 if ddl:
                                     chunks.append(str(ddl).strip())
                             return "\n\n".join([c for c in chunks if c]) or ""
@@ -4506,7 +4502,7 @@ def build_selectai_tab(pool):
                     def _on_profile_change_set_context(p):
                         return _rev_build_context(p)
 
-                    rev_profile_select.change(
+                    rev_profile_select.select(
                         fn=_on_profile_change_set_context,
                         inputs=[rev_profile_select],
                         outputs=[rev_context_text],
