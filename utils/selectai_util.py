@@ -569,6 +569,23 @@ def _resolve_profile_name(pool, display_name: str) -> str:
     except Exception:
         return str(display_name or "")
 
+def _resolve_profile_name_from_json(pool, display_or_name: str):
+    try:
+        p = _get_profile_json_entry(display_or_name)
+        if p:
+            pf = str((p or {}).get("profile", "") or "").strip()
+            bd = str((p or {}).get("business_domain", "") or "").strip()
+            tables, views = _get_profile_objects_from_json(pf or bd)
+            if pf:
+                return pf, tables, views, bd
+        s = _resolve_profile_name(pool, display_or_name)
+        tables, views = _get_profile_objects_from_json(s)
+        bd = ""
+        return s, tables, views, bd
+    except Exception:
+        s = _resolve_profile_name(pool, display_or_name)
+        return s, [], [], ""
+
 
 def _generate_create_sql_from_attrs(name: str, attrs: dict, description: str = "") -> str:
     try:
@@ -1936,7 +1953,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         with gr.Row():
                                             with gr.Column(scale=1):
-                                                gr.Markdown("書き換え用モデル", elem_classes="input-label")
+                                                gr.Markdown("書き換え用モデル*", elem_classes="input-label")
                                             with gr.Column(scale=5):
                                                 dev_rewrite_model_select = gr.Dropdown(
                                                     show_label=False,
@@ -1947,6 +1964,8 @@ def build_selectai_tab(pool):
                                                         "xai.grok-4",
                                                         "xai.grok-4-fast-non-reasoning",
                                                         "meta.llama-4-scout-17b-16e-instruct",
+                                                        "gpt-4o",
+                                                        "gpt-5.1",
                                                     ],
                                                     value="xai.grok-code-fast-1",
                                                     interactive=True,
@@ -2400,53 +2419,32 @@ def build_selectai_tab(pool):
                             logger.error(traceback.format_exc())
                             yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
 
-                    def _dev_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
-                        """SQL生成処理.
-                        
-                        Args:
-                            profile: Profile名
-                            prompt: 元の自然言語の質問
-                            extra_prompt: 追加指示・例示
-                            include_extra: プロンプトを使用するか
-                            enable_rewrite: Query転写が有効か
-                            rewritten_query: 書き換え後の質問
-                        
-                        Yields:
-                            tuple: (status_md, generated_sql_textbox)
-                        """
-                        # Query転写が有効な場合は転写後の質問を使用
+                    def _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                         if enable_rewrite and rewritten_query and str(rewritten_query).strip():
                             s = str(rewritten_query).strip()
                         else:
                             s = str(prompt or "").strip()
-                        
                         ep = str(extra_prompt or "").strip()
                         inc = bool(include_extra)
                         final = s if not inc or not ep else (ep + "\n\n" + s)
-                        
                         if not profile or not str(profile).strip():
-                            logger.error("Profileが未選択です")
                             yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
                             return
                         if not final:
-                            logger.error("質問が未入力です")
                             yield gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
                             return
-                        
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
-                        
                         try:
                             yield gr.Markdown(visible=True, value="⏳ SQL生成中..."), gr.Textbox(value="")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     try:
-                                        prof = _resolve_profile_name(pool, str(profile or ""))
+                                        prof, _tables, _views, _bd = _resolve_profile_name_from_json(pool, str(profile or ""))
                                         cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=prof)
                                     except Exception as e:
                                         logger.error(f"set profile error: {e}")
-                                    
                                     gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name=> :name, action=> :a)"
                                     showsql_stmt = _build_showsql_stmt(q)
                                     show_text = ""
@@ -2458,15 +2456,13 @@ def build_selectai_tab(pool):
                                             for r in rows:
                                                 for v in r:
                                                     try:
-                                                        s = v.read() if hasattr(v, "read") else str(v)
+                                                        s2 = v.read() if hasattr(v, "read") else str(v)
                                                     except Exception:
-                                                        s = str(v)
-                                                    if s:
-                                                        show_cells.append(s)
+                                                        s2 = str(v)
+                                                    if s2:
+                                                        show_cells.append(s2)
                                             show_text = "\n".join(show_cells)
                                     except Exception as e:
-                                        logger.error(f"dev showsql generate error: {e}")
-                                        # エラーレスポンスのJSONからメッセージを抽出して表示
                                         err_msg = str(e)
                                         try:
                                             import re as _re
@@ -2475,7 +2471,6 @@ def build_selectai_tab(pool):
                                                 err_json = json.loads(m.group(1))
                                                 if "message" in err_json:
                                                     inner_msg = err_json["message"]
-                                                    # 内側のJSON文字列をパース
                                                     try:
                                                         inner_json = json.loads(inner_msg)
                                                         if "error" in inner_json:
@@ -2484,16 +2479,14 @@ def build_selectai_tab(pool):
                                                             err_msg = f"{inner_json['code']}: {inner_json['message']}"
                                                     except:
                                                         err_msg = inner_msg
-                                        except Exception as parse_err:
-                                            logger.error(f"Error parsing error message: {parse_err}")
-                                            
+                                        except Exception:
+                                            pass
                                         yield gr.Markdown(visible=True, value=f"❌ エラー: {err_msg}"), gr.Textbox(value="")
                                         show_text = ""
                                         return
                                     try:
                                         cursor.execute(showsql_stmt)
                                     except Exception as e:
-                                        logger.error(f"dev showsql execute error: {e}")
                                         yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
                                         return
                                     _ = _get_sql_id_for_text(showsql_stmt)
@@ -2502,16 +2495,16 @@ def build_selectai_tab(pool):
                                             return ""
                                         m = re.search(r"```sql\s*([\s\S]*?)```", text, flags=re.IGNORECASE)
                                         if m:
-                                            s = m.group(1).strip()
-                                            return s
+                                            s3 = m.group(1).strip()
+                                            return s3
                                         m2 = re.search(r"SQL\s*:([\s\S]+)$", text, flags=re.IGNORECASE)
                                         if m2:
-                                            s = m2.group(1).strip()
-                                            return s
+                                            s3 = m2.group(1).strip()
+                                            return s3
                                         m3 = re.search(r"\b(SELECT|WITH)\b[\s\S]*", text, flags=re.IGNORECASE)
                                         if m3:
-                                            s = m3.group(0).strip()
-                                            return s
+                                            s3 = m3.group(0).strip()
+                                            return s3
                                         return ""
                                     generated_sql = _extract_sql(show_text)
                                     if not generated_sql and show_cells:
@@ -2526,8 +2519,8 @@ def build_selectai_tab(pool):
                                                             break
                                                 if generated_sql:
                                                     break
-                                            except Exception as e:
-                                                logger.error(f"_to_plain JSON decode error: {e}")
+                                            except Exception:
+                                                pass
                                             m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", c, flags=re.IGNORECASE)
                                             if m:
                                                 generated_sql = m.group(0).strip()
@@ -2537,17 +2530,19 @@ def build_selectai_tab(pool):
                                         gen_sql_display = gen_sql_display
                                     yield gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
                         except Exception as e:
-                            logger.error(f"_dev_step_generate error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
 
-                    def _dev_step_run_sql(profile, generated_sql):
+                    def _dev_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                        yield from _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query)
+
+                    def _run_sql_common(sql_text, elem_id):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                            yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
-                                    s = str(generated_sql or "").strip()
+                                    s = str(sql_text or "").strip()
                                     if not s or not re.match(r"^\s*(select|with)\b", s, flags=re.IGNORECASE):
-                                        yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                                        yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
                                         return
                                     run_sql = s
                                     if run_sql.endswith(";"):
@@ -2584,26 +2579,28 @@ def build_selectai_tab(pool):
                                             label=f"実行結果（件数: {len(df)}）",
                                             interactive=False,
                                             wrap=True,
-                                            elem_id="selectai_dev_chat_result_df",
+                                            elem_id=elem_id,
                                         )
                                         style_value = ""
                                         if col_widths:
                                             rules = []
-                                            rules.append("#selectai_dev_chat_result_df { width: 100% !important; }")
-                                            rules.append("#selectai_dev_chat_result_df .wrap { overflow-x: auto !important; }")
-                                            rules.append("#selectai_dev_chat_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
+                                            rules.append(f"#{elem_id} { '{' } width: 100% !important; { '}' }")
+                                            rules.append(f"#{elem_id} .wrap { '{' } overflow-x: auto !important; { '}' }")
+                                            rules.append(f"#{elem_id} table { '{' } table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; { '}' }")
                                             for idx, pct in enumerate(col_widths, start=1):
                                                 rules.append(
-                                                    f"#selectai_dev_chat_result_df table th:nth-child({idx}), #selectai_dev_chat_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
+                                                    f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) { '{' } width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; { '}' }"
                                                 )
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
                                         style_component = gr.HTML(visible=bool(style_value), value=style_value)
                                         yield gr.Markdown(visible=True, value=f"✅ 取得完了"), df_component, style_component
                                         return
-                                    yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                                    yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
                         except Exception as e:
-                            logger.error(f"_dev_step_run_sql error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                            logger.error(f"_run_sql_common error: {e}")
+
+                    def _dev_step_run_sql(profile, generated_sql):
+                        yield from _run_sql_common(generated_sql, "selectai_dev_chat_result_df")
 
                     async def _dev_ai_analyze_async(model_name, sql_text):
                         try:
@@ -3210,7 +3207,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("モデル", elem_classes="input-label")
+                                        gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         cm_model_input = gr.Dropdown(
                                             show_label=False,
@@ -3251,7 +3248,7 @@ def build_selectai_tab(pool):
                                 with gr.Column(scale=5):
                                     with gr.Row():
                                         with gr.Column(scale=1):
-                                            gr.Markdown("モデル", elem_classes="input-label")
+                                            gr.Markdown("モデル*", elem_classes="input-label")
                                         with gr.Column(scale=5):
                                             cm_ai_model_input = gr.Dropdown(
                                                 show_label=False,
@@ -3262,6 +3259,8 @@ def build_selectai_tab(pool):
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
                                                     "meta.llama-4-scout-17b-16e-instruct",
+                                                    "gpt-4o",
+                                                    "gpt-5.1",
                                                 ],
                                                 value="xai.grok-code-fast-1",
                                                 interactive=True,
@@ -3622,7 +3621,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("モデル", elem_classes="input-label")
+                                        gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         am_model_input = gr.Dropdown(
                                             show_label=False,
@@ -3663,7 +3662,7 @@ def build_selectai_tab(pool):
                                 with gr.Column(scale=5):
                                     with gr.Row():
                                         with gr.Column(scale=1):
-                                            gr.Markdown("モデル", elem_classes="input-label")
+                                            gr.Markdown("モデル*", elem_classes="input-label")
                                         with gr.Column(scale=5):
                                             am_ai_model_input = gr.Dropdown(
                                                 show_label=False,
@@ -3674,6 +3673,8 @@ def build_selectai_tab(pool):
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
                                                     "meta.llama-4-scout-17b-16e-instruct",
+                                                    "gpt-4o",
+                                                    "gpt-5.1",
                                                 ],
                                                 value="xai.grok-code-fast-1",
                                                 interactive=True,
@@ -4405,7 +4406,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("モデル", elem_classes="input-label")
+                                        gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         rev_model_input = gr.Dropdown(
                                             show_label=False,
@@ -4657,7 +4658,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         with gr.Row():
                                             with gr.Column(scale=1):
-                                                gr.Markdown("書き換え用モデル", elem_classes="input-label")
+                                                gr.Markdown("書き換え用モデル*", elem_classes="input-label")
                                             with gr.Column(scale=5):
                                                 rewrite_model_select = gr.Dropdown(
                                                     show_label=False,
@@ -4668,6 +4669,8 @@ def build_selectai_tab(pool):
                                                         "xai.grok-4",
                                                         "xai.grok-4-fast-non-reasoning",
                                                         "meta.llama-4-scout-17b-16e-instruct",
+                                                        "gpt-4o",
+                                                        "gpt-5.1",
                                                     ],
                                                     value="xai.grok-code-fast-1",
                                                     interactive=True,
@@ -4780,180 +4783,10 @@ def build_selectai_tab(pool):
                 build_sql_learning_tab(pool)
 
             def _user_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
-                """SQL生成処理.
-                
-                Args:
-                    profile: Profile名
-                    prompt: 元の自然言語の質問
-                    extra_prompt: 追加プロンプト
-                    include_extra: 追加プロンプトを含めるか
-                    enable_rewrite: Query転写が有効か
-                    rewritten_query: 書き換え後の質問
-                
-                Yields:
-                    tuple: (status_md, generated_sql_textbox)
-                """
-                # Query転写が有効な場合は転写後の質問を使用
-                if enable_rewrite and rewritten_query and str(rewritten_query).strip():
-                    s = str(rewritten_query).strip()
-                else:
-                    s = str(prompt or "").strip()
-                
-                ep = str(extra_prompt or "").strip()
-                inc = bool(include_extra)
-                final = s if not inc or not ep else (ep + "\n\n" + s)
-                
-                if not profile or not str(profile).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
-                    return
-                if not final:
-                    yield gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
-                    return
-                
-                q = final
-                if q.endswith(";"):
-                    q = q[:-1]
-                try:
-                    yield gr.Markdown(visible=True, value="⏳ SQL生成中..."), gr.Textbox(value="")
-                    with pool.acquire() as conn:
-                        with conn.cursor() as cursor:
-                            try:
-                                prof = _resolve_profile_name(pool, str(profile or ""))
-                                cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=prof)
-                            except Exception as e:
-                                logger.error(f"SET_PROFILE failed: {e}")
-                            gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
-                            showsql_stmt = _build_showsql_stmt(q)
-                            show_text = ""
-                            show_cells = []
-                            try:
-                                cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
-                                rows = cursor.fetchmany(size=200)
-                                if rows:
-                                    for r in rows:
-                                        for v in r:
-                                            try:
-                                                s2 = v.read() if hasattr(v, "read") else str(v)
-                                            except Exception:
-                                                s2 = str(v)
-                                            if s2:
-                                                show_cells.append(s2)
-                                    show_text = "\n".join(show_cells)
-                            except Exception as e:
-                                logger.error(f"user showsql generate error: {e}")
-                                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
-                                show_text = ""
-                                return
-                            try:
-                                cursor.execute(showsql_stmt)
-                            except Exception as e:
-                                logger.error(f"user showsql execute error: {e}")
-                                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
-                                return
-                            _ = _get_sql_id_for_text(showsql_stmt)
-                            def _extract_sql(text: str) -> str:
-                                if not text:
-                                    return ""
-                                m = re.search(r"```sql\s*([\s\S]*?)```", text, flags=re.IGNORECASE)
-                                if m:
-                                    s3 = m.group(1).strip()
-                                    return s3
-                                m2 = re.search(r"SQL\s*:([\s\S]+)$", text, flags=re.IGNORECASE)
-                                if m2:
-                                    s3 = m2.group(1).strip()
-                                    return s3
-                                m3 = re.search(r"\b(SELECT|WITH)\b[\s\S]*", text, flags=re.IGNORECASE)
-                                if m3:
-                                    s3 = m3.group(0).strip()
-                                    return s3
-                                return ""
-                            generated_sql = _extract_sql(show_text)
-                            if not generated_sql and show_cells:
-                                for cell in show_cells:
-                                    c = str(cell)
-                                    try:
-                                        obj = json.loads(c)
-                                        if isinstance(obj, dict):
-                                            for k in ["sql", "SQL", "generated_sql", "query", "Query"]:
-                                                if k in obj and obj[k]:
-                                                    generated_sql = str(obj[k]).strip()
-                                                    break
-                                        if generated_sql:
-                                            break
-                                    except Exception as e:
-                                        logger.error(f"generated_sql JSON parse error: {e}")
-                                    m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", c, flags=re.IGNORECASE)
-                                    if m:
-                                        generated_sql = m.group(0).strip()
-                                        break
-                            gen_sql_display = generated_sql
-                            yield gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
-                except Exception as e:
-                    yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                yield from _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query)
 
             def _user_step_run_sql(profile, sql_text):
-                if not profile or not str(profile).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
-                    return
-                try:
-                    yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
-                    with pool.acquire() as conn:
-                        with conn.cursor() as cursor:
-                            exec_rows = []
-                            exec_cols = []
-                            run_sql = str(sql_text or "").strip()
-                            if run_sql and re.match(r"^\s*(select|with)\b", run_sql, flags=re.IGNORECASE):
-                                if run_sql.endswith(";"):
-                                    run_sql = run_sql[:-1]
-                                cursor.execute(run_sql)
-                                exec_rows = cursor.fetchmany(size=100)
-                                exec_cols = [d[0] for d in cursor.description] if cursor.description else []
-                            if exec_rows:
-                                cleaned_rows = []
-                                for r in exec_rows:
-                                    cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
-                                df = pd.DataFrame(cleaned_rows, columns=exec_cols)
-                                widths = []
-                                if len(df) > 0:
-                                    sample = df.head(5)
-                                    for col in df.columns:
-                                        series = sample[col].astype(str)
-                                        row_max = series.map(len).max() if len(series) > 0 else 0
-                                        length = max(len(str(col)), row_max)
-                                        widths.append(length)
-                                else:
-                                    widths = [len(str(c)) for c in df.columns]
-                                total = sum(widths) if widths else 0
-                                if total <= 0:
-                                    col_widths = None
-                                else:
-                                    col_widths = [max(5, int(100 * w / total)) for w in widths]
-                                    diff = 100 - sum(col_widths)
-                                    if diff != 0 and len(col_widths) > 0:
-                                        col_widths[0] = max(5, col_widths[0] + diff)
-                                df_component = gr.Dataframe(
-                                    visible=True,
-                                    value=df,
-                                    label=f"実行結果（件数: {len(df)}）",
-                                    elem_id="selectai_chat_result_df",
-                                )
-                                style_value = ""
-                                if col_widths:
-                                    rules = []
-                                    rules.append("#selectai_chat_result_df { width: 100% !important; }")
-                                    rules.append("#selectai_chat_result_df .wrap { overflow-x: auto !important; }")
-                                    rules.append("#selectai_chat_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
-                                    for idx, pct in enumerate(col_widths, start=1):
-                                        rules.append(
-                                            f"#selectai_chat_result_df table th:nth-child({idx}), #selectai_chat_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
-                                        )
-                                    style_value = "<style>" + "\n".join(rules) + "</style>"
-                                style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                                yield gr.Markdown(visible=True, value=f"✅ {len(df)}件のデータを取得しました"), df_component, style_component
-                                return
-                            yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
-                except Exception as e:
-                    yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
+                yield from _run_sql_common(sql_text, "selectai_chat_result_df")
 
             def _on_chat_clear():
                 ch = _profile_names() or [("", "")]

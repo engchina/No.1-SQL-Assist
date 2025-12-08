@@ -1376,7 +1376,7 @@ def build_management_tab(pool):
         with gr.TabItem(label="ビューの管理"):
             # Feature 1: View List
             with gr.Accordion(label="1. ビュー一覧", open=True):
-                view_refresh_btn = gr.Button("ビュー一覧を取得", variant="primary")
+                view_refresh_btn = gr.Button("ビュー一覧を取（時間がかかる場合があります）", variant="primary")
                 view_refresh_status = gr.Markdown(visible=False)
                 view_list_df = gr.Dataframe(
                     label="ビュー一覧（件数: 0）",
@@ -1850,7 +1850,7 @@ def build_management_tab(pool):
         with gr.TabItem(label="データの管理"):
             # Feature 1: Table Data Display
             with gr.Accordion(label="1. テーブル・ビューデータの表示", open=True):
-                data_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
+                data_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
                 data_refresh_status = gr.Markdown(visible=False)
                 
                 with gr.Row():
