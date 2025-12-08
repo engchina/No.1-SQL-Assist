@@ -622,40 +622,33 @@ def build_openai_settings_tab(pool=None):
 
     def save_openai_settings(base_url, api_key):
         try:
-            logger.info("OpenAI設定: 保存ボタンがクリックされました")
+            yield gr.Markdown(visible=True, value="⏳ 設定保存を開始します...")
             env_path = find_dotenv()
             if not env_path:
-                # .envがない場合は作成
                 env_path = Path(os.getcwd()) / ".env"
                 env_path.touch()
-                logger.info(f".env を新規作成しました: {env_path}")
+                yield gr.Markdown(visible=True, value=f"ℹ️ .env を新規作成しました: {env_path}")
 
             b_url = str(base_url).strip()
             k_api = str(api_key).strip()
-            logger.info(f"保存入力: base_url={b_url[:120]} , api_key_provided={bool(k_api)}")
-
+            yield gr.Markdown(visible=True, value="⏳ .env に設定を書き込み中...")
             set_key(env_path, "OPENAI_BASE_URL", b_url)
             set_key(env_path, "OPENAI_API_KEY", k_api)
-            logger.info(".env に OPENAI_BASE_URL と OPENAI_API_KEY を保存しました")
+            yield gr.Markdown(visible=True, value="✅ .env に OPENAI_BASE_URL と OPENAI_API_KEY を保存しました")
 
-            # 環境変数をリロード
             load_dotenv(env_path, override=True)
-            logger.info("環境変数を再読み込みしました")
+            yield gr.Markdown(visible=True, value="✅ 環境変数を再読み込みしました")
 
             if pool is None:
-                logger.info("DB接続なしのためファイル保存のみ完了しました")
-                return gr.Markdown(visible=True, value="✅ 設定を保存しました (DB接続なし)")
+                yield gr.Markdown(visible=True, value="✅ 設定を保存しました (DB接続なし)")
+                return
 
-            # DB操作: ACL設定とCREDENTIAL作成
-            msg = "✅ 設定を保存しました"
-            try:
-                with pool.acquire() as conn:
-                    with conn.cursor() as cursor:
-                        # 1. ACL設定 (Azure / OpenAI)
-                        # *.cognitiveservices.azure.com
-                        logger.info("ACLを更新します: *.cognitiveservices.azure.com")
-                        try:
-                            cursor.execute("""
+            # status accumulation removed; yield is used for real-time feedback
+            with pool.acquire() as conn:
+                with conn.cursor() as cursor:
+                    try:
+                        yield gr.Markdown(visible=True, value="⏳ ACL設定を更新しています (*.cognitiveservices.azure.com)...")
+                        cursor.execute("""
 BEGIN
   DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
     host => '*.cognitiveservices.azure.com',
@@ -663,13 +656,13 @@ BEGIN
                         principal_name => 'admin',
                         principal_type => xs_acl.ptype_db));
 END;""")
-                        except Exception as e:
-                            logger.warning(f"ACL azure append failed (ignored): {e}")
+                        yield gr.Markdown(visible=True, value="✅ ACL更新 (azure) 完了")
+                    except Exception as e:
+                        yield gr.Markdown(visible=True, value=f"⚠️ ACL(azure)更新に失敗しました: {e}")
 
-                        # api.openai.com
-                        logger.info("ACLを更新します: api.openai.com")
-                        try:
-                            cursor.execute("""
+                    try:
+                        yield gr.Markdown(visible=True, value="⏳ ACL設定を更新しています (api.openai.com)...")
+                        cursor.execute("""
 BEGIN
   DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
     host => 'api.openai.com',
@@ -677,19 +670,18 @@ BEGIN
                         principal_name => 'admin',
                         principal_type => xs_acl.ptype_db));
 END;""")
-                        except Exception as e:
-                            logger.warning(f"ACL openai append failed (ignored): {e}")
+                        yield gr.Markdown(visible=True, value="✅ ACL更新 (openai) 完了")
+                    except Exception as e:
+                        yield gr.Markdown(visible=True, value=f"⚠️ ACL(openai)更新に失敗しました: {e}")
 
-                        # Custom Endpoint if exists
-                        if b_url:
+                    if b_url:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(b_url)
+                        host = parsed.hostname
+                        if host and host not in ["api.openai.com", "*.cognitiveservices.azure.com"]:
                             try:
-                                # Extract host from b_url
-                                from urllib.parse import urlparse
-                                parsed = urlparse(b_url)
-                                host = parsed.hostname
-                                if host and host not in ["api.openai.com", "*.cognitiveservices.azure.com"]:
-                                    logger.info(f"ACLを更新します: {host}")
-                                    cursor.execute("""
+                                yield gr.Markdown(visible=True, value=f"⏳ ACL設定を更新しています ({host})...")
+                                cursor.execute("""
 BEGIN
   DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
     host => :h,
@@ -697,46 +689,34 @@ BEGIN
                         principal_name => 'admin',
                         principal_type => xs_acl.ptype_db));
 END;""", h=host)
+                                yield gr.Markdown(visible=True, value=f"✅ ACL更新 ({host}) 完了")
                             except Exception as e:
-                                logger.warning(f"ACL custom endpoint append failed (ignored): {e}")
+                                yield gr.Markdown(visible=True, value=f"⚠️ ACL({host})更新に失敗しました: {e}")
 
-                        # 2. OPENAI_CRED 作成
-                        # 既存削除
-                        logger.info("既存の OPENAI_CRED を削除します")
-                        try:
-                            cursor.execute("BEGIN dbms_vector.drop_credential('OPENAI_CRED'); END;")
-                        except Exception as e:
-                            logger.error(f"Drop credential OPENAI_CRED failed: {e}")
+                    try:
+                        yield gr.Markdown(visible=True, value="⏳ 既存のOPENAI_CREDを削除しています...")
+                        cursor.execute("BEGIN dbms_vector.drop_credential('OPENAI_CRED'); END;")
+                        yield gr.Markdown(visible=True, value="✅ 既存のOPENAI_CREDを削除しました")
+                    except Exception as e:
+                        yield gr.Markdown(visible=True, value=f"⚠️ OPENAI_CRED削除に失敗しました: {e}")
 
-                        # 新規作成
-                        # dbms_vector.create_credential expects 'params' json
-                        # For OpenAI-compatible, usually we need 'access_token' or 'api_key'.
-                        # Checking Oracle docs, standard is {"access_token": "..."} for Bearer auth
-                        # or generic user/password. For OpenAI, usually access_token is used.
-                        cred_params = {
-                            "access_token": k_api
-                        }
-                        logger.info("OPENAI_CRED を作成します")
-                        cursor.execute("""
+                    cred_params = {"access_token": k_api}
+                    yield gr.Markdown(visible=True, value="⏳ OPENAI_CRED を作成しています...")
+                    cursor.execute("""
 BEGIN
    dbms_vector.create_credential(
        credential_name => 'OPENAI_CRED',
        params => json(:p)
    );
 END;""", p=json.dumps(cred_params))
-                        conn.commit()
-                        logger.info("DBコミットが完了しました")
-                        msg += "\n✅ ACL設定とOPENAI_CREDを更新しました"
+                    yield gr.Markdown(visible=True, value="✅ OPENAI_CRED を作成しました")
 
-            except Exception as e:
-                logger.error(f"DB operation failed in save_openai_settings: {e}")
-                msg += f"\n⚠️ DB設定の一部に失敗しました: {e}"
+                    conn.commit()
+                    yield gr.Markdown(visible=True, value="✅ DBコミットが完了しました")
 
-            logger.info("OpenAI設定の保存処理が完了しました")
-            return gr.Markdown(visible=True, value=msg)
+            yield gr.Markdown(visible=True, value="🎉 設定の保存処理が完了しました")
         except Exception as e:
-            logger.error(f"Error saving OpenAI settings: {e}")
-            return gr.Markdown(visible=True, value=f"❌ 保存に失敗しました: {e}")
+            yield gr.Markdown(visible=True, value=f"❌ 保存に失敗しました: {e}")
 
     with gr.Accordion(label="", open=True):
         with gr.Row():
@@ -987,8 +967,8 @@ def build_oracle_ai_database_tab(pool=None):
                     mp[oid] = {"name": name, "state": st}
                 df = pd.DataFrame(rows, columns=["表示名", "状態", "OCID"]) if rows else pd.DataFrame(columns=["表示名", "状態", "OCID"]) 
                 status_lines = []
-                status_lines.append(f"リージョン: {region_code}")
-                status_lines.append(f"取得件数: {len(rows)}")
+                # status_lines.append(f"リージョン: {region_code}")
+                # status_lines.append(f"取得件数: {len(rows)}")
                 status_md = "✅ 取得完了\n" + "\n".join(status_lines)
                 yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df, label=f"ADB一覧（件数: {len(df)}）"), mp, ""
             except Exception as e:

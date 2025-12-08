@@ -1053,7 +1053,7 @@ def build_management_tab(pool):
                 table_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
                 table_refresh_status = gr.Markdown(visible=False)
                 table_list_df = gr.Dataframe(
-                    label="テーブル一覧(行をクリックして詳細を表示)",
+                    label="テーブル一覧（件数: 0）",
                     interactive=False,
                     wrap=True,
                     value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]),
@@ -1218,11 +1218,12 @@ def build_management_tab(pool):
             def refresh_table_list():
                 try:
                     logger.info("テーブル一覧を取得ボタンがクリックされました")
-                    yield gr.Markdown(value="⏳ テーブル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
+                    yield gr.Markdown(value="⏳ テーブル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
                     df = get_table_list(pool)
-                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True)
+                    cnt = len(df) if isinstance(df, pd.DataFrame) else 0
+                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True, label=f"テーブル一覧（件数: {cnt}）")
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]))
+                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
             
             def drop_selected_table(table_name):
                 """Drop the selected table and refresh list."""
@@ -1377,7 +1378,7 @@ def build_management_tab(pool):
                 view_refresh_btn = gr.Button("ビュー一覧を取得", variant="primary")
                 view_refresh_status = gr.Markdown(visible=False)
                 view_list_df = gr.Dataframe(
-                    label="ビュー一覧(行をクリックして詳細を表示)",
+                    label="ビュー一覧（件数: 0）",
                     interactive=False,
                     wrap=True,
                     value=pd.DataFrame(columns=["View Name", "Comments"]),
@@ -1590,11 +1591,12 @@ def build_management_tab(pool):
             def refresh_view_list():
                 try:
                     logger.info("ビュー一覧を取得ボタンがクリックされました")
-                    yield gr.Markdown(value="⏳ ビュー一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
+                    yield gr.Markdown(value="⏳ ビュー一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
                     df = get_view_list(pool)
-                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True)
+                    cnt = len(df) if isinstance(df, pd.DataFrame) else 0
+                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True, label=f"ビュー一覧（件数: {cnt}）")
                 except Exception as e:
-                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]))
+                    yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
             
             def drop_selected_view(view_name):
                 """Drop the selected view and refresh list."""

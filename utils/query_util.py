@@ -456,7 +456,7 @@ def execute_sql_general(pool, sql: str, limit: int):
 def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
     with gr.Accordion(label="1. SQLの入力", open=True):
-        gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。")
+        gr.Markdown("ℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。\n\nℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。")
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("SQL文", elem_classes="input-label")
