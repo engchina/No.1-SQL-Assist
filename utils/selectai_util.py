@@ -2029,7 +2029,7 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="3. 生成SQL・分析", open=True):
                         dev_generated_sql_text = gr.Textbox(
-                            label="生成されたSQL文",
+                            label="生成されたSQL文*",
                             lines=8,
                             max_lines=15,
                             interactive=True,
@@ -2097,7 +2097,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("種類", elem_classes="input-label")
+                                        gr.Markdown("種類*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         dev_feedback_type_select = gr.Dropdown(
                                             show_label=False,
@@ -2542,12 +2542,12 @@ def build_selectai_tab(pool):
 
                     def _dev_step_run_sql(profile, generated_sql):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                            yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     s = str(generated_sql or "").strip()
                                     if not s or not re.match(r"^\s*(select|with)\b", s, flags=re.IGNORECASE):
-                                        yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                                        yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                                         return
                                     run_sql = s
                                     if run_sql.endswith(";"):
@@ -2582,6 +2582,8 @@ def build_selectai_tab(pool):
                                             visible=True,
                                             value=df,
                                             label=f"実行結果（件数: {len(df)}）",
+                                            interactive=False,
+                                            wrap=True,
                                             elem_id="selectai_dev_chat_result_df",
                                         )
                                         style_value = ""
@@ -2596,12 +2598,12 @@ def build_selectai_tab(pool):
                                                 )
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
                                         style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                                        yield gr.Markdown(visible=True, value=f"✅ {len(df)}件のデータを取得しました"), df_component, style_component
+                                        yield gr.Markdown(visible=True, value=f"✅ 取得完了"), df_component, style_component
                                         return
-                                    yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                                    yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                         except Exception as e:
                             logger.error(f"_dev_step_run_sql error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                            yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
 
                     async def _dev_ai_analyze_async(model_name, sql_text):
                         try:
