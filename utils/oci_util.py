@@ -967,9 +967,8 @@ def build_oracle_ai_database_tab(pool=None):
                     mp[oid] = {"name": name, "state": st}
                 df = pd.DataFrame(rows, columns=["表示名", "状態", "OCID"]) if rows else pd.DataFrame(columns=["表示名", "状態", "OCID"]) 
                 status_lines = []
-                # status_lines.append(f"リージョン: {region_code}")
-                # status_lines.append(f"取得件数: {len(rows)}")
-                status_md = "✅ 取得完了\n" + "\n".join(status_lines)
+                status_text = "✅ 取得完了（データなし）" if len(rows) == 0 else "✅ 取得完了"
+                status_md = status_text + "\n" + "\n".join(status_lines)
                 yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df, label=f"ADB一覧（件数: {len(df)}）"), mp, ""
             except Exception as e:
                 logger.error(f"_fetch error: {e}")

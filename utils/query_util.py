@@ -146,8 +146,8 @@ def execute_select_sql(pool, sql: str, limit: int):
                 else:
                     logger.info("No rows returned")
                     return (
-                        gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"),
-                        gr.Dataframe(visible=True, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="query_result_df"),
+                        gr.Markdown(visible=True, value="✅ 表示完了（データなし）"),
+                        gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="query_result_df"),
                         gr.HTML(visible=False, value=""),
                     )
     except DatabaseError as e:
@@ -459,7 +459,7 @@ def build_query_tab(pool):
         gr.Markdown("ℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。\n\nℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。")
         with gr.Row():
             with gr.Column(scale=1):
-                gr.Markdown("SQL文", elem_classes="input-label")
+                gr.Markdown("SQL文*", elem_classes="input-label")
             with gr.Column(scale=5):
                 sql_input = gr.Textbox(
                     show_label=False,
@@ -474,7 +474,7 @@ def build_query_tab(pool):
             with gr.Column(scale=5):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("取得件数", elem_classes="input-label")
+                        gr.Markdown("取得件数*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         limit_input = gr.Number(
                             show_label=False,
@@ -513,7 +513,7 @@ def build_query_tab(pool):
                 with gr.Column(scale=5):
                     with gr.Row():
                         with gr.Column(scale=1):
-                            gr.Markdown("モデル", elem_classes="input-label")
+                            gr.Markdown("モデル*", elem_classes="input-label")
                         with gr.Column(scale=5):
                             ai_model_input = gr.Dropdown(
                                 show_label=False,

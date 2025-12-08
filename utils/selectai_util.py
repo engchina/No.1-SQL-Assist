@@ -816,13 +816,13 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("選択されたProfile名", elem_classes="input-label")
+                                        gr.Markdown("選択されたProfile名*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         selected_profile_name = gr.Textbox(show_label=False, interactive=True, container=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("カテゴリ", elem_classes="input-label")
+                                        gr.Markdown("カテゴリ*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         business_domain_text = gr.Textbox(show_label=False, value="", interactive=True, container=False)
                         with gr.Row():
@@ -1025,7 +1025,7 @@ def build_selectai_tab(pool):
                             empty_df = pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])
                             count = 0
                             label_text = f"プロファイル一覧（件数: {count}）"
-                            yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=empty_df, visible=True, label=label_text), gr.HTML(visible=False)
+                            yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True, label=label_text), gr.HTML(visible=False)
                             return
                         sample = df.head(5)
                         widths = []
@@ -1256,7 +1256,8 @@ def build_selectai_tab(pool):
                         yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
                         t = _get_table_names(pool)
                         v = _get_view_names(pool)
-                        yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=t, visible=True), gr.CheckboxGroup(choices=v, visible=True)
+                        status_text = "✅ 取得完了（データなし）" if (not t and not v) else "✅ 取得完了"
+                        yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=t, visible=True), gr.CheckboxGroup(choices=v, visible=True)
                     except Exception as e:
                         logger.error(f"refresh_sources_handler error: {e}")
                         yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
@@ -1340,8 +1341,8 @@ def build_selectai_tab(pool):
                         df = _td_list()
                         if df is None or df.empty:
                             count = 0
-                            label_text = f"訓練データ一覧 - {count}件"
-                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["CATEGORY","TEXT"]), label=label_text)
+                            label_text = f"訓練データ一覧（件数: {count}）"
+                            yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["CATEGORY","TEXT"]), label=label_text)
                             return
                         try:
                             df_disp = df.copy()
@@ -1350,7 +1351,7 @@ def build_selectai_tab(pool):
                             logger.error(f"build training data preview failed: {e}")
                             df_disp = df
                         count = len(df_disp)
-                        label_text = f"訓練データ一覧 - {count}件"
+                        label_text = f"訓練データ一覧（件数: {count}）"
                         yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=df_disp, label=label_text)
                     except Exception as e:
                         yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
@@ -1761,6 +1762,22 @@ def build_selectai_tab(pool):
                     )
 
                 with gr.TabItem(label="用語集管理"):
+                    with gr.Accordion(label="0. 用語集の概要", open=False):
+                        gr.Markdown(
+                            """
+                            目的: 組織で使う用語を一元管理し、チャット/分析で参照できるようにします。
+
+                            手順:
+                            - テンプレートをダウンロードし、`TERM` と `DEFINITION` の2列を記入します。
+                            - 用語集Excelをアップロードすると、`uploads/terms.xlsx` に保存されます。
+                            - 「用語集をプレビュー」で内容と件数を確認します。
+
+                            注意:
+                            - 列名は必ず `TERM`, `DEFINITION` を使用してください。
+                            - 文字列以外の値は保存時に文字列化されます。
+                            - 個人情報や機密情報は含めないでください。
+                            """
+                        )
                     with gr.Accordion(label="1. 用語集", open=True):
                         # テンプレートファイルを事前作成し、そのままダウンロード可能にする
                         up_dir = Path("uploads")
@@ -1773,7 +1790,7 @@ def build_selectai_tab(pool):
     
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("用語集Excelをアップロード<br>ℹ️ ファイルをドロップすると自動的にアップロードされます", elem_classes="input-label")
+                                gr.Markdown("用語集Excelをアップロード*<br>ℹ️ ファイルをドロップすると自動的にアップロードされます", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 term_upload_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath", container=True)
                         with gr.Row():
@@ -1787,7 +1804,7 @@ def build_selectai_tab(pool):
                             term_preview_status = gr.Markdown(visible=False)
                         with gr.Row():
                             term_preview_df = gr.Dataframe(
-                                label="用語集プレビュー",
+                                label="用語集プレビュー（件数: 0）",
                                 interactive=False,
                                 wrap=True,
                                 visible=False,
@@ -1819,9 +1836,9 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="⏳ 用語集を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
                             df = _term_list()
                             if df is None or df.empty:
-                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["TERM", "DEFINITION"]))
+                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["TERM", "DEFINITION"]), label="用語集プレビュー（件数: 0）")
                                 return
-                            yield gr.Markdown(visible=False), gr.Dataframe(visible=True, value=df)
+                            yield gr.Markdown(visible=True, value=f"✅ 取得完了"), gr.Dataframe(visible=True, value=df, label=f"用語集プレビュー（件数: {len(df)}）")
                         except Exception as e:
                             yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
 
@@ -1880,7 +1897,7 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("自然言語の質問", elem_classes="input-label")
+                                gr.Markdown("自然言語の質問*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 dev_prompt_input = gr.Textbox(
                                     show_label=False,
@@ -2031,7 +2048,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("モデル", elem_classes="input-label")
+                                        gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         dev_analysis_model_input = gr.Dropdown(
                                             show_label=False,
@@ -2530,7 +2547,7 @@ def build_selectai_tab(pool):
                                 with conn.cursor() as cursor:
                                     s = str(generated_sql or "").strip()
                                     if not s or not re.match(r"^\s*(select|with)\b", s, flags=re.IGNORECASE):
-                                        yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                                        yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                                         return
                                     run_sql = s
                                     if run_sql.endswith(";"):
@@ -2581,7 +2598,7 @@ def build_selectai_tab(pool):
                                         style_component = gr.HTML(visible=bool(style_value), value=style_value)
                                         yield gr.Markdown(visible=True, value=f"✅ {len(df)}件のデータを取得しました"), df_component, style_component
                                         return
-                                    yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
+                                    yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
                         except Exception as e:
                             logger.error(f"_dev_step_run_sql error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_dev_chat_result_df"), gr.HTML(visible=False, value="")
@@ -3269,7 +3286,8 @@ def build_selectai_tab(pool):
                                 names.extend([str(x) for x in df_view["View Name"].tolist()])
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
+                            status_text = "✅ 取得完了（データなし）" if (not table_names and not view_names) else "✅ 取得完了"
+                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
                             logger.error(f"_cm_refresh_objects error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
@@ -3675,7 +3693,8 @@ def build_selectai_tab(pool):
                             df_view = _get_view_df_cached(pool, force=True)
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
+                            status_text = "✅ 取得完了（データなし）" if (not table_names and not view_names) else "✅ 取得完了"
+                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
@@ -4161,21 +4180,10 @@ def build_selectai_tab(pool):
                                 except Exception as e:
                                     logger.error(f"_syn_refresh_objects filter by profile error: {e}")
                                 tables = table_names
-                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.CheckboxGroup(choices=tables, visible=True), gr.Dropdown(choices=tables, visible=True)
+                            status_text = "✅ 取得完了（データなし）" if (not tables) else "✅ 取得完了"
+                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=tables, visible=True), gr.Dropdown(choices=tables, visible=True)
                         except Exception as e:
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
-
-                    # def _syn_build_prompt(tables_selected, rows_per_table, extra_text):
-                    #     tbls = [str(t) for t in (tables_selected or []) if str(t).strip()]
-                    #     rp = int(rows_per_table or 0)
-                    #     base = (
-                    #         "以下のテーブルに対して合成データを生成してください。行数は各テーブルで指定値に近づけ、スキーマの制約と自然な分布を考慮してください。\n"
-                    #         + f"対象テーブル: {', '.join(tbls)}\n"
-                    #         + f"行数目安: {rp} 行/テーブル\n"
-                    #     )
-                    #     if str(extra_text or "").strip():
-                    #         base += "\n追加指示:\n" + str(extra_text).strip()
-                    #     return base
 
                     def _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
                         if not profile_name or not str(profile_name).strip():
@@ -4322,7 +4330,7 @@ def build_selectai_tab(pool):
                                     style_value = "<style>" + "\n".join(rules) + "</style>"
                                 return gr.Markdown(visible=True, value="✅ 表示完了"), gr.Dataframe(visible=True, value=df, label=f"データ表示（件数: {len(df)}）", elem_id="synthetic_data_result_df"), gr.HTML(visible=bool(style_value), value=style_value)
                             else:
-                                return gr.Markdown(visible=True, value="✅ 表示完了(データなし)"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示（件数: 0）", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                                return gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示（件数: 0）", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
 
@@ -4606,7 +4614,7 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("自然言語の質問", elem_classes="input-label")
+                                gr.Markdown("自然言語の質問*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 prompt_input = gr.Textbox(
                                     show_label=False,
@@ -4941,7 +4949,7 @@ def build_selectai_tab(pool):
                                 style_component = gr.HTML(visible=bool(style_value), value=style_value)
                                 yield gr.Markdown(visible=True, value=f"✅ {len(df)}件のデータを取得しました"), df_component, style_component
                                 return
-                            yield gr.Markdown(visible=True, value="ℹ️ データは返却されませんでした"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
+                            yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
                 except Exception as e:
                     yield gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="selectai_chat_result_df"), gr.HTML(visible=False, value="")
 

@@ -236,7 +236,7 @@ def build_oci_chat_test_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("モデル", elem_classes="input-label")
+                                gr.Markdown("モデル*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 chat_model_input = gr.Dropdown(
                                     show_label=False,

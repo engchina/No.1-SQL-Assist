@@ -1067,7 +1067,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("選択されたテーブル名", elem_classes="input-label")
+                                gr.Markdown("選択されたテーブル名*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 selected_table_name = gr.Textbox(
                                     show_label=False,
@@ -1108,7 +1108,7 @@ def build_management_tab(pool):
             with gr.Accordion(label="3. テーブル作成", open=True):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("CREATE TABLE SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                        gr.Markdown("CREATE TABLE SQL文*（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_table_sql = gr.Textbox(
                             show_label=False,
@@ -1133,7 +1133,7 @@ def build_management_tab(pool):
                         with gr.Column(scale=5):
                             with gr.Row():
                                 with gr.Column(scale=1):
-                                    gr.Markdown("モデル", elem_classes="input-label")
+                                    gr.Markdown("モデル*", elem_classes="input-label")
                                 with gr.Column(scale=5):
                                     table_ai_model_input = gr.Dropdown(
                                         show_label=False,
@@ -1221,7 +1221,8 @@ def build_management_tab(pool):
                     yield gr.Markdown(value="⏳ テーブル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
                     df = get_table_list(pool)
                     cnt = len(df) if isinstance(df, pd.DataFrame) else 0
-                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True, label=f"テーブル一覧（件数: {cnt}）")
+                    status_text = "✅ 取得完了（データなし）" if cnt == 0 else "✅ 取得完了"
+                    yield gr.Markdown(value=status_text, visible=True), gr.Dataframe(value=df, visible=True, label=f"テーブル一覧（件数: {cnt}）")
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
             
@@ -1391,7 +1392,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("選択されたビュー名", elem_classes="input-label")
+                                gr.Markdown("選択されたビュー名*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 selected_view_name = gr.Textbox(
                                     show_label=False,
@@ -1433,7 +1434,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("モデル", elem_classes="input-label")
+                                gr.Markdown("モデル*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 view_analysis_model_input = gr.Dropdown(
                                     show_label=False,
@@ -1482,7 +1483,7 @@ def build_management_tab(pool):
             with gr.Accordion(label="3. ビュー作成", open=True):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("CREATE VIEW SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                        gr.Markdown("CREATE VIEW SQL文*（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_view_sql = gr.Textbox(
                             show_label=False,
@@ -1506,7 +1507,7 @@ def build_management_tab(pool):
                         with gr.Column(scale=5):
                             with gr.Row():
                                 with gr.Column(scale=1):
-                                    gr.Markdown("モデル", elem_classes="input-label")
+                                    gr.Markdown("モデル*", elem_classes="input-label")
                                 with gr.Column(scale=5):
                                     view_ai_model_input = gr.Dropdown(
                                         show_label=False,
@@ -1594,7 +1595,8 @@ def build_management_tab(pool):
                     yield gr.Markdown(value="⏳ ビュー一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
                     df = get_view_list(pool)
                     cnt = len(df) if isinstance(df, pd.DataFrame) else 0
-                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dataframe(value=df, visible=True, label=f"ビュー一覧（件数: {cnt}）")
+                    status_text = "✅ 取得完了（データなし）" if cnt == 0 else "✅ 取得完了"
+                    yield gr.Markdown(value=status_text, visible=True), gr.Dataframe(value=df, visible=True, label=f"ビュー一覧（件数: {cnt}）")
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
             
@@ -1855,7 +1857,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("テーブル・ビュー選択", elem_classes="input-label")
+                                gr.Markdown("テーブル・ビュー選択*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 data_table_select = gr.Dropdown(
                                     show_label=False,
@@ -1867,7 +1869,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("取得件数", elem_classes="input-label")
+                                gr.Markdown("取得件数*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 data_limit_input = gr.Number(
                                     show_label=False,
@@ -1908,7 +1910,7 @@ def build_management_tab(pool):
             with gr.Accordion(label="2. CSVアップロード", open=False):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("CSVファイル", elem_classes="input-label")
+                        gr.Markdown("CSVファイル*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         csv_file_input = gr.File(
                             show_label=False,
@@ -1920,7 +1922,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("アップロード先テーブル", elem_classes="input-label")
+                                gr.Markdown("アップロード先テーブル*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 csv_table_select = gr.Dropdown(
                                     show_label=False,
@@ -1938,7 +1940,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("アップロードモード", elem_classes="input-label")
+                                gr.Markdown("アップロードモード*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 csv_upload_mode = gr.Radio(
                                     show_label=False,
@@ -1995,7 +1997,7 @@ def build_management_tab(pool):
                                 gr.Markdown("")
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("SQL文（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                        gr.Markdown("SQL文*（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
                     with gr.Column(scale=5):
                         data_sql_input = gr.Textbox(
                             show_label=False,
@@ -2020,7 +2022,7 @@ def build_management_tab(pool):
                         with gr.Column(scale=5):
                             with gr.Row():
                                 with gr.Column(scale=1):
-                                    gr.Markdown("モデル", elem_classes="input-label")
+                                    gr.Markdown("モデル*", elem_classes="input-label")
                                 with gr.Column(scale=5):
                                     data_ai_model_input = gr.Dropdown(
                                         show_label=False,
@@ -2053,7 +2055,8 @@ def build_management_tab(pool):
                     yield gr.Markdown(value="⏳ テーブル・ビュー一覧を取得中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[], visible=False)
                     data_names = get_table_list_for_data(pool)
                     upload_tables = get_table_list_for_upload(pool)
-                    yield gr.Markdown(value="✅ 取得完了", visible=True), gr.Dropdown(choices=data_names, visible=True), gr.Dropdown(choices=upload_tables, visible=True)
+                    status_text = "✅ 取得完了（データなし）" if (not data_names and not upload_tables) else "✅ 取得完了"
+                    yield gr.Markdown(value=status_text, visible=True), gr.Dropdown(choices=data_names, visible=True), gr.Dropdown(choices=upload_tables, visible=True)
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[], visible=False)
             
@@ -2062,7 +2065,7 @@ def build_management_tab(pool):
                     yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(value="⏳ データを取得中...", visible=True)
                     df = display_table_data(pool, table_name, limit, where_clause)
                     if df.empty:
-                        yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(value="✅ 取得完了(データなし)", visible=True)
+                        yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(value="✅ 表示完了（データなし）", visible=True)
                         return
                     widths = []
                     sample = df.head(5)
