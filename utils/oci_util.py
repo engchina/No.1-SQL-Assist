@@ -545,7 +545,7 @@ def build_oci_embedding_test_tab(pool):
             with gr.Column(scale=5):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("Embeddingモデル", elem_classes="input-label")
+                        gr.Markdown("Embeddingモデル*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         tab_test_oci_cred_model_input = gr.Dropdown(
                             show_label=False,
@@ -561,7 +561,7 @@ def build_oci_embedding_test_tab(pool):
 
         with gr.Row():
             with gr.Column(scale=1):
-                gr.Markdown("入力テキスト", elem_classes="input-label")
+                gr.Markdown("入力テキスト*", elem_classes="input-label")
             with gr.Column(scale=5):
                 tab_test_oci_cred_query_text = gr.Textbox(
                     show_label=False,
@@ -913,7 +913,7 @@ def build_oracle_ai_database_tab(pool=None):
             with gr.Column(scale=5):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("リージョン", elem_classes="input-label")
+                        gr.Markdown("リージョン*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         region_input = gr.Dropdown(show_label=False, choices=["ap-osaka-1", "us-chicago-1"], value="ap-osaka-1", interactive=True, container=False)
             with gr.Column(scale=5):

@@ -268,7 +268,7 @@ def build_sql_learning_tab(pool):
 
     with gr.TabItem(label="SQL学習"):
         with gr.Accordion(label="1. 学習用スキーマの準備", open=True):
-            schema_help_md = gr.Markdown(
+            gr.Markdown(
                 value=(
                     "ℹ️ このセクションでは学習用の3つの表（DEPARTMENT/EMPLOYEE/PROJECT）と2つのビュー（V_EMP_DEPT/V_DEPT_PROJECT）を作成し、サンプルデータを投入します。\n\n"
                     "ℹ️ 各ステップは『SQLの表示』→『実行』の2段階です。"
@@ -318,7 +318,7 @@ def build_sql_learning_tab(pool):
                 reset_result_md = gr.Markdown(visible=False)
 
         with gr.Accordion(label="2. SELECTの学習（ステップ）", open=True):
-            lessons_df = pd.DataFrame([{k: l[k] for k in ("id", "title", "desc")} for l in lessons])
+            pd.DataFrame([{k: l[k] for k in ("id", "title", "desc")} for l in lessons])
             # デフォルトレッスン（L01）の情報を取得
             default_lesson = lessons[0]
             default_lesson_text = f"【{default_lesson['id']}】{default_lesson['title']}\n\n{default_lesson['desc']}"
