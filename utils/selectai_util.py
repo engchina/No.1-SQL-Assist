@@ -946,8 +946,6 @@ def build_selectai_tab(pool):
                                             show_label=False,
                                             choices=[
                                                 "cohere.embed-v4.0",
-                                                "text-embedding-ada-002",
-                                                "text-embedding-3-large",
                                             ],
                                             value="cohere.embed-v4.0",
                                             interactive=True,
@@ -1288,6 +1286,26 @@ def build_selectai_tab(pool):
                 ).then(
                     fn=refresh_profiles,
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
+                )
+
+                def _on_model_change(m):
+                    s = str(m or "")
+                    if s.startswith("gpt-"):
+                        choices = [
+                            "text-embedding-3-large",
+                        ]
+                        v = "text-embedding-3-large"
+                    else:
+                        choices = [
+                            "cohere.embed-v4.0",
+                        ]
+                        v = "cohere.embed-v4.0"
+                    return gr.Dropdown(choices=choices, value=v)
+
+                model_input.change(
+                    _on_model_change,
+                    inputs=model_input,
+                    outputs=embedding_model_input,
                 )
 
                 def _profile_names():
