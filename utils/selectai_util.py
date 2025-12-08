@@ -1321,18 +1321,18 @@ def build_selectai_tab(pool):
                     try:
                         p = Path("uploads") / "training_data.xlsx"
                         if not p.exists():
-                            return pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"])
+                            return pd.DataFrame(columns=["CATEGORY","TEXT"])
                         df = pd.read_excel(str(p))
                         cols_map = {str(c).upper(): c for c in df.columns.tolist()}
-                        bd_col = cols_map.get("BUSINESS_DOMAIN")
+                        bd_col = cols_map.get("CATEGORY")
                         tx_col = cols_map.get("TEXT")
                         if not bd_col or not tx_col:
-                            return pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"])
-                        out = pd.DataFrame({"BUSINESS_DOMAIN": df[bd_col].astype(str), "TEXT": df[tx_col].astype(str)})
+                            return pd.DataFrame(columns=["CATEGORY","TEXT"])
+                        out = pd.DataFrame({"CATEGORY": df[bd_col].astype(str), "TEXT": df[tx_col].astype(str)})
                         return out
                     except Exception as e:
                         logger.error(f"訓練データ一覧の取得に失敗しました: {e}")
-                        return pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"])
+                        return pd.DataFrame(columns=["CATEGORY","TEXT"])                    
 
                 def _td_refresh():
                     try:
@@ -1341,7 +1341,7 @@ def build_selectai_tab(pool):
                         if df is None or df.empty:
                             count = 0
                             label_text = f"訓練データ一覧 - {count}件"
-                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"]), label=label_text)
+                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["CATEGORY","TEXT"]), label=label_text)
                             return
                         try:
                             df_disp = df.copy()
@@ -1397,21 +1397,21 @@ def build_selectai_tab(pool):
                         cols_map = {str(c).upper(): c for c in df.columns.tolist()}
                         logger.info(f"Columns found: {list(cols_map.keys())}")
                         
-                        bd_col = cols_map.get("BUSINESS_DOMAIN")
+                        bd_col = cols_map.get("CATEGORY")
                         tx_col = cols_map.get("TEXT")
                         
                         if not bd_col or not tx_col:
-                            error_msg = "必須列(BUSINESS_DOMAIN, TEXT)が見つかりません"
+                            error_msg = "必須列(CATEGORY, TEXT)が見つかりません"
                             logger.error(error_msg)
                             logger.error(f"Available columns: {list(cols_map.keys())}")
                             yield gr.Markdown(visible=True, value=f"⚠️ {error_msg}")
                             return
                         
-                        logger.info(f"Using columns - BUSINESS_DOMAIN: {bd_col}, TEXT: {tx_col}")
+                        logger.info(f"Using columns - CATEGORY: {bd_col}, TEXT: {tx_col}")
                         
                         texts = []
                         labels = []
-                        for idx, r in df.iterrows():
+                        for _, r in df.iterrows():
                             s_txt = str(r.get(tx_col, "") or "")
                             s_bd = str(r.get(bd_col, "") or "")
                             if s_txt:
@@ -1437,14 +1437,6 @@ def build_selectai_tab(pool):
                         model_path = sp_root / f"{mname}.joblib"
                         
                         logger.info(f"Model will be saved to: {model_path}")
-                        
-                        # 訓練データをJSONL形式で保存
-                        td_path = sp_root / f"{mname}_training_data.jsonl"
-                        logger.info(f"Saving training data to: {td_path}")
-                        with td_path.open("w", encoding="utf-8") as f:
-                            for txt, lab in zip(texts, labels):
-                                f.write(json.dumps({"text": txt, "label": lab}, ensure_ascii=False) + "\n")
-                        logger.info("Training data saved")
                         
                         yield gr.Markdown(visible=True, value="⏳ 埋め込みベクトルを取得中...")
                         
@@ -1513,28 +1505,7 @@ def build_selectai_tab(pool):
                             json.dump(meta_info, f, ensure_ascii=False, indent=2)
                         logger.info("Metadata saved")
                         
-                        # インデックスの更新
-                        index_path = sp_root / "models.index.json"
-                        logger.info(f"Updating model index: {index_path}")
-                        try:
-                            idx = []
-                            if index_path.exists():
-                                with index_path.open("r", encoding="utf-8") as f:
-                                    idx = json.load(f) or []
-                            idx = [x for x in idx if str(x.get("model_name")) != mname]
-                            idx.append({
-                                "model_name": mname,
-                                "labels": sorted(list(set(labels))),
-                                "samples": len(texts),
-                                "created_at": datetime.now().isoformat(timespec="seconds")
-                            })
-                            with index_path.open("w", encoding="utf-8") as f:
-                                json.dump(idx, f, ensure_ascii=False, indent=2)
-                            logger.info("Model index updated")
-                        except Exception as e:
-                            logger.error(f"インデックス更新エラー: {e}")
-                        
-                        success_msg = f"✅ 学習完了: モデル '{mname}' を保存しました({len(texts)}件、ラベル: {', '.join(sorted(list(set(labels))))})"
+                        success_msg = "✅ 学習が完了しました。モデルを保存しました。"
                         logger.info(success_msg)
                         logger.info("="*50)
                         yield gr.Markdown(visible=True, value=success_msg)
@@ -1546,22 +1517,6 @@ def build_selectai_tab(pool):
                         logger.error(traceback.format_exc())
                         logger.info("="*50)
                         yield gr.Markdown(visible=True, value=f"❌ {error_msg}")
-
-                # ラベル候補の更新は削除
-
-                def _list_models():
-                    try:
-                        sp_root = Path("./models")
-                        out = []
-                        if sp_root.exists():
-                            # .joblibファイルからモデル名を取得
-                            for p in sp_root.glob("*.joblib"):
-                                model_name = p.stem
-                                out.append(model_name)
-                        return sorted(out)
-                    except Exception as e:
-                        logger.error(f"_list_models error: {e}")
-                        return []
 
                 async def _mt_test_async(text, trained_model_name):
                     """参照コード(No.1-Classifier)に基づいた予測関数"""
@@ -1673,20 +1628,6 @@ def build_selectai_tab(pool):
                     finally:
                         loop.close()
 
-                # 訓練データ行選択の編集機能は削除
-                def _td_download_excel():
-                    try:
-                        p = Path("uploads") / "training_data.xlsx"
-                        if p.exists():
-                            return gr.DownloadButton(value=str(p), visible=True)
-                        df = pd.DataFrame(columns=["BUSINESS_DOMAIN","TEXT"])
-                        tmp = Path("/tmp") / f"training_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                        with pd.ExcelWriter(tmp) as writer:
-                            df.to_excel(writer, sheet_name="training_data", index=False)
-                        return gr.DownloadButton(value=str(tmp), visible=True)
-                    except Exception:
-                        return gr.DownloadButton(visible=False)
-
                 # テンプレートは固定ファイルパスを使用
 
                 def _td_upload_excel(file_path):
@@ -1698,11 +1639,11 @@ def build_selectai_tab(pool):
                         except Exception:
                             return gr.Textbox(visible=True, value="Excel読み込みに失敗しました")
                         cols_map = {str(c).upper(): c for c in df.columns.tolist()}
-                        required = {"BUSINESS_DOMAIN","TEXT"}
+                        required = {"CATEGORY","TEXT"}
                         if not required.issubset(set(cols_map.keys())):
-                            return gr.Textbox(visible=True, value="列名は BUSINESS_DOMAIN, TEXT が必要です")
+                            return gr.Textbox(visible=True, value="列名は CATEGORY, TEXT が必要です")
                         out_df = pd.DataFrame({
-                            "BUSINESS_DOMAIN": df[cols_map["BUSINESS_DOMAIN"]],
+                            "CATEGORY": df[cols_map["CATEGORY"]],
                             "TEXT": df[cols_map["TEXT"]],
                         })
                         up_dir = Path("uploads")
@@ -1717,46 +1658,26 @@ def build_selectai_tab(pool):
                         logger.error(f"Excelアップロードに失敗しました: {e}")
                         return gr.Textbox(visible=True, value=f"❌ エラー: {e}")
 
-                # 削除: ダウンロードボタンのクリック処理は不要（直接ファイルを提供）
-                # 直接固定テンプレートをダウンロード（クリック処理不要）
-                def _delete_model(trained_model_name):
-                    try:
-                        sp_root = Path("./models")
-                        mname = str(trained_model_name or "").strip()
-                        if not mname:
-                            return gr.Dropdown(choices=_list_models())
-                        
-                        # .joblibファイルと関連ファイルを削除
-                        model_path = sp_root / f"{mname}.joblib"
-                        meta_path = sp_root / f"{mname}.meta.json"
-                        td_path = sp_root / f"{mname}_training_data.jsonl"
-                        
-                        if model_path.exists():
-                            model_path.unlink(missing_ok=True)
-                        if meta_path.exists():
-                            meta_path.unlink(missing_ok=True)
-                        if td_path.exists():
-                            td_path.unlink(missing_ok=True)
-                        
-                        # インデックスから削除
-                        index_path = sp_root / "models.index.json"
-                        try:
-                            if index_path.exists():
-                                with index_path.open("r", encoding="utf-8") as f:
-                                    idx = json.load(f) or []
-                                idx = [x for x in idx if str(x.get("model_name")) != mname]
-                                with index_path.open("w", encoding="utf-8") as f:
-                                    json.dump(idx, f, ensure_ascii=False, indent=2)
-                        except Exception as e:
-                            logger.error(f"_delete_model_meta error: {e}")
-                        
-                        return gr.Dropdown(choices=_list_models())
-                    except Exception as e:
-                        logger.error(f"_delete_model error: {e}")
-                        return gr.Dropdown(choices=_list_models())
-
                 with gr.TabItem(label="モデル管理"):
-                    with gr.Accordion(label="1. 訓練データ一覧", open=True):
+                    with gr.Accordion(label="0. モデル学習の概要", open=False):
+                        gr.Markdown(
+                            """
+                            目的: 文章から最適な「カテゴリ」を自動判定できるようにします。
+
+                            手順:
+                            - 訓練データアップロード: Excelに `CATEGORY` と `TEXT` の2列を用意し、アップロードします。
+                            - 埋め込みモデル選択: `cohere.embed-v4.0` で文章を数値化します。
+                            - 学習実行: 数値化したデータで分類器を作成し、モデルを保存します。
+                              仕組み: 文章→埋め込みベクトル（OCI）→ロジスティック回帰（scikit-learn）でカテゴリを判定します。
+                            - テスト: 文章を入力して、予測カテゴリと確率を表示します。
+
+                            注意:
+                            - OCI設定（`OCI_COMPARTMENT_OCID`）が必要です。
+                            - 各カテゴリの件数は偏りなく十分に用意してください（目安: 10件以上）。
+                            - 個人情報や機密情報は含めないでください。
+                            """
+                        )
+                    with gr.Accordion(label="1. 訓練データ一覧（必須列: CATEGORY, TEXT）", open=True):
                         with gr.Row():
                             td_refresh_btn = gr.Button("訓練データ一覧を取得", variant="primary")
                         with gr.Row():
@@ -1807,7 +1728,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("業務ドメイン(=ラベル)", elem_classes="input-label")
+                                        gr.Markdown("カテゴリ", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         mt_label_text = gr.Textbox(show_label=False, interactive=False, container=False)
                             with gr.Column(scale=5):
@@ -1972,7 +1893,7 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             with gr.Column(scale=5):
-                                dev_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="secondary")
+                                dev_predict_domain_btn = gr.Button("カテゴリ予測 ⇒", variant="secondary")
                             with gr.Column(scale=5):
                                 # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
                                 _dev_initial_choices = _dev_profile_names()
@@ -4698,7 +4619,7 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             with gr.Column(scale=5):
-                                user_predict_domain_btn = gr.Button("業務ドメイン予測 ⇒", variant="secondary")
+                                user_predict_domain_btn = gr.Button("カテゴリ予測 ⇒", variant="secondary")
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
