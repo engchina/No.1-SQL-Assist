@@ -1108,7 +1108,11 @@ def build_management_tab(pool):
             with gr.Accordion(label="3. テーブル作成", open=True):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("CREATE TABLE SQL文*（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                        gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能")
+
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("CREATE TABLE SQL文*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_table_sql = gr.Textbox(
                             show_label=False,
@@ -1376,7 +1380,7 @@ def build_management_tab(pool):
         with gr.TabItem(label="ビューの管理"):
             # Feature 1: View List
             with gr.Accordion(label="1. ビュー一覧", open=True):
-                view_refresh_btn = gr.Button("ビュー一覧を取（時間がかかる場合があります）", variant="primary")
+                view_refresh_btn = gr.Button("ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
                 view_refresh_status = gr.Markdown(visible=False)
                 view_list_df = gr.Dataframe(
                     label="ビュー一覧（件数: 0）",
@@ -1483,7 +1487,11 @@ def build_management_tab(pool):
             with gr.Accordion(label="3. ビュー作成", open=True):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("CREATE VIEW SQL文*（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                        gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能", elem_classes="input-label")
+
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("CREATE VIEW SQL文*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_view_sql = gr.Textbox(
                             show_label=False,
@@ -1995,9 +2003,13 @@ def build_management_tab(pool):
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("")
+
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("SQL文*（複数の文をセミコロンで区切って入力可能）", elem_classes="input-label")
+                        gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("SQL文*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         data_sql_input = gr.Textbox(
                             show_label=False,
