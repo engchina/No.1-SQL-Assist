@@ -2837,7 +2837,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Markdown(visible=False), gr.Textbox(value="")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
-                                    prof = _resolve_profile_name(pool, str(profile_name or ""))
+                                    prof, _t, _v, _bd = _resolve_profile_name_from_json(pool, str(profile_name or ""))
                                     q = str(prompt_text or "").strip()
                                     if q.endswith(";"):
                                         q = q[:-1]
@@ -3043,7 +3043,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="⏳ フィードバック索引を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
-                                    prof = _resolve_profile_name(pool, str(profile_name or ""))
+                                    prof, _t, _v, _bd = _resolve_profile_name_from_json(pool, str(profile_name or ""))
                                     tab = f"{str(prof).upper()}_FEEDBACK_VECINDEX$VECTAB"
                                     q_no_ctx = (
                                         f'SELECT CONTENT, '
@@ -3120,7 +3120,7 @@ def build_selectai_tab(pool):
                                 return
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
-                                    prof = _resolve_profile_name(pool, str(profile_name or ""))
+                                    prof, _t, _v, _bd = _resolve_profile_name_from_json(pool, str(profile_name or ""))
                                     cursor.execute(
                                         """
                                         BEGIN
@@ -3152,7 +3152,7 @@ def build_selectai_tab(pool):
                     def _update_vector_index(profile_name: str, similarity_threshold: float, match_limit: int):
                         try:
                             yield gr.Markdown(visible=True, value="⏳ 更新中...")
-                            prof = _resolve_profile_name(pool, str(profile_name or ""))
+                            prof, _t, _v, _bd = _resolve_profile_name_from_json(pool, str(profile_name or ""))
                             idx_name = f"{str(prof).upper()}_FEEDBACK_VECINDEX"
                             tab_name = f"{str(prof).upper()}_FEEDBACK_VECINDEX$VECTAB"
                             logger.info(f"Update vector index: profile={profile_name}, index={idx_name}, table={tab_name}, threshold={similarity_threshold}, limit={match_limit}")
@@ -3214,16 +3214,16 @@ def build_selectai_tab(pool):
                                 cm_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
-                                gr.Markdown("###### テーブル選択")
+                                gr.Markdown("###### テーブル選択*")
                                 cm_tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
                             with gr.Column():
-                                gr.Markdown("###### ビュー選択")
+                                gr.Markdown("###### ビュー選択*")
                                 cm_views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("サンプル件数", elem_classes="input-label")
+                                        gr.Markdown("サンプル件数*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         cm_sample_limit = gr.Number(show_label=False, minimum=0, maximum=100, value=10, interactive=True, container=False)
                             with gr.Column(scale=5):
@@ -3237,22 +3237,22 @@ def build_selectai_tab(pool):
                     with gr.Accordion(label="2. 入力確認", open=False):
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("構造情報", elem_classes="input-label")
+                                gr.Markdown("構造情報*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_structure_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("主キー情報", elem_classes="input-label")
+                                gr.Markdown("主キー情報(Optional)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_pk_text = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=True, show_copy_button=True, container=False)    
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("外部キー情報", elem_classes="input-label")
+                                gr.Markdown("外部キー情報(Optional)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_fk_text = gr.Textbox(show_label=False, lines=6, max_lines=14, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("サンプルデータ", elem_classes="input-label")
+                                gr.Markdown("サンプルデータ(Optional)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
@@ -3297,7 +3297,7 @@ def build_selectai_tab(pool):
                                         cm_generate_btn = gr.Button("生成", variant="primary")
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("生成されたSQL文", elem_classes="input-label")
+                                gr.Markdown("生成されたSQL文*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False)
 
@@ -3305,7 +3305,7 @@ def build_selectai_tab(pool):
                         cm_execute_btn = gr.Button("一括実行", variant="primary")
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("実行結果", elem_classes="input-label")
+                                gr.Markdown("実行結果*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_execute_result = gr.Textbox(show_label=False, interactive=False, lines=5, max_lines=8, container=False)
 
