@@ -2832,6 +2832,7 @@ def build_selectai_tab(pool):
                             return ""
 
                     def _send_feedback(fb_type, response_text, content_text, prompt_text, profile_name):
+                        plsql = ""
                         try:
                             yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Markdown(visible=False), gr.Textbox(value="")
                             with pool.acquire() as conn:
@@ -2846,6 +2847,7 @@ def build_selectai_tab(pool):
                                     prompt_text = f"select ai showsql {q}"
                                     gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
                                     showsql_stmt = _build_showsql_stmt(q)
+                                    logger.info(f"_send_feedback: q={q}, showsql_stmt={showsql_stmt}")
                                     try:
                                         cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
                                     except Exception as e:
@@ -2863,6 +2865,22 @@ def build_selectai_tab(pool):
                                         if not resp:
                                             yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
                                             return
+                                    # Build PL/SQL text regardless of execution result
+                                    def _lit(x):
+                                        s = str(x or "")
+                                        return "'" + s.replace("'", "''") + "'"
+                                    plsql = (
+                                        "BEGIN\n"
+                                        "  DBMS_CLOUD_AI.FEEDBACK(\n"
+                                        f"    profile_name => {_lit(prof)},\n"
+                                        f"    sql_text => {_lit(showsql_stmt)},\n"
+                                        f"    feedback_type => {_lit(str(fb_type or '').upper())},\n"
+                                        "    response => " + ("NULL" if not resp else _lit(resp)) + ",\n"
+                                        "    feedback_content => " + ("NULL" if not fc else _lit(fc)) + ",\n"
+                                        "    operation => 'ADD'\n"
+                                        "  );\n"
+                                        "END;"
+                                    )
                                     cursor.execute(
                                         """
                                         BEGIN
@@ -2882,24 +2900,9 @@ def build_selectai_tab(pool):
                                         resp=resp,
                                         fc=fc,
                                     )
-                                    def _lit(x):
-                                        s = str(x or "")
-                                        return "'" + s.replace("'", "''") + "'"
-                                    plsql = (
-                                        "BEGIN\n"
-                                        "  DBMS_CLOUD_AI.FEEDBACK(\n"
-                                        f"    profile_name => {_lit(prof)},\n"
-                                        f"    sql_text => {_lit(showsql_stmt)},\n"
-                                        f"    feedback_type => {_lit(str(fb_type or '').upper())},\n"
-                                        "    response => " + ("NULL" if not resp else _lit(resp)) + ",\n"
-                                        "    feedback_content => " + ("NULL" if not fc else _lit(fc)) + ",\n"
-                                        "    operation => 'ADD'\n"
-                                        "  );\n"
-                                        "END;"
-                                    )
                                     yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="✅ クエリに対するフィードバックを送信しました"), gr.Textbox(value=plsql)
                         except Exception as e:
-                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}"), gr.Textbox(value=str(e))
+                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}"), gr.Textbox(value=plsql)
 
                     dev_chat_execute_btn.click(
                         fn=_dev_step_generate,
