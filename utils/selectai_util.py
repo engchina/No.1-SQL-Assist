@@ -1986,6 +1986,11 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         dev_rewrite_use_schema = gr.Checkbox(label="", value=False, container=False)
                                 with gr.Row():
+                                    gr.Markdown(
+                                        "ℹ️ 「ステップ1: 用語集を利用」または「ステップ2: スキーマ情報を利用」のいずれかをONにしてください。両方OFFの場合、書き換えは実行されません。",
+                                        elem_classes="input-hint",
+                                    )
+                                with gr.Row():
                                     dev_rewrite_btn = gr.Button("書き換え実行", variant="primary")
                                 with gr.Row():
                                     dev_rewrite_status = gr.Markdown(visible=False)
@@ -2035,18 +2040,7 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             dev_chat_status_md = gr.Markdown(visible=False)
 
-                    with gr.Accordion(label="2. 実行結果", open=True):
-                        dev_chat_result_df = gr.Dataframe(
-                            label="実行結果",
-                            interactive=False,
-                            wrap=True,
-                            visible=False,
-                            value=pd.DataFrame(),
-                            elem_id="selectai_dev_chat_result_df",
-                        )
-                        dev_chat_result_style = gr.HTML(visible=False)
-
-                    with gr.Accordion(label="3. 生成SQL・分析", open=True):
+                    with gr.Accordion(label="2. 生成SQL・分析", open=True):
                         dev_generated_sql_text = gr.Textbox(
                             label="生成されたSQL文*",
                             lines=8,
@@ -2110,6 +2104,17 @@ def build_selectai_tab(pool):
                                     interactive=False,
                                     show_copy_button=True,
                                 )
+
+                    with gr.Accordion(label="3. 実行結果", open=True):
+                        dev_chat_result_df = gr.Dataframe(
+                            label="実行結果",
+                            interactive=False,
+                            wrap=True,
+                            visible=False,
+                            value=pd.DataFrame(),
+                            elem_id="selectai_dev_chat_result_df",
+                        )
+                        dev_chat_result_style = gr.HTML(visible=False)
 
                     with gr.Accordion(label="4. クエリのフィードバック", open=False):
                         with gr.Row():
@@ -2599,7 +2604,7 @@ def build_selectai_tab(pool):
                         except Exception as e:
                             logger.error(f"_run_sql_common error: {e}")
 
-                    def _dev_step_run_sql(profile, generated_sql):
+                    def _dev_step_run_sql(generated_sql):
                         yield from _run_sql_common(generated_sql, "selectai_dev_chat_result_df")
 
                     async def _dev_ai_analyze_async(model_name, sql_text):
@@ -2835,7 +2840,7 @@ def build_selectai_tab(pool):
                         outputs=[dev_chat_status_md, dev_generated_sql_text],
                     ).then(
                         fn=_dev_step_run_sql,
-                        inputs=[dev_profile_select, dev_generated_sql_text],
+                        inputs=[dev_generated_sql_text],
                         outputs=[dev_chat_status_md, dev_chat_result_df, dev_chat_result_style],
                     )
 
@@ -4754,18 +4759,7 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             chat_status_md = gr.Markdown(visible=False)
 
-                    with gr.Accordion(label="2. 実行結果", open=True):
-                        chat_result_df = gr.Dataframe(
-                            label="実行結果",
-                            interactive=False,
-                            wrap=True,
-                            visible=False,
-                            value=pd.DataFrame(),
-                            elem_id="selectai_chat_result_df",
-                        )
-                        chat_result_style = gr.HTML(visible=False)
-
-                    with gr.Accordion(label="3. 生成SQL", open=True):
+                    with gr.Accordion(label="2. 生成SQL", open=True):
                         gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
@@ -4780,12 +4774,23 @@ def build_selectai_tab(pool):
                                     container=False,
                                 )
 
+                    with gr.Accordion(label="3. 実行結果", open=True):
+                        chat_result_df = gr.Dataframe(
+                            label="実行結果",
+                            interactive=False,
+                            wrap=True,
+                            visible=False,
+                            value=pd.DataFrame(),
+                            elem_id="selectai_chat_result_df",
+                        )
+                        chat_result_style = gr.HTML(visible=False)
+
                 build_sql_learning_tab(pool)
 
             def _user_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                 yield from _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query)
 
-            def _user_step_run_sql(profile, sql_text):
+            def _user_step_run_sql(sql_text):
                 yield from _run_sql_common(sql_text, "selectai_chat_result_df")
 
             def _on_chat_clear():
@@ -4822,7 +4827,7 @@ def build_selectai_tab(pool):
                 outputs=[chat_status_md, generated_sql_text],
             ).then(
                 fn=_user_step_run_sql,
-                inputs=[profile_select, generated_sql_text],
+                inputs=[generated_sql_text],
                 outputs=[chat_status_md, chat_result_df, chat_result_style],
             )
 
