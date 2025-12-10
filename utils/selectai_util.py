@@ -4119,7 +4119,7 @@ def build_selectai_tab(pool):
                 with gr.TabItem(label="合成データ生成") as synthetic_tab:
                     with gr.Accordion(label="1. 対象選択", open=True):
                         with gr.Row():
-                            syn_generate_info = gr.Markdown(visible=True, value="ℹ️ Profileと対象テーブルを選択し、生成開始を押下してください")
+                            gr.Markdown(visible=True, value="ℹ️ Profileと対象テーブルを選択し、生成開始を押下してください")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
@@ -4173,7 +4173,7 @@ def build_selectai_tab(pool):
                                         syn_comments = gr.Checkbox(label="", value=True, container=False)
 
                         with gr.Row():
-                            syn_generate_btn = gr.Button("生成開始", variant="primary")
+                            syn_generate_btn = gr.Button("生成開始（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
                             syn_generate_status_md = gr.Markdown(visible=False)
 
@@ -4188,7 +4188,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        syn_status_update_btn = gr.Button("ステータスを更新", variant="primary")
+                                        syn_status_update_btn = gr.Button("ステータスを更新", variant="primary", visible=False)
                         with gr.Row():
                             syn_status_update_status_md = gr.Markdown(visible=False)
                         with gr.Row():
@@ -4245,12 +4245,9 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
 
                     def _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
-                        if not profile_name or not str(profile_name).strip():
-                            return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
-                        if not tables_selected:
-                            return gr.Markdown(visible=True, value="⚠️ テーブルを選択してください"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                         try:
-                            prof = _resolve_profile_name(pool, str(profile_name or ""))
+                            pj = _get_profile_json_entry(str(profile_name or ""))
+                            prof = str((pj or {}).get("profile") or "").strip() or str(profile_name or "").strip()
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     try:
@@ -4430,39 +4427,42 @@ def build_selectai_tab(pool):
                                 missing.append("テーブル選択")
                             if missing:
                                 msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
-                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="")
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 生成開始中..."), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
-                            info_md, op_id_comp, status_df_comp, status_style_comp = _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments)
-                            done_text = "✅ 生成開始完了"
-                            yield gr.Markdown(visible=True, value=done_text), op_id_comp, status_df_comp, status_style_comp, info_md
+                            yield gr.Markdown(visible=True, value="⏳ 生成開始中..."), gr.Textbox(value="")
+                            _info_md, op_id_comp, _status_df_comp, _status_style_comp = _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments)
+                            yield gr.Markdown(visible=True, value="✅ 生成開始完了"), op_id_comp
                         except Exception as e:
                             logger.error(f"_syn_generate_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
-
-                    syn_generate_btn.click(
-                        fn=_syn_generate_stream,
-                        inputs=[syn_profile_select, syn_tables_input, syn_rows_per_table, syn_prompt_input, syn_sample_rows, syn_comments],
-                        outputs=[syn_generate_status_md, syn_operation_id_text, syn_status_df, syn_status_style, syn_generate_info],
-                    )
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="")
 
                     def _syn_update_status_stream(op_id):
                         try:
                             oid = str(op_id or "").strip()
                             if not oid:
-                                yield gr.Markdown(visible=True, value="⚠️ オペレーションIDを入力/取得してください"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                                yield gr.Markdown(visible=True, value="⚠️ オペレーションIDを入力/取得してください"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ ステータス更新中..."), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                            yield gr.Markdown(visible=True, value="⏳ ステータス更新中..."), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
                             info_md, df_comp, style_comp = _syn_update_status(op_id)
-                            yield gr.Markdown(visible=True, value="✅ ステータス更新完了"), df_comp, style_comp, info_md
+                            yield info_md, df_comp, style_comp
                         except Exception as e:
                             logger.error(f"_syn_update_status_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+
+                    syn_generate_btn.click(
+                        fn=_syn_generate_stream,
+                        inputs=[syn_profile_select, syn_tables_input, syn_rows_per_table, syn_prompt_input, syn_sample_rows, syn_comments],
+                        outputs=[syn_generate_status_md, syn_operation_id_text],
+                    ).then(
+                        fn=_syn_update_status_stream,
+                        inputs=[syn_operation_id_text],
+                        outputs=[syn_status_update_status_md, syn_status_df, syn_status_style],
+                    )
 
                     syn_status_update_btn.click(
                         fn=_syn_update_status_stream,
                         inputs=[syn_operation_id_text],
-                        outputs=[syn_status_update_status_md, syn_status_df, syn_status_style, syn_generate_info],
+                        outputs=[syn_status_update_status_md, syn_status_df, syn_status_style],
                     )
 
                     syn_result_btn.click(
