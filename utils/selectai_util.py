@@ -2126,6 +2126,11 @@ def build_selectai_tab(pool):
                         with gr.Accordion(label="AI分析", open=True):
                             with gr.Row():
                                 with gr.Column(scale=5):
+                                    dev_prompt_text = gr.Textbox(label="開発者向けのプロンプト", lines=4, max_lines=10, visible=True, show_copy_button=True, value="以下のSQLを技術的観点で短く要約してください。目的、主要テーブル/結合、主なフィルタ、出力の概要を含めてください。")
+                                with gr.Column(scale=5):
+                                    user_prompt_text = gr.Textbox(label="ユーザー向けのプロンプト", lines=4, max_lines=10, visible=True, show_copy_button=True, value="以下のSQLが何をしているか、非技術的なユーザー向けに1〜3文で説明してください。専門用語はできるだけ避けてください。")
+                            with gr.Row():
+                                with gr.Column(scale=5):
                                     with gr.Row():
                                         with gr.Column(scale=1):
                                             gr.Markdown("モデル*", elem_classes="input-label")
@@ -2149,10 +2154,16 @@ def build_selectai_tab(pool):
                                 with gr.Column(scale=5):
                                     with gr.Row():
                                         with gr.Column(scale=1):
-                                            dev_ai_analyze_btn = gr.Button("AI分析", variant="primary")
+                                            dev_ai_analyze_btn = gr.Button("AI分析（時間がかかる場合があります）", variant="primary")
 
                             with gr.Row():
                                 dev_ai_analyze_status = gr.Markdown(visible=False)
+
+                            with gr.Row():
+                                with gr.Column(scale=5):
+                                    dev_sql_summary_text = gr.Textbox(label="開発者向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True)
+                                with gr.Column(scale=5):
+                                    user_sql_summary_text = gr.Textbox(label="ユーザー向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True)
 
                             with gr.Row():
                                 with gr.Column():
@@ -2674,16 +2685,16 @@ def build_selectai_tab(pool):
                     def _dev_step_run_sql(generated_sql):
                         yield from _run_sql_common(generated_sql, "selectai_dev_chat_result_df")
 
-                    async def _dev_ai_analyze_async(model_name, sql_text):
+                    async def _dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt):
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value=""), gr.Textbox(value="")
+                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             s = str(sql_text or "").strip()
                             if not s:
-                                return gr.Markdown(visible=True, value="⚠️ SQL文が空です"), gr.Textbox(value=""), gr.Textbox(value="")
+                                return gr.Markdown(visible=True, value="⚠️ SQL文が空です"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             
                             if str(model_name).startswith("gpt-"):
                                 from openai import AsyncOpenAI
@@ -2742,23 +2753,53 @@ def build_selectai_tab(pool):
                                 join_text = "None"
                             if not where_text:
                                 where_text = "None"
-                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=join_text), gr.Textbox(value=where_text)
+                            dev_summary = ""
+                            user_summary = ""
+                            dev_enable=True
+                            user_enable=True
+                            if bool(dev_enable):
+                                dp = str(dev_prompt or "").strip()
+                                dmsg = [
+                                    {"role": "system", "content": "あなたはSQLの要約に特化したアシスタントです。回答は簡潔な日本語テキストのみ。"},
+                                    {"role": "user", "content": ((dp + "\n") if dp else "") + "SQL:\n```sql\n" + str(sql_text) + "\n```"}
+                                ]
+                                dresp = await client.chat.completions.create(model=model_name, messages=dmsg)
+                                if getattr(dresp, "choices", None):
+                                    dmsg0 = dresp.choices[0].message
+                                    dout = dmsg0.content if hasattr(dmsg0, "content") else ""
+                                    dev_summary = re.sub(r"```+\w*", "", str(dout or "")).strip()
+                            if bool(user_enable):
+                                up = str(user_prompt or "").strip()
+                                umsg = [
+                                    {"role": "system", "content": "あなたは非技術ユーザー向けに分かりやすく説明するアシスタントです。回答は日本語の平易な文章のみ。"},
+                                    {"role": "user", "content": ((up + "\n") if up else "") + "SQL:\n```sql\n" + str(sql_text) + "\n```"}
+                                ]
+                                uresp = await client.chat.completions.create(model=model_name, messages=umsg)
+                                if getattr(uresp, "choices", None):
+                                    umsg0 = uresp.choices[0].message
+                                    uout = umsg0.content if hasattr(umsg0, "content") else ""
+                                    user_summary = re.sub(r"```+\w*", "", str(uout or "")).strip()
+                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=join_text), gr.Textbox(value=where_text), gr.Textbox(value=dev_summary), gr.Textbox(value=user_summary)
                         except Exception as e:
                             logger.error(f"_dev_ai_analyze_async error: {e}")
-                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="None"), gr.Textbox(value="None")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="None"), gr.Textbox(value="None"), gr.Textbox(value=""), gr.Textbox(value="")
 
-                    def _dev_ai_analyze(model_name, sql_text):
+                    def _dev_ai_analyze(model_name, sql_text, dev_prompt, user_prompt):
                         import asyncio
                         # 必須入力項目のチェック
                         if not model_name or not str(model_name).strip():
-                            return gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            return
                         if not sql_text or not str(sql_text).strip():
-                            return gr.Markdown(visible=True, value="⚠️ SQL文が空です。先にSQL文を生成してください"), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ SQL文が空です。先にSQL文を生成してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            return
+                        yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="..."), gr.Textbox(value="..."), gr.Textbox(value=""), gr.Textbox(value="")
                         
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            return loop.run_until_complete(_dev_ai_analyze_async(model_name, sql_text))
+                            result = loop.run_until_complete(_dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt))
+                            yield result
                         finally:
                             loop.close()
 
@@ -2916,8 +2957,8 @@ def build_selectai_tab(pool):
 
                     dev_ai_analyze_btn.click(
                         fn=_dev_ai_analyze,
-                        inputs=[dev_analysis_model_input, dev_generated_sql_text],
-                        outputs=[dev_ai_analyze_status, dev_join_conditions_text, dev_where_conditions_text],
+                        inputs=[dev_analysis_model_input, dev_generated_sql_text, dev_prompt_text, user_prompt_text],
+                        outputs=[dev_ai_analyze_status, dev_join_conditions_text, dev_where_conditions_text, dev_sql_summary_text, user_sql_summary_text],
                     )
 
                     dev_chat_clear_btn.click(
