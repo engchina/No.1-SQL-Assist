@@ -2109,7 +2109,7 @@ def build_selectai_tab(pool):
                             with gr.Column():
                                 dev_chat_clear_btn = gr.Button("クリア", variant="secondary")
                             with gr.Column():
-                                dev_chat_execute_btn = gr.Button("実行", variant="primary")
+                                dev_chat_execute_btn = gr.Button("実行（時間がかかる場合があります）", variant="primary")
 
                         with gr.Row():
                             dev_chat_status_md = gr.Markdown(visible=False)
@@ -4145,7 +4145,7 @@ def build_selectai_tab(pool):
                                         gr.Markdown("")
                         with gr.Row():
                             with gr.Column():
-                                syn_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
+                                syn_refresh_btn = gr.Button("テーブル一覧を取得（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 syn_refresh_status = gr.Markdown(visible=False)
@@ -4816,7 +4816,7 @@ def build_selectai_tab(pool):
                             with gr.Column():
                                 chat_clear_btn = gr.Button("クリア", variant="secondary")
                             with gr.Column():
-                                chat_execute_btn = gr.Button("実行", variant="primary")
+                                chat_execute_btn = gr.Button("実行（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
                             chat_status_md = gr.Markdown(visible=False)
 

@@ -1050,7 +1050,7 @@ def build_management_tab(pool):
         with gr.TabItem(label="テーブルの管理"):
             # Feature 1: Table List
             with gr.Accordion(label="1. テーブル一覧", open=True):
-                table_refresh_btn = gr.Button("テーブル一覧を取得", variant="primary")
+                table_refresh_btn = gr.Button("テーブル一覧を取得（時間がかかる場合があります）", variant="primary")
                 table_refresh_status = gr.Markdown(visible=False)
                 table_list_df = gr.Dataframe(
                     label="テーブル一覧（件数: 0）",
