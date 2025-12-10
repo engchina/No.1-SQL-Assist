@@ -3242,22 +3242,22 @@ def build_selectai_tab(pool):
                                 cm_structure_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("主キー情報(Optional)", elem_classes="input-label")
+                                gr.Markdown("主キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_pk_text = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=True, show_copy_button=True, container=False)    
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("外部キー情報(Optional)", elem_classes="input-label")
+                                gr.Markdown("外部キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_fk_text = gr.Textbox(show_label=False, lines=6, max_lines=14, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("サンプルデータ(Optional)", elem_classes="input-label")
+                                gr.Markdown("サンプルデータ(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("追加入力(Optional)", elem_classes="input-label")
+                                gr.Markdown("追加入力(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_extra_input = gr.Textbox(
                                     show_label=False,
@@ -3662,7 +3662,7 @@ def build_selectai_tab(pool):
                                 am_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("追加入力(Optional)", elem_classes="input-label")
+                                gr.Markdown("追加入力(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 am_extra_input = gr.Textbox(
                                     show_label=False,
@@ -4119,32 +4119,25 @@ def build_selectai_tab(pool):
                 with gr.TabItem(label="合成データ生成") as synthetic_tab:
                     with gr.Accordion(label="1. 対象選択", open=True):
                         with gr.Row():
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("Profile", elem_classes="input-label")
-                                    with gr.Column(scale=5):
-                                        # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
-                                        _syn_initial_choices = _load_profiles_from_json()
-                                        if not _syn_initial_choices:
-                                            _syn_initial_choices = [("", "")]
-                                        syn_profile_select = gr.Dropdown(
-                                            show_label=False,
-                                            choices=_syn_initial_choices,
-                                            value=(
-                                                _syn_initial_choices[0][1]
-                                                if (_syn_initial_choices and isinstance(_syn_initial_choices[0], tuple))
-                                                else (_syn_initial_choices[0] if _syn_initial_choices else "")
-                                            ),
-                                            interactive=True,
-                                            container=False
-                                        )
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("")
+                            syn_generate_info = gr.Markdown(visible=True, value="ℹ️ Profileと対象テーブルを選択し、生成開始を押下してください")
                         with gr.Row():
-                            with gr.Column():
+                            with gr.Column(scale=5):
+                                # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                _syn_initial_choices = _load_profiles_from_json()
+                                if not _syn_initial_choices:
+                                    _syn_initial_choices = [("", "")]
+                                syn_profile_select = gr.Dropdown(
+                                    show_label=False,
+                                    choices=_syn_initial_choices,
+                                    value=(
+                                        _syn_initial_choices[0][1]
+                                        if (_syn_initial_choices and isinstance(_syn_initial_choices[0], tuple))
+                                        else (_syn_initial_choices[0] if _syn_initial_choices else "")
+                                    ),
+                                    interactive=True,
+                                    container=False
+                                )
+                            with gr.Column(scale=5):
                                 syn_refresh_btn = gr.Button("テーブル一覧を取得（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
                             with gr.Column():
@@ -4153,11 +4146,11 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        syn_tables_input = gr.CheckboxGroup(label="テーブル選択", choices=[], visible=True)
+                                        syn_tables_input = gr.CheckboxGroup(label="テーブル選択*", choices=[], visible=True)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("各テーブルの生成件数", elem_classes="input-label")
+                                        gr.Markdown("各テーブルの生成件数*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         syn_rows_per_table = gr.Number(show_label=False, minimum=1, maximum=100, value=1, interactive=True, container=False)
                         with gr.Row():
@@ -4169,7 +4162,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("サンプル行数(sample_rows)", elem_classes="input-label")
+                                        gr.Markdown("サンプル行数(sample_rows)*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         syn_sample_rows = gr.Number(show_label=False, minimum=0, maximum=100, value=5, interactive=True, container=False)
                             with gr.Column(scale=5):
@@ -4181,14 +4174,15 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             syn_generate_btn = gr.Button("生成開始", variant="primary")
+                        with gr.Row():
+                            syn_generate_status_md = gr.Markdown(visible=False)
 
                     with gr.Accordion(label="2. 進捗と状態", open=True):
-                        syn_generate_info = gr.Markdown(visible=True, value="ℹ️ Profileと対象テーブルを選択し、生成開始を押下してください")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("オペレーションID", elem_classes="input-label")
+                                        gr.Markdown("オペレーションID*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         syn_operation_id_text = gr.Textbox(show_label=False, interactive=False, container=False)
                             with gr.Column(scale=5):
@@ -4196,11 +4190,15 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         syn_status_update_btn = gr.Button("ステータスを更新", variant="primary")
                         with gr.Row():
+                            syn_status_update_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
                             syn_status_df = gr.Dataframe(label="ステータス", interactive=False, wrap=True, visible=False, value=pd.DataFrame())
                         with gr.Row():
                             syn_status_style = gr.HTML(visible=False)
 
                     with gr.Accordion(label="3. 結果確認", open=True):
+                        with gr.Row():
+                            syn_result_info = gr.Markdown(visible=True, value="ℹ️ 生成済みテーブルからデータを表示します")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -4216,8 +4214,6 @@ def build_selectai_tab(pool):
                                         syn_result_limit = gr.Number(show_label=False, value=50, minimum=0, maximum=10000, container=False)
                         with gr.Row():
                             syn_result_btn = gr.Button("データを表示", variant="primary")
-                        with gr.Row():
-                            syn_result_info = gr.Markdown(visible=True, value="ℹ️ 生成済みテーブルからデータを表示します")
                         with gr.Row():
                             syn_result_df = gr.Dataframe(label="データ表示", interactive=False, wrap=True, visible=False, value=pd.DataFrame(), elem_id="synthetic_data_result_df")
                         with gr.Row():
@@ -4335,10 +4331,8 @@ def build_selectai_tab(pool):
                                     keep = [
                                         "ID",
                                         "NAME",
-                                        "BYTES",
                                         "ROWS_LOADED",
                                         "STATUS",
-                                        "LAST_MODIFIED",
                                     ]
                                     show_cols = [c for c in keep if c in df.columns]
                                     if show_cols:
@@ -4409,16 +4403,48 @@ def build_selectai_tab(pool):
                         outputs=[syn_refresh_status, syn_tables_input, syn_result_table_select],
                     )
 
+                    def _syn_generate_stream(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
+                        try:
+                            missing = []
+                            if not profile_name or not str(profile_name).strip():
+                                missing.append("Profile")
+                            if not tables_selected:
+                                missing.append("テーブル選択")
+                            if missing:
+                                msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ 生成開始中..."), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                            info_md, op_id_comp, status_df_comp, status_style_comp = _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments)
+                            done_text = "✅ 生成開始完了"
+                            yield gr.Markdown(visible=True, value=done_text), op_id_comp, status_df_comp, status_style_comp, info_md
+                        except Exception as e:
+                            logger.error(f"_syn_generate_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+
                     syn_generate_btn.click(
-                        fn=_syn_generate,
+                        fn=_syn_generate_stream,
                         inputs=[syn_profile_select, syn_tables_input, syn_rows_per_table, syn_prompt_input, syn_sample_rows, syn_comments],
-                        outputs=[syn_generate_info, syn_operation_id_text, syn_status_df, syn_status_style],
+                        outputs=[syn_generate_status_md, syn_operation_id_text, syn_status_df, syn_status_style, syn_generate_info],
                     )
 
+                    def _syn_update_status_stream(op_id):
+                        try:
+                            oid = str(op_id or "").strip()
+                            if not oid:
+                                yield gr.Markdown(visible=True, value="⚠️ オペレーションIDを入力/取得してください"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ ステータス更新中..."), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+                            info_md, df_comp, style_comp = _syn_update_status(op_id)
+                            yield gr.Markdown(visible=True, value="✅ ステータス更新完了"), df_comp, style_comp, info_md
+                        except Exception as e:
+                            logger.error(f"_syn_update_status_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False), gr.Markdown(visible=True, value="")
+
                     syn_status_update_btn.click(
-                        fn=_syn_update_status,
+                        fn=_syn_update_status_stream,
                         inputs=[syn_operation_id_text],
-                        outputs=[syn_generate_info, syn_status_df, syn_status_style],
+                        outputs=[syn_status_update_status_md, syn_status_df, syn_status_style, syn_generate_info],
                     )
 
                     syn_result_btn.click(
