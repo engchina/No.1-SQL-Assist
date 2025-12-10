@@ -949,7 +949,7 @@ def build_selectai_tab(pool):
                                         business_domain_input = gr.Textbox(show_label=False, placeholder="例: 顧客管理、売上分析 等", container=False)
 
                         with gr.Row():
-                            refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
+                            refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
                             refresh_status = gr.Markdown(visible=False)
 
@@ -3208,7 +3208,7 @@ def build_selectai_tab(pool):
                     with gr.Accordion(label="1. オブジェクト選択", open=True):
                         with gr.Row():
                             with gr.Column():                        
-                                cm_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
+                                cm_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 cm_refresh_status = gr.Markdown(visible=False)
@@ -3614,7 +3614,7 @@ def build_selectai_tab(pool):
                 with gr.TabItem(label="アノテーション管理"):
                     with gr.Accordion(label="1. オブジェクト選択", open=True):
                         with gr.Row():
-                            am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得", variant="primary")
+                            am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
                             am_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
@@ -4430,40 +4430,36 @@ def build_selectai_tab(pool):
                 with gr.TabItem(label="SQL→質問 逆生成") as reverse_tab:
                     with gr.Accordion(label="1. 入力", open=True):
                         with gr.Row():
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("Profile", elem_classes="input-label")
-                                    with gr.Column(scale=5):
-                                        # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
-                                        _rev_initial_choices = _load_profiles_from_json()
-                                        if not _rev_initial_choices:
-                                            _rev_initial_choices = [("", "")]
-                                        rev_profile_select = gr.Dropdown(
-                                            show_label=False,
-                                            choices=_rev_initial_choices,
-                                            value=(
-                                                _rev_initial_choices[0][1]
-                                                if (_rev_initial_choices and isinstance(_rev_initial_choices[0], tuple))
-                                                else (_rev_initial_choices[0] if _rev_initial_choices else "")
-                                            ),
-                                            interactive=True,
-                                            container=False
-                                        )
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("")
-                        with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("対象SQL", elem_classes="input-label")
+                                gr.Markdown("対象SQL*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 rev_sql_input = gr.Textbox(show_label=False, lines=8, max_lines=15, show_copy_button=True, container=False)
 
                     with gr.Accordion(label="2. 参照コンテキスト", open=True):
                         with gr.Row():
+                            with gr.Column(scale=5):
+                                # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                _rev_initial_choices = _load_profiles_from_json()
+                                if not _rev_initial_choices:
+                                    _rev_initial_choices = [("", "")]
+                                rev_profile_select = gr.Dropdown(
+                                    show_label=False,
+                                    choices=_rev_initial_choices,
+                                    value=(
+                                        _rev_initial_choices[0][1]
+                                        if (_rev_initial_choices and isinstance(_rev_initial_choices[0], tuple))
+                                        else (_rev_initial_choices[0] if _rev_initial_choices else "")
+                                    ),
+                                    interactive=True,
+                                    container=False
+                                )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        rev_context_meta_btn = gr.Button("メタ情報を取得（時間がかかる場合があります）", variant="primary")
+                        with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("送信するメタ情報", elem_classes="input-label")
+                                gr.Markdown("送信するメタ情報*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 rev_context_text = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False, container=False)
 
@@ -4657,7 +4653,7 @@ def build_selectai_tab(pool):
                     def _on_profile_change_set_context(p):
                         return _rev_build_context(p)
 
-                    rev_profile_select.select(
+                    rev_context_meta_btn.click(
                         fn=_on_profile_change_set_context,
                         inputs=[rev_profile_select],
                         outputs=[rev_context_text],
