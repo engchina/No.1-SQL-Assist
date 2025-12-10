@@ -193,7 +193,7 @@ theme = Default(
 ).set()
 
 # Create Gradio interface
-with gr.Blocks(css=custom_css, theme=theme, title="SQL Assist") as app:
+with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん") as app:
     gr.Markdown(value="# クエリできすぎくん ", elem_classes="main_Header")
     gr.Markdown(
         value="### 開発者がSQLクエリを簡単に生成し、SQLの理解を深めるためのツール",

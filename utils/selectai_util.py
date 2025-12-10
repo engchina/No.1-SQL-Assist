@@ -4203,13 +4203,13 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("テーブル", elem_classes="input-label")
+                                        gr.Markdown("テーブル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         syn_result_table_select = gr.Dropdown(show_label=False, choices=[], interactive=True, container=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("取得件数", elem_classes="input-label")
+                                        gr.Markdown("取得件数*", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         syn_result_limit = gr.Number(show_label=False, value=50, minimum=0, maximum=10000, container=False)
                         with gr.Row():
