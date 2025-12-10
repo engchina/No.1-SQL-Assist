@@ -4198,7 +4198,7 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="3. 結果確認", open=True):
                         with gr.Row():
-                            syn_result_info = gr.Markdown(visible=True, value="ℹ️ 生成済みテーブルからデータを表示します")
+                            gr.Markdown(visible=True, value="ℹ️ 生成済みテーブルからデータを表示します")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -4215,17 +4215,11 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             syn_result_btn = gr.Button("データを表示", variant="primary")
                         with gr.Row():
+                            syn_result_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
                             syn_result_df = gr.Dataframe(label="データ表示", interactive=False, wrap=True, visible=False, value=pd.DataFrame(), elem_id="synthetic_data_result_df")
                         with gr.Row():
                             syn_result_style = gr.HTML(visible=False)
-
-                    def _syn_profile_names():
-                        try:
-                            # JSONファイルから読み込む
-                            return _load_profiles_from_json()
-                        except Exception as e:
-                            logger.error(f"_syn_profile_names error: {e}")
-                        return []
 
                     def _syn_refresh_objects(profile_name):
                         try:
@@ -4367,13 +4361,19 @@ def build_selectai_tab(pool):
                     def _syn_display_result(table_name, limit_value):
                         try:
                             from utils.management_util import display_table_data
-                            df = display_table_data(pool, table_name, int(limit_value))
+                            try:
+                                lv = int(limit_value)
+                            except Exception:
+                                lv = 50
+                            if lv < 0:
+                                lv = 0
+                            df = display_table_data(pool, table_name, lv)
                             if isinstance(df, pd.DataFrame) and not df.empty:
                                 widths = []
                                 cols = df.columns.tolist()
                                 sample = df.head(5)
                                 for col in cols:
-                                    series = sample[col].astype(str)
+                                    series = sample[col].astype(str) if not sample.empty else pd.Series([], dtype=str)
                                     row_max = series.map(len).max() if len(series) > 0 else 0
                                     length = max(len(str(col)), row_max)
                                     widths.append(length)
@@ -4391,11 +4391,29 @@ def build_selectai_tab(pool):
                                     for idx, pct in enumerate(col_widths, start=1):
                                         rules.append(f"#synthetic_data_result_df table th:nth-child({idx}), #synthetic_data_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                                     style_value = "<style>" + "\n".join(rules) + "</style>"
-                                return gr.Markdown(visible=True, value="✅ 表示完了"), gr.Dataframe(visible=True, value=df, label=f"データ表示（件数: {len(df)}）", elem_id="synthetic_data_result_df"), gr.HTML(visible=bool(style_value), value=style_value)
+                                return gr.Dataframe(visible=True, value=df, label=f"データ表示（件数: {len(df)}）", elem_id="synthetic_data_result_df"), gr.HTML(visible=bool(style_value), value=style_value)
                             else:
-                                return gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示（件数: 0）", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                                return gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示（件数: 0）", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                        except Exception:
+                            return gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+
+                    def _syn_display_result_stream(table_name, limit_value):
+                        try:
+                            t = str(table_name or "").strip()
+                            if not t:
+                                yield gr.Markdown(visible=True, value="⚠️ テーブルを選択してください"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                                return
+                            try:
+                                lv = int(limit_value)
+                            except Exception:
+                                lv = 50
+                            if lv < 0:
+                                lv = 0
+                            yield gr.Markdown(visible=True, value="⏳ データ表示中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                            df_comp, style_comp = _syn_display_result(table_name, lv)
+                            yield gr.Markdown(visible=True, value="✅ 表示完了"), df_comp, style_comp
                         except Exception as e:
-                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 表示に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
 
                     syn_refresh_btn.click(
                         fn=_syn_refresh_objects,
@@ -4448,9 +4466,9 @@ def build_selectai_tab(pool):
                     )
 
                     syn_result_btn.click(
-                        fn=_syn_display_result,
+                        fn=_syn_display_result_stream,
                         inputs=[syn_result_table_select, syn_result_limit],
-                        outputs=[syn_result_info, syn_result_df, syn_result_style],
+                        outputs=[syn_result_status_md, syn_result_df, syn_result_style],
                     )
 
                 with gr.TabItem(label="SQL→質問 逆生成") as reverse_tab:
