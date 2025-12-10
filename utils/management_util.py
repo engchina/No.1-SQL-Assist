@@ -1302,7 +1302,6 @@ def build_management_tab(pool):
                     if not region or not compartment_id:
                         return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
-                    import pandas as pd
                     
                     sql_part = str(create_sql_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
@@ -1781,7 +1780,6 @@ def build_management_tab(pool):
                     if not region or not compartment_id:
                         return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
-                    import pandas as pd
                     
                     sql_part = str(create_sql_text or "").strip()
                     result_part = str(exec_result_text or "").strip()
@@ -2089,7 +2087,7 @@ def build_management_tab(pool):
                         widths.append(min(100 / columns, length))
                     total = sum(widths) if widths else 0
                     if total <= 0:
-                        style_value = ""
+                        _ = ""
                     else:
                         col_widths = [max(5, int(100 * w / total)) for w in widths]
                         diff = 100 - sum(col_widths)
@@ -2101,7 +2099,7 @@ def build_management_tab(pool):
                         rules.append("#data_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
                         for idx, pct in enumerate(col_widths, start=1):
                             rules.append(f"#data_result_df table th:nth-child({idx}), #data_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
-                        style_value = "<style>" + "\n".join(rules) + "</style>"
+                        _ = "<style>" + "\n".join(rules) + "</style>"
 
                     df_component = gr.Dataframe(
                         label=f"データ表示（件数: {len(df)}）",
@@ -2210,7 +2208,6 @@ def build_management_tab(pool):
                     if not region or not compartment_id:
                         return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                 try:
-                    import pandas as pd
                     
                     sql_part = str(create_sql_text or "").strip()
                     result_part = str(exec_result_text or "").strip()

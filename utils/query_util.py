@@ -346,7 +346,7 @@ def _stmt_type(stmt: str) -> str:
     m = re.match(r"^comment\s+on\s+([a-zA-Z_]+(?:\s+[a-zA-Z_]+)?)\b", s, flags=re.IGNORECASE)
     if m:
         # tgt = m.group(1).upper()
-        return f"COMMENT"
+        return "COMMENT"
     if re.match(r"^(select|with)\b", s, flags=re.IGNORECASE):
         return 'SELECT'
     for k in ('insert', 'update', 'delete', 'merge', 'create', 'drop', 'alter', 'truncate', 'grant', 'revoke'):

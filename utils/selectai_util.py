@@ -3233,8 +3233,10 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             with gr.Column():
                                 cm_fetch_btn = gr.Button("情報を取得", variant="primary")
+                        with gr.Row():
+                            cm_fetch_status_md = gr.Markdown(visible=False)
 
-                    with gr.Accordion(label="2. 入力確認", open=False):
+                    with gr.Accordion(label="2. 入力確認", open=True) as cm_input_confirm_acc:
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("構造情報*", elem_classes="input-label")
@@ -3294,7 +3296,9 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        cm_generate_btn = gr.Button("生成", variant="primary")
+                                        cm_generate_btn = gr.Button("生成（時間がかかる場合があります）", variant="primary")
+                        with gr.Row():
+                            cm_generate_status_md = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("生成されたSQL文*", elem_classes="input-label")
@@ -3302,12 +3306,10 @@ def build_selectai_tab(pool):
                                 cm_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False)
 
                     with gr.Accordion(label="4. 実行", open=False):
-                        cm_execute_btn = gr.Button("一括実行", variant="primary")
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("実行結果*", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                cm_execute_result = gr.Textbox(show_label=False, interactive=False, lines=5, max_lines=8, container=False)
+                            cm_execute_btn = gr.Button("一括実行", variant="primary")
+                        with gr.Row():
+                            cm_execute_result = gr.Markdown(visible=False)
 
                         with gr.Accordion(label="AI分析と処理", open=True):
                             with gr.Row():
@@ -3358,6 +3360,29 @@ def build_selectai_tab(pool):
                         except Exception as e:
                             logger.error(f"_cm_refresh_objects error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+
+                    def _cm_fetch_stream(tables_selected, views_selected, sample_limit):
+                        try:
+                            tbls = tables_selected or []
+                            vws = views_selected or []
+                            lim = int(sample_limit) if sample_limit is not None else 10
+                            if lim < 0:
+                                lim = 0
+                            if not tbls and not vws:
+                                yield gr.Markdown(visible=True, value="⚠️ 対象を選択してください"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ 取得中..."), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            struct = _cm_fetch_structure(tbls, vws)
+                            yield gr.Markdown(visible=True, value="✅ 構造情報取得完了"), gr.Accordion(open=True), struct, gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            pk = _cm_fetch_pk(tbls, vws)
+                            yield gr.Markdown(visible=True, value="✅ 主キー情報取得完了"), gr.Accordion(open=True), struct, pk, gr.Textbox(value=""), gr.Textbox(value="")
+                            fk = _cm_fetch_fk(tbls, vws)
+                            yield gr.Markdown(visible=True, value="✅ 外部キー情報取得完了"), gr.Accordion(open=True), struct, pk, fk, gr.Textbox(value="")
+                            samples = _cm_fetch_samples(tbls, vws, lim)
+                            yield gr.Markdown(visible=True, value="✅ サンプル取得完了"), gr.Accordion(open=True), struct, pk, fk, samples
+                        except Exception as e:
+                            logger.error(f"_cm_fetch_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
 
                     def _cm_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text):
                         try:
@@ -3413,9 +3438,32 @@ def build_selectai_tab(pool):
                         finally:
                             loop.close()
 
+                    def _cm_generate_stream(model_name, struct_text, pk_text, fk_text, samples_text, extra_text, obj_tables):
+                        try:
+                            missing = []
+                            if not model_name or not str(model_name).strip():
+                                missing.append("モデル")
+                            if not struct_text or not str(struct_text).strip():
+                                missing.append("構造情報")
+                            if missing:
+                                msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="")
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="")
+                            result = _cm_generate(obj_tables, model_name, extra_text, struct_text, pk_text, fk_text, samples_text)
+                            yield gr.Markdown(visible=True, value="✅ 生成完了"), result
+                        except Exception as e:
+                            logger.error(f"_cm_generate_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="")
+
                     def _cm_execute(sql_text):
                         from utils.management_util import execute_comment_sql
-                        return execute_comment_sql(pool, sql_text)
+                        try:
+                            res = execute_comment_sql(pool, sql_text)
+                            return gr.Markdown(visible=True, value=str(res or ""))
+                        except Exception as e:
+                            logger.error(f"_cm_execute error: {e}")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}")
 
                     async def _cm_ai_analyze_async(model_name, sql_text, exec_result_text):
                         from utils.chat_util import get_oci_region, get_compartment_id
@@ -3558,27 +3606,15 @@ def build_selectai_tab(pool):
                         return gr.Textbox(value=samples_text, interactive=True)
 
                     cm_fetch_btn.click(
-                        fn=_cm_fetch_structure,
-                        inputs=[cm_tables_input, cm_views_input],
-                        outputs=[cm_structure_text],
-                    ).then(
-                        fn=_cm_fetch_pk,
-                        inputs=[cm_tables_input, cm_views_input],
-                        outputs=[cm_pk_text],
-                    ).then(
-                        fn=_cm_fetch_fk,
-                        inputs=[cm_tables_input, cm_views_input],
-                        outputs=[cm_fk_text],
-                    ).then(
-                        fn=_cm_fetch_samples,
+                        fn=_cm_fetch_stream,
                         inputs=[cm_tables_input, cm_views_input, cm_sample_limit],
-                        outputs=[cm_samples_text],
+                        outputs=[cm_fetch_status_md, cm_input_confirm_acc, cm_structure_text, cm_pk_text, cm_fk_text, cm_samples_text],
                     )
 
                     cm_generate_btn.click(
-                        fn=_cm_generate,
-                        inputs=[cm_tables_input, cm_model_input, cm_extra_input, cm_structure_text, cm_pk_text, cm_fk_text, cm_samples_text],
-                        outputs=[cm_generated_sql],
+                        fn=_cm_generate_stream,
+                        inputs=[cm_model_input, cm_structure_text, cm_pk_text, cm_fk_text, cm_samples_text, cm_extra_input, cm_tables_input],
+                        outputs=[cm_generate_status_md, cm_generated_sql],
                     )
 
                     cm_execute_btn.click(
@@ -3619,10 +3655,10 @@ def build_selectai_tab(pool):
                             am_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
-                                gr.Markdown("###### テーブル選択")
+                                gr.Markdown("###### テーブル選択*")
                                 am_tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
                             with gr.Column():
-                                gr.Markdown("###### ビュー選択")
+                                gr.Markdown("###### ビュー選択*")
                                 am_views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
                         with gr.Row():
                             with gr.Column(scale=5):
@@ -3638,26 +3674,28 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             with gr.Column():
                                 am_fetch_btn = gr.Button("情報を取得", variant="primary")
+                        with gr.Row():
+                            am_fetch_status_md = gr.Markdown(visible=False)
 
-                    with gr.Accordion(label="2. 入力確認", open=False):
+                    with gr.Accordion(label="2. 入力確認", open=False) as am_input_confirm_acc:
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("構造情報", elem_classes="input-label")
+                                gr.Markdown("構造情報*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 am_structure_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("主キー情報", elem_classes="input-label")
+                                gr.Markdown("主キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 am_pk_text = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("外部キー情報", elem_classes="input-label")
+                                gr.Markdown("外部キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 am_fk_text = gr.Textbox(show_label=False, lines=6, max_lines=14, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("サンプルデータ", elem_classes="input-label")
+                                gr.Markdown("サンプルデータ(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 am_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
                         with gr.Row():
@@ -3708,7 +3746,9 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        am_generate_btn = gr.Button("生成", variant="primary")
+                                        am_generate_btn = gr.Button("生成（時間がかかる場合があります）", variant="primary")
+                        with gr.Row():
+                            am_generate_status_md = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("生成されたSQL文", elem_classes="input-label")
@@ -3716,12 +3756,10 @@ def build_selectai_tab(pool):
                                 am_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False)
 
                     with gr.Accordion(label="4. 実行", open=False):
-                        am_execute_btn = gr.Button("一括実行", variant="primary")
                         with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("実行結果", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                am_execute_result = gr.Textbox(show_label=False, interactive=False, lines=5, max_lines=8, container=False)
+                            am_execute_btn = gr.Button("一括実行", variant="primary")
+                        with gr.Row():
+                            am_execute_result = gr.Markdown(visible=False)
 
                         with gr.Accordion(label="AI分析と処理", open=True):
                             with gr.Row():
@@ -4070,38 +4108,68 @@ def build_selectai_tab(pool):
                             return ";\n".join(out)
                         from utils.management_util import execute_annotation_sql
                         try:
-                            return execute_annotation_sql(pool, _prep(sql_text))
+                            res = execute_annotation_sql(pool, _prep(sql_text))
+                            return gr.Markdown(visible=True, value=str(res or ""))
                         except Exception as e:
                             logger.error(f"_am_execute error: {e}")
-                            return f"❌ エラー: {str(e)}"
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}")
 
                     am_refresh_btn.click(
                         fn=_am_refresh_objects,
                         outputs=[am_refresh_status, am_tables_input, am_views_input],
                     )
 
+                    def _am_fetch_stream(tables_selected, views_selected, sample_limit):
+                        try:
+                            tbls = tables_selected or []
+                            vws = views_selected or []
+                            lim = int(sample_limit) if sample_limit is not None else 10
+                            if lim < 0:
+                                lim = 0
+                            if not tbls and not vws:
+                                yield gr.Markdown(visible=True, value="⚠️ 対象を選択してください"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ 取得中..."), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            struct = _am_fetch_structure(tbls, vws)
+                            yield gr.Markdown(visible=True, value="✅ 構造情報取得完了"), gr.Accordion(open=True), struct, gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            pk = _am_fetch_pk(tbls, vws)
+                            yield gr.Markdown(visible=True, value="✅ 主キー情報取得完了"), gr.Accordion(open=True), struct, pk, gr.Textbox(value=""), gr.Textbox(value="")
+                            fk = _am_fetch_fk(tbls, vws)
+                            yield gr.Markdown(visible=True, value="✅ 外部キー情報取得完了"), gr.Accordion(open=True), struct, pk, fk, gr.Textbox(value="")
+                            samples = _am_fetch_samples(tbls, vws, lim)
+                            yield gr.Markdown(visible=True, value="✅ サンプル取得完了"), gr.Accordion(open=True), struct, pk, fk, samples
+                        except Exception as e:
+                            logger.error(f"_am_fetch_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+
                     am_fetch_btn.click(
-                        fn=_am_fetch_structure,
-                        inputs=[am_tables_input, am_views_input],
-                        outputs=[am_structure_text],
-                    ).then(
-                        fn=_am_fetch_pk,
-                        inputs=[am_tables_input, am_views_input],
-                        outputs=[am_pk_text],
-                    ).then(
-                        fn=_am_fetch_fk,
-                        inputs=[am_tables_input, am_views_input],
-                        outputs=[am_fk_text],
-                    ).then(
-                        fn=_am_fetch_samples,
+                        fn=_am_fetch_stream,
                         inputs=[am_tables_input, am_views_input, am_sample_limit],
-                        outputs=[am_samples_text],
+                        outputs=[am_fetch_status_md, am_input_confirm_acc, am_structure_text, am_pk_text, am_fk_text, am_samples_text],
                     )
 
+                    def _am_generate_stream(model_name, struct_text, pk_text, fk_text, samples_text, extra_text):
+                        try:
+                            missing = []
+                            if not model_name or not str(model_name).strip():
+                                missing.append("モデル")
+                            if not struct_text or not str(struct_text).strip():
+                                missing.append("構造情報")
+                            if missing:
+                                msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="")
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="")
+                            result = _am_generate(model_name, struct_text, pk_text, fk_text, samples_text, extra_text)
+                            yield gr.Markdown(visible=True, value="✅ 生成完了"), result
+                        except Exception as e:
+                            logger.error(f"_am_generate_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="")
+
                     am_generate_btn.click(
-                        fn=_am_generate,
+                        fn=_am_generate_stream,
                         inputs=[am_model_input, am_structure_text, am_pk_text, am_fk_text, am_samples_text, am_extra_input],
-                        outputs=[am_generated_sql],
+                        outputs=[am_generate_status_md, am_generated_sql],
                     )
 
                     am_execute_btn.click(
