@@ -4458,6 +4458,8 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         rev_context_meta_btn = gr.Button("メタ情報を取得（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
+                            rev_context_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("送信するメタ情報*", elem_classes="input-label")
                             with gr.Column(scale=5):
@@ -4498,6 +4500,8 @@ def build_selectai_tab(pool):
                         with gr.Row():
                             rev_generate_btn = gr.Button("自然言語を生成", variant="primary")
                         with gr.Row():
+                            rev_generate_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("推奨質問(日本語)", elem_classes="input-label")
                             with gr.Column(scale=5):
@@ -4508,12 +4512,9 @@ def build_selectai_tab(pool):
                             s = _get_profile_context_ddl_from_json(profile_name)
                             if str(s).strip():
                                 return s
-                            prof = _resolve_profile_name(pool, str(profile_name or ""))
-                            attrs = _get_profile_attributes(pool, prof) or {}
-                            obj_list = attrs.get("object_list") or []
+                            tables, views = _get_profile_objects_from_json(profile_name)
                             chunks = []
-                            for o in obj_list:
-                                name = str((o or {}).get("name") or "")
+                            for name in tables:
                                 if not name:
                                     continue
                                 try:
@@ -4522,6 +4523,8 @@ def build_selectai_tab(pool):
                                     ddl_t = ""
                                 if ddl_t:
                                     chunks.append(str(ddl_t).strip())
+                            for name in views:
+                                if not name:
                                     continue
                                 try:
                                     _, ddl_v = get_view_details(pool, name)
@@ -4540,6 +4543,16 @@ def build_selectai_tab(pool):
                             return gr.Textbox(value=txt)
                         except Exception as e:
                             return gr.Textbox(value=f"❌ エラー: {e}")
+
+                    def _on_profile_change_set_context_stream(p):
+                        try:
+                            yield gr.Markdown(visible=True, value="⏳ メタ情報取得中..."), gr.Textbox(value="", interactive=True)
+                            txt = _rev_build_context_text(p)
+                            status_text = "✅ 取得完了" if str(txt).strip() else "✅ 取得完了（メタ情報なし）"
+                            yield gr.Markdown(visible=True, value=status_text), gr.Textbox(value=txt, interactive=True)
+                        except Exception as e:
+                            logger.error(f"_on_profile_change_set_context_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="", interactive=True)
 
                     async def _rev_generate_async(model_name, context_text, sql_text, use_glossary):
                         """SQL→質問逆生成処理.
@@ -4650,19 +4663,39 @@ def build_selectai_tab(pool):
                         finally:
                             loop.close()
 
+                    def _rev_generate_stream(model_name, context_text, sql_text, use_glossary):
+                        try:
+                            ctx = str(context_text or "").strip()
+                            sql = str(sql_text or "").strip()
+                            missing = []
+                            if not ctx:
+                                missing.append("送信するメタ情報")
+                            if not sql:
+                                missing.append("対象SQL")
+                            if missing:
+                                msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False)
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False)
+                            out = _rev_generate(model_name, context_text, sql_text, use_glossary)
+                            yield gr.Markdown(visible=True, value="✅ 生成完了"), out
+                        except Exception as e:
+                            logger.error(f"_rev_generate_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False)
+
                     def _on_profile_change_set_context(p):
                         return _rev_build_context(p)
 
                     rev_context_meta_btn.click(
-                        fn=_on_profile_change_set_context,
+                        fn=_on_profile_change_set_context_stream,
                         inputs=[rev_profile_select],
-                        outputs=[rev_context_text],
+                        outputs=[rev_context_status_md, rev_context_text],
                     )
 
                     rev_generate_btn.click(
-                        fn=_rev_generate,
+                        fn=_rev_generate_stream,
                         inputs=[rev_model_input, rev_context_text, rev_sql_input, rev_use_glossary],
-                        outputs=[rev_question_output],
+                        outputs=[rev_generate_status_md, rev_question_output],
                     )
 
         with gr.TabItem(label="ユーザー機能"):
