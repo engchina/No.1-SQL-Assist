@@ -2263,16 +2263,17 @@ def build_selectai_tab(pool):
 
                     def _build_showsql_stmt(prompt: str) -> str:
                         s = str(prompt or "")
-                        singles = ["!", "~", "^", "@", "#", "$", "%", "&", ";", ":"]
-                        for d in singles:
-                            if d not in s:
-                                return f"select ai showsql q'{d}{s}{d}'"
-                        pairs = [("(", ")"), ("[", "]"), ("{", "}"), ("<", ">")]
-                        for o, c in pairs:
-                            if o not in s and c not in s:
-                                return f"select ai showsql q'{o}{s}{c}'"
-                        esc = s.replace("'", "''")
-                        return f"select ai showsql '{esc}'"
+                        # singles = ["!", "~", "^", "@", "#", "$", "%", "&", ";", ":"]
+                        # for d in singles:
+                        #     if d not in s:
+                        #         return f"select ai showsql q'{d}{s}{d}'"
+                        # pairs = [("(", ")"), ("[", "]"), ("{", "}"), ("<", ">")]
+                        # for o, c in pairs:
+                        #     if o not in s and c not in s:
+                        #         return f"select ai showsql q'{o}{s}{c}'"
+                        # esc = s.replace("'", "''")
+                        # return f"select ai showsql '{esc}'"
+                        return f"select ai showsql {s}"
                     
                     def _get_profile_schema_info(profile_name: str) -> str:
                         """指定されたProfileのテーブル/ビュー情報(コメント含む)を取得する."""
@@ -2534,7 +2535,7 @@ def build_selectai_tab(pool):
                                     show_cells = []
                                     try:
                                         cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
-                                        rows = cursor.fetchmany(size=200)
+                                        rows = cursor.fetchmany(size=1)
                                         if rows:
                                             for r in rows:
                                                 for v in r:
@@ -2567,11 +2568,11 @@ def build_selectai_tab(pool):
                                         yield gr.Markdown(visible=True, value=f"❌ エラー: {err_msg}"), gr.Textbox(value="")
                                         show_text = ""
                                         return
-                                    try:
-                                        cursor.execute(showsql_stmt)
-                                    except Exception as e:
-                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
-                                        return
+                                    # try:
+                                    #     cursor.execute(showsql_stmt)
+                                    # except Exception as e:
+                                    #     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                                    #     return
                                     _ = _get_sql_id_for_text(showsql_stmt)
                                     def _extract_sql(text: str) -> str:
                                         if not text:
