@@ -18,6 +18,9 @@ write_files:
     encoding: "gzip+base64"
     content: |
       ${oci_database_autonomous_database_connection_string}
+  - path: "/u01/aipoc/props/adb_name.txt"
+    permissions: "0644"
+    content: ${output_adb_name}
   - path: "/u01/aipoc/props/compartment_id.txt"
     permissions: "0644"
     content: ${output_compartment_ocid}

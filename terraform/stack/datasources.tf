@@ -6,6 +6,7 @@ data "template_file" "cloud_init_file" {
     oci_database_autonomous_database_connection_string = base64gzip("admin/${var.adb_password}@${lower(var.adb_name)}_high")
     oci_database_autonomous_database_wallet_content    = oci_database_autonomous_database_wallet.generated_autonomous_data_warehouse_wallet.content
     output_compartment_ocid = var.compartment_ocid
+    output_adb_name = var.adb_name
   }
 }
 

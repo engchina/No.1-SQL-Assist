@@ -947,6 +947,7 @@ def build_oracle_ai_database_tab(pool=None):
 
         def _fetch(region):
             comp = os.environ.get("OCI_COMPARTMENT_OCID", "")
+            match_name = os.environ.get("ADB_NAME", "")
             region_code = region
             if not comp:
                 yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
@@ -962,6 +963,8 @@ def build_oracle_ai_database_tab(pool=None):
                     if str(st).upper() == "TERMINATED":
                         continue
                     name = it.display_name
+                    if match_name and str(name or "").strip().lower() != str(match_name).strip().lower():
+                        continue
                     oid = it.id
                     rows.append([name, st, oid])
                     mp[oid] = {"name": name, "state": st}

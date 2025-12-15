@@ -37,6 +37,8 @@ DB_CONNECTION_STRING=$(cat /u01/aipoc/props/db.env)
 sed -i "s|ORACLE_26AI_CONNECTION_STRING=TODO|ORACLE_26AI_CONNECTION_STRING=$DB_CONNECTION_STRING|g" .env
 COMPARTMENT_ID=$(cat /u01/aipoc/props/compartment_id.txt)
 sed -i "s|OCI_COMPARTMENT_OCID=TODO|OCI_COMPARTMENT_OCID=$COMPARTMENT_ID|g" .env
+ADB_NAME=$(cat /u01/aipoc/props/adb_name.txt 2>/dev/null || true)
+if [ -n "$ADB_NAME" ]; then sed -i "s|ADB_NAME=TODO|ADB_NAME=$ADB_NAME|g" .env; fi
 
 # Application setup
 EXTERNAL_IP=$(curl -s -m 10 http://whatismyip.akamai.com/)
