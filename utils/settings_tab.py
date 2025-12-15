@@ -26,7 +26,7 @@ def build_settings_tab(pool):
             # OCI GenAI設定タブを構築
             build_oci_genai_tab(pool)
         
-        with gr.TabItem(label="Oracle AI Database"):
+        with gr.TabItem(label="Autonomous AI Database"):
             # Oracle AI Database タブを追加
             build_oracle_ai_database_tab(pool)
         
