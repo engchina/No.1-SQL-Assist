@@ -2119,7 +2119,7 @@ def build_selectai_tab(pool):
                             label="生成されたSQL文*",
                             lines=8,
                             max_lines=15,
-                            interactive=True,
+                            interactive=False,
                             show_copy_button=True,
                         )
 
@@ -2195,6 +2195,7 @@ def build_selectai_tab(pool):
                         dev_chat_result_style = gr.HTML(visible=False)
 
                     with gr.Accordion(label="4. クエリのフィードバック", open=False):
+                        gr.Markdown("ℹ️ positiveで登録するとsql_id取得のために再実行が必要なため、同等の効果を効率的に得られるnegativeとして保存し、修正SQL(response)には「生成されたSQL文*」を自動入力します。")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -2214,7 +2215,7 @@ def build_selectai_tab(pool):
                                         gr.Markdown("")
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("修正SQL(response)", elem_classes="input-label")
+                                gr.Markdown("修正SQL(response)*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 dev_feedback_response_text = gr.Textbox(
                                     show_label=False,
@@ -2535,7 +2536,7 @@ def build_selectai_tab(pool):
                                     show_cells = []
                                     try:
                                         cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
-                                        rows = cursor.fetchmany(size=1)
+                                        rows = cursor.fetchmany(size=200)
                                         if rows:
                                             for r in rows:
                                                 for v in r:
@@ -2573,7 +2574,7 @@ def build_selectai_tab(pool):
                                     # except Exception as e:
                                     #     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
                                     #     return
-                                    _ = _get_sql_id_for_text(showsql_stmt)
+                                    # _ = _get_sql_id_for_text(showsql_stmt)
                                     def _extract_sql(text: str) -> str:
                                         if not text:
                                             return ""
@@ -2887,25 +2888,33 @@ def build_selectai_tab(pool):
                                         yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 質問が未入力のため、フィードバックを送信できませんでした"), gr.Textbox(value="")
                                         return
                                     prompt_text = f"select ai showsql {q}"
-                                    gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
+                                    # gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
                                     showsql_stmt = _build_showsql_stmt(q)
                                     logger.info(f"_send_feedback: q={q}, showsql_stmt={showsql_stmt}")
-                                    try:
-                                        cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
-                                    except Exception as e:
-                                        logger.error(f"_send_feedback generate showsql error: {e}")
-                                    try:
-                                        cursor.execute(showsql_stmt)
-                                    except Exception as e:
-                                        logger.error(f"_send_feedback execute showsql error: {e}")
+                                    # try:
+                                    #     cursor.execute(gen_stmt, q=showsql_stmt, name=prof, a="showsql")
+                                    # except Exception as e:
+                                    #     logger.error(f"_send_feedback generate showsql error: {e}")
+                                    # try:
+                                    #     cursor.execute(showsql_stmt)
+                                    # except Exception as e:
+                                    #     logger.error(f"_send_feedback execute showsql error: {e}")
                                     t = str(fb_type or "").lower()
                                     resp = ""
                                     fc = ""
+                                    ft_val = str(fb_type or "").upper()
                                     if t == "negative":
                                         resp = str(response_text or "").strip()
                                         fc = str(content_text or "")
                                         if not resp:
                                             yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
+                                            return
+                                    elif t == "positive":
+                                        resp = str(response_text or "").strip()
+                                        fc = str(content_text or "")
+                                        ft_val = "NEGATIVE"
+                                        if not resp:
+                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 生成されたSQL文が未生成のため、ポジティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
                                             return
                                     # Build PL/SQL text regardless of execution result
                                     def _lit(x):
@@ -2916,7 +2925,7 @@ def build_selectai_tab(pool):
                                         "  DBMS_CLOUD_AI.FEEDBACK(\n"
                                         f"    profile_name => {_lit(prof)},\n"
                                         f"    sql_text => {_lit(showsql_stmt)},\n"
-                                        f"    feedback_type => {_lit(str(fb_type or '').upper())},\n"
+                                        f"    feedback_type => {_lit(ft_val)},\n"
                                         "    response => " + ("NULL" if not resp else _lit(resp)) + ",\n"
                                         "    feedback_content => " + ("NULL" if not fc else _lit(fc)) + ",\n"
                                         "    operation => 'ADD'\n"
@@ -2938,7 +2947,7 @@ def build_selectai_tab(pool):
                                         """,
                                         p=prof,
                                         st=showsql_stmt,
-                                        ft=str(fb_type or "").upper(),
+                                        ft=ft_val,
                                         resp=resp,
                                         fc=fc,
                                     )
@@ -2954,6 +2963,10 @@ def build_selectai_tab(pool):
                         fn=_dev_step_run_sql,
                         inputs=[dev_generated_sql_text],
                         outputs=[dev_chat_status_md, dev_chat_result_df, dev_chat_result_style],
+                    ).then(
+                        fn=lambda x: gr.Textbox(value=str(x or "")),
+                        inputs=[dev_generated_sql_text],
+                        outputs=[dev_feedback_response_text]
                     )
 
                     dev_ai_analyze_btn.click(
@@ -3345,7 +3358,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("生成されたSQL文*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                cm_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False)
+                                cm_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=False, show_copy_button=True, container=False)
 
                     with gr.Accordion(label="4. 実行", open=False):
                         with gr.Row():
@@ -3671,15 +3684,15 @@ def build_selectai_tab(pool):
                         outputs=[cm_ai_status_md, cm_ai_result_md],
                     )
 
-                    def _on_feedback_type_change(fb_type):
+                    def _on_feedback_type_change(fb_type, gen_sql_text):
                         t = str(fb_type or "").lower()
                         if t == "positive":
-                            return gr.Textbox(value="", interactive=False), gr.Textbox(value="", interactive=False)
+                            return gr.Textbox(value=str(gen_sql_text or ""), interactive=False), gr.Textbox(interactive=True)
                         return gr.Textbox(interactive=True), gr.Textbox(interactive=True)
 
                     dev_feedback_type_select.change(
                         fn=_on_feedback_type_change,
-                        inputs=[dev_feedback_type_select],
+                        inputs=[dev_feedback_type_select, dev_generated_sql_text],
                         outputs=[dev_feedback_response_text, dev_feedback_content_text],
                     )
 
