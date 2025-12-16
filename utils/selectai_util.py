@@ -231,7 +231,7 @@ def _save_profiles_to_json(pool):
                         logger.info(f"解決結果: テーブル{len(tables)}件 / ビュー{len(views)}件")
                         profiles_data.append({
                             "profile": str(name),
-                            "business_domain": str(desc),
+                            "category": str(desc),
                             "tables": sorted(set(tables)),
                             "views": sorted(set(views)),
                         })
@@ -241,7 +241,7 @@ def _save_profiles_to_json(pool):
             logger.info("Profileが見つかりません。プレースホルダーを出力")
             profiles_data = [{
                 "profile": "",
-                "business_domain": "",
+                "category": "",
                 "tables": [],
                 "views": [],
             }]
@@ -296,7 +296,7 @@ def _save_profiles_to_json_stream(pool):
                         yield f"✅ {name}: テーブル{len(tables)} / ビュー{len(views)}"
                         profiles_data.append({
                             "profile": str(name),
-                            "business_domain": str(desc),
+                            "category": str(desc),
                             "tables": sorted(set(tables)),
                             "views": sorted(set(views)),
                         })
@@ -306,7 +306,7 @@ def _save_profiles_to_json_stream(pool):
             yield "ℹ️ Profileが見つかりません。プレースホルダーを出力"
             profiles_data = [{
                 "profile": "",
-                "business_domain": "",
+                "category": "",
                 "tables": [],
                 "views": [],
             }]
@@ -320,7 +320,7 @@ def _save_profiles_to_json_stream(pool):
         yield f"❌ エラー: {e}"
 
 
-def _save_profile_to_json(pool, name: str, business_domain: str, original_name: str = ""):
+def _save_profile_to_json(pool, name: str, category: str, original_name: str = ""):
     try:
         json_path = _profiles_dir() / "selectai.json"
         if json_path.exists():
@@ -344,7 +344,7 @@ def _save_profile_to_json(pool, name: str, business_domain: str, original_name: 
                 views.append(obj_name)
         updated = {
             "profile": str(name),
-            "business_domain": str(business_domain or ""),
+            "category": str(category or ""),
             "tables": sorted(set(tables)),
             "views": sorted(set(views)),
         }
@@ -388,7 +388,7 @@ def _load_profiles_from_json():
             profiles_data = json.load(f)
         result = []
         for p in profiles_data:
-            bd = str((p or {}).get("business_domain", "") or "").strip()
+            bd = str((p or {}).get("category", "") or "").strip()
             pf = str((p or {}).get("profile", "") or "").strip()
             result.append((bd, pf))
         if not result:
@@ -410,7 +410,7 @@ def _get_profile_json_entry(display_or_name: str) -> dict:
             if str((p or {}).get("profile", "")).strip() == s:
                 return p
         for p in profiles:
-            if str((p or {}).get("business_domain", "")).strip() == s:
+            if str((p or {}).get("category", "")).strip() == s:
                 return p
         return {}
     except Exception:
@@ -477,9 +477,9 @@ def _profile_names():
     except Exception:
         return [("", "")]
 
-def _predict_business_domain_label(text):
+def _predict_category_label(text):
     try:
-        mname = "business_domain"
+        mname = "category"
         sp_root = Path("./models")
         model_path = sp_root / f"{mname}.joblib"
         meta_path = sp_root / f"{mname}.meta.json"
@@ -516,7 +516,7 @@ def _map_domain_to_profile(predicted_domain, choices):
             profiles = json.load(f)
         matched_profile = ""
         for item in profiles:
-            bd_item = str(item.get("business_domain", "")).strip().lower()
+            bd_item = str(item.get("category", "")).strip().lower()
             if bd_item == predicted_domain:
                 matched_profile = str(item.get("profile", "")).strip()
                 break
@@ -527,7 +527,7 @@ def _map_domain_to_profile(predicted_domain, choices):
                 bd_display = ""
                 for item in profiles:
                     if str(item.get("profile", "")).strip().lower() == val_lower:
-                        bd_display = str(item.get("business_domain", "")).strip()
+                        bd_display = str(item.get("category", "")).strip()
                         break
                 choices.append((bd_display, matched_profile))
             return gr.Dropdown(choices=choices, value=matched_profile)
@@ -556,9 +556,9 @@ def get_db_profiles(pool) -> pd.DataFrame:
                     except Exception:
                         plain_rows.append([str(r[0]), str(r[1] or ""), str(r[2] or "")])
                 if plain_rows:
-                    df = pd.DataFrame(plain_rows, columns=["Profile Name", "Business Domain", "Status"]).sort_values("Profile Name")
+                    df = pd.DataFrame(plain_rows, columns=["Profile Name", "Category", "Status"]).sort_values("Profile Name")
                 else:
-                    df = pd.DataFrame(columns=["Profile Name", "Business Domain", "Status"]).sort_values("Profile Name")
+                    df = pd.DataFrame(columns=["Profile Name", "Category", "Status"]).sort_values("Profile Name")
                 df = df[df["Profile Name"].astype(str).str.strip().str.upper() != "OCI_CRED$PROF"]
 
         table_names = set(_get_table_names(pool))
@@ -589,7 +589,7 @@ def get_db_profiles(pool) -> pd.DataFrame:
             if "Status" in df.columns:
                 df = df.drop(columns=["Status"])
         else:
-            df = pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])  
+            df = pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])  
         logger.info(f"DBプロファイル一覧の取得完了: {len(df)}件")
         return df
     except Exception as e:
@@ -626,8 +626,8 @@ def _resolve_profile_name(pool, display_name: str) -> str:
         df = get_db_profiles(pool)
         s = str(display_name or "").strip()
         if isinstance(df, pd.DataFrame) and not df.empty:
-            if "Business Domain" in df.columns:
-                m = df[df["Business Domain"].astype(str) == s]
+            if "Category" in df.columns:
+                m = df[df["Category"].astype(str) == s]
                 if len(m) > 0:
                     return str(m.iloc[0]["Profile Name"]) if "Profile Name" in m.columns else str(m.iloc[0][0])
             if "Profile Name" in df.columns:
@@ -643,7 +643,7 @@ def _resolve_profile_name_from_json(pool, display_or_name: str):
         p = _get_profile_json_entry(display_or_name)
         if p:
             pf = str((p or {}).get("profile", "") or "").strip()
-            bd = str((p or {}).get("business_domain", "") or "").strip()
+            bd = str((p or {}).get("category", "") or "").strip()
             tables, views = _get_profile_objects_from_json(pf or bd)
             if pf:
                 return pf, tables, views, bd
@@ -743,7 +743,7 @@ def create_db_profile(
     annotations: bool,
     tables: list,
     views: list,
-    business_domain: str,
+    category: str,
 ):
     attrs = {
         "provider": "oci",
@@ -812,7 +812,7 @@ def create_db_profile(
                 "BEGIN DBMS_CLOUD_AI.CREATE_PROFILE(profile_name => :name, attributes => :attrs, description => :desc); END;",
                 name=name,
                 attrs=attr_str,
-                desc=str(business_domain or ""),
+                desc=str(category or ""),
             )
             logger.info(f"Created profile: {name}")
 
@@ -820,8 +820,8 @@ def create_db_profile(
 def _predict_domain_and_set_profile(text):
     try:
         ch = _load_profiles_from_json() or [("", "")]
-        def _predict_business_domain(text_input: str):
-            mname = "business_domain"
+        def _predict_category(text_input: str):
+            mname = "category"
             sp_root = Path("./models")
             model_path = sp_root / f"{mname}.joblib"
             meta_path = sp_root / f"{mname}.meta.json"
@@ -855,7 +855,7 @@ def _predict_domain_and_set_profile(text):
                 profiles = json.load(f)
             matched_profile = ""
             for item in profiles:
-                bd_item = str(item.get("business_domain", "")).strip().lower()
+                bd_item = str(item.get("category", "")).strip().lower()
                 if bd_item == predicted_domain:
                     matched_profile = str(item.get("profile", "")).strip()
                     break
@@ -866,13 +866,13 @@ def _predict_domain_and_set_profile(text):
                     bd_display = ""
                     for item in profiles:
                         if str(item.get("profile", "")).strip().lower() == val_lower:
-                            bd_display = str(item.get("business_domain", "")).strip()
+                            bd_display = str(item.get("category", "")).strip()
                             break
                     choices.append((bd_display, matched_profile))
                 return gr.Dropdown(choices=choices, value=matched_profile)
             return gr.Dropdown(choices=choices, value=choices[0][1])
 
-        pdomain = _predict_business_domain(text)
+        pdomain = _predict_category(text)
         return _map_domain_to_profile(pdomain, ch)
     except Exception:
         ch = _load_profiles_from_json() or [("", "")]
@@ -890,8 +890,8 @@ def build_selectai_tab(pool):
                             label="プロファイル一覧（件数: 0）",
                             interactive=False,
                             wrap=True,
-                            value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"]),
-                            headers=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"],
+                            value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"]),
+                            headers=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"],
                             visible=False,
                             elem_id="profile_list_df",
                         )
@@ -910,7 +910,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("カテゴリ*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        business_domain_text = gr.Textbox(show_label=False, value="", interactive=True, container=False)
+                                        category_text = gr.Textbox(show_label=False, value="", interactive=True, container=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("Profile 作成SQL", elem_classes="input-label")
@@ -946,7 +946,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("カテゴリ*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        business_domain_input = gr.Textbox(show_label=False, placeholder="例: 顧客管理、売上分析 等", container=False)
+                                        category_input = gr.Textbox(show_label=False, placeholder="例: 顧客管理、売上分析 等", container=False)
 
                         with gr.Row():
                             refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
@@ -1104,14 +1104,14 @@ def build_selectai_tab(pool):
 
                 def refresh_profiles():
                     try:
-                        yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
-                        yield gr.Markdown(value="⏳ DBのプロファイルメタデータを取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
+                        yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
+                        yield gr.Markdown(value="⏳ DBのプロファイルメタデータを取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
                         df = get_db_profiles(pool)
-                        yield gr.Markdown(value=f"✅ DBプロファイル取得完了（件数: {0 if df is None else len(df)}）", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
+                        yield gr.Markdown(value=f"✅ DBプロファイル取得完了（件数: {0 if df is None else len(df)}）", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
                         for msg in _save_profiles_to_json_stream(pool):
-                            yield gr.Markdown(value=msg, visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
+                            yield gr.Markdown(value=msg, visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
                         if df is None or df.empty:
-                            empty_df = pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])
+                            empty_df = pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])
                             count = 0
                             label_text = f"プロファイル一覧（件数: {count}）"
                             yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True, label=label_text), gr.HTML(visible=False)
@@ -1142,7 +1142,7 @@ def build_selectai_tab(pool):
                         yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(value=df, visible=True, label=label_text), gr.HTML(visible=bool(style_value), value=style_value)
                     except Exception as e:
                         logger.error(f"refresh_profiles error: {e}")
-                        yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Business Domain", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
+                        yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
                 
                 def on_profile_select(evt: gr.SelectData, current_df, compartment_id):
                     try:
@@ -1202,11 +1202,11 @@ def build_selectai_tab(pool):
                         logger.error(f"delete_selected_profile error: {e}")
                         return gr.Markdown(visible=True, value=f"❌ 削除に失敗しました: {str(e)}"), name, "", ""
 
-                def update_selected_profile(original_name, edited_name, business_domain):
+                def update_selected_profile(original_name, edited_name, category):
                     try:
                         orig = str(original_name or "").strip()
                         new = str(edited_name or "").strip()
-                        bd = str(business_domain or "").strip()
+                        bd = str(category or "").strip()
                         if not orig:
                             attrs = {}
                             sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
@@ -1238,11 +1238,11 @@ def build_selectai_tab(pool):
                         sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
                         return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
 
-                def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, business_domain):
+                def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, category):
                     if not tables and not views:
                         yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください")
                         return
-                    bd = str(business_domain or "").strip()
+                    bd = str(category or "").strip()
                     if not bd:
                         yield gr.Markdown(visible=True, value="⚠️ カテゴリを入力してください")
                         return
@@ -1265,7 +1265,7 @@ def build_selectai_tab(pool):
                             ann,
                             tables or [],
                             views or [],
-                            str(business_domain or ""),
+                            str(category or ""),
                         )
                         # JSONファイルを更新
                         _save_profiles_to_json(pool)
@@ -1295,7 +1295,7 @@ def build_selectai_tab(pool):
                 profile_list_df.select(
                     fn=on_profile_select,
                     inputs=[profile_list_df, compartment_id_input],
-                    outputs=[selected_profile_name, business_domain_text, profile_json_text, selected_profile_original_name],
+                    outputs=[selected_profile_name, category_text, profile_json_text, selected_profile_original_name],
                 )
 
                 def _delete_profile_handler(name):
@@ -1310,22 +1310,22 @@ def build_selectai_tab(pool):
                         logger.error(f"_delete_profile_handler error: {e}")
                         yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), name, gr.Textbox(value=""), gr.Textbox(value="")
 
-                def _update_profile_handler(original_name, edited_name, business_domain):
+                def _update_profile_handler(original_name, edited_name, category):
                     try:
                         logger.info(f"_update_profile_handler: invoked original='{original_name}', edited='{edited_name}'")
-                        yield gr.Markdown(visible=True, value="⏳ 更新中..."), edited_name, gr.Textbox(value=business_domain), gr.Textbox(value=""), original_name
+                        yield gr.Markdown(visible=True, value="⏳ 更新中..."), edited_name, gr.Textbox(value=category), gr.Textbox(value=""), original_name
                         logger.info("_update_profile_handler: calling update_selected_profile")
-                        md, sel_name, bd_text, sql_text, orig_out = update_selected_profile(original_name, edited_name, business_domain)
+                        md, sel_name, bd_text, sql_text, orig_out = update_selected_profile(original_name, edited_name, category)
                         logger.info(f"_update_profile_handler: update done sel_name='{sel_name}', orig_out='{orig_out}'")
                         yield md, sel_name, bd_text, sql_text, orig_out
                     except Exception as e:
                         logger.error(f"_update_profile_handler error: {e}")
-                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), edited_name, gr.Textbox(value=business_domain), gr.Textbox(value=""), original_name
+                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), edited_name, gr.Textbox(value=category), gr.Textbox(value=""), original_name
 
                 profile_delete_btn.click(
                     fn=_delete_profile_handler,
                     inputs=[selected_profile_name],
-                    outputs=[profile_action_status, selected_profile_name, business_domain_text, profile_json_text],
+                    outputs=[profile_action_status, selected_profile_name, category_text, profile_json_text],
                 ).then(
                     fn=refresh_profiles,
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
@@ -1333,8 +1333,8 @@ def build_selectai_tab(pool):
 
                 profile_update_btn.click(
                     fn=_update_profile_handler,
-                    inputs=[selected_profile_original_name, selected_profile_name, business_domain_text],
-                    outputs=[profile_action_status, selected_profile_name, business_domain_text, profile_json_text, selected_profile_original_name],
+                    inputs=[selected_profile_original_name, selected_profile_name, category_text],
+                    outputs=[profile_action_status, selected_profile_name, category_text, profile_json_text, selected_profile_original_name],
                 ).then(
                     fn=refresh_profiles,
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
@@ -1370,7 +1370,7 @@ def build_selectai_tab(pool):
                         enforce_object_list_input,
                         comments_input,
                         annotations_input,
-                        business_domain_input,
+                        category_input,
                     ],
                     outputs=[create_info],
                 ).then(
@@ -1449,7 +1449,7 @@ def build_selectai_tab(pool):
                     """参照コード(No.1-Classifier)に基づいた分類器訓練関数"""
                     try:
                         # 固定のモデル名を使用
-                        model_name = "business_domain"
+                        model_name = "category"
                         iterations = 1000  # デフォルト値
                         
                         logger.info("="*50)
@@ -1612,7 +1612,7 @@ def build_selectai_tab(pool):
                     """参照コード(No.1-Classifier)に基づいた予測関数"""
                     try:
                         # 固定のモデル名を使用
-                        trained_model_name = "business_domain"
+                        trained_model_name = "category"
                                         
                         logger.info("="*50)
                         logger.info("Starting model prediction...")
@@ -1714,7 +1714,7 @@ def build_selectai_tab(pool):
                     asyncio.set_event_loop(loop)
                     try:
                         # 固定のモデル名を渡す
-                        return loop.run_until_complete(_mt_test_async(text, "business_domain"))
+                        return loop.run_until_complete(_mt_test_async(text, "category"))
                     finally:
                         loop.close()
 
@@ -1980,7 +1980,7 @@ def build_selectai_tab(pool):
                                 pairs = _load_profiles_from_json()
                                 [str(bd) for bd, _ in pairs]
                                 # Gradio Dropdown supports label/value pairs via choices=[(label,value),...]
-                                # We return pairs so that display is business_domain, value is profile
+                                # We return pairs so that display is category, value is profile
                                 return [(str(bd), str(pf)) for bd, pf in pairs]
                             except Exception as e:
                                 logger.error(f"_dev_profile_names error: {e}")
@@ -2812,7 +2812,7 @@ def build_selectai_tab(pool):
                     def _predict_domain_and_set_profile(text):
                         try:
                             ch = _dev_profile_names() or [("", "")]
-                            pdomain = _predict_business_domain_label(text)
+                            pdomain = _predict_category_label(text)
                             return _map_domain_to_profile(pdomain, ch)
                         except Exception:
                             ch = _dev_profile_names() or [("", "")]
@@ -5072,7 +5072,7 @@ def build_selectai_tab(pool):
             def _user_predict_domain_and_set_profile(text):
                 try:
                     ch = _load_profiles_from_json() or [("", "")]
-                    pdomain = _predict_business_domain_label(text)
+                    pdomain = _predict_category_label(text)
                     return _map_domain_to_profile(pdomain, ch)
                 except Exception:
                     ch = _profile_names() or [("", "")]
