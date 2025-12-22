@@ -3048,9 +3048,9 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("選択されたSQL_ID", elem_classes="input-label")
+                                        gr.Markdown("選択されたSQL_TEXT", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        selected_sql_id = gr.Textbox(show_label=False, interactive=False, container=False)
+                                        selected_sql_text = gr.Textbox(show_label=False, interactive=False, container=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -3103,6 +3103,7 @@ def build_selectai_tab(pool):
                                     q_no_ctx = (
                                         f'SELECT CONTENT, '
                                         f"JSON_VALUE(ATTRIBUTES, '$.sql_id' RETURNING VARCHAR2(128)) AS SQL_ID, "
+                                        f"JSON_VALUE(ATTRIBUTES, '$.sql_text' RETURNING CLOB) AS SQL_TEXT, "
                                         f'ATTRIBUTES FROM "{tab}" FETCH FIRST 50 ROWS ONLY'
                                     )
                                     rows = []
@@ -3155,8 +3156,8 @@ def build_selectai_tab(pool):
                                 df = pd.DataFrame(df["data"], columns=df.get("headers", []))
                             if isinstance(df, pd.DataFrame) and not df.empty and row_index >= 0:
                                 row = df.iloc[row_index]
-                                sql_id = str(row.get("SQL_ID", ""))
-                                return sql_id
+                                sql_text = str(row.get("SQL_TEXT", ""))
+                                return sql_text
                         except Exception as e:
                             logger.error(f"on_index_row_select error: {e}")
                         return ""
@@ -3164,14 +3165,14 @@ def build_selectai_tab(pool):
                     global_feedback_index_df.select(
                         fn=on_index_row_select,
                         inputs=[global_feedback_index_df],
-                        outputs=[selected_sql_id],
+                        outputs=[selected_sql_text],
                     )
 
-                    def _delete_by_sql_id(profile_name: str, sql_id: str):
+                    def _delete_by_sql_text(profile_name: str, sql_text: str):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ 削除中...")
-                            if not sql_id:
-                                yield gr.Markdown(visible=True, value="❌ 失敗: SQL_IDが選択されていません")
+                            yield gr.Markdown(visible=True, value="⏳ 削除中..."), gr.Textbox(value=str(sql_text or ""))
+                            if not sql_text:
+                                yield gr.Markdown(visible=True, value="❌ 失敗: SQL_TEXTが選択されていません"), gr.Textbox(value="")
                                 return
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
@@ -3181,23 +3182,23 @@ def build_selectai_tab(pool):
                                         BEGIN
                                         DBMS_CLOUD_AI.FEEDBACK(
                                             profile_name => :p,
-                                            sql_id => :sid,
+                                            sql_text => :st,
                                             operation => 'DELETE'
                                         );
                                         END;
                                         """,
                                         p=str(prof),
-                                        sid=str(sql_id),
+                                        st=str(sql_text),
                                     )
-                            yield gr.Markdown(visible=True, value="✅ 成功")
+                            yield gr.Markdown(visible=True, value="✅ 成功"), gr.Textbox(value="")
                         except Exception as e:
-                            logger.error(f"_delete_by_sql_id error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {str(e)}")
+                            logger.error(f"_delete_by_sql_text error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {str(e)}"), gr.Textbox(value="")
 
                     selected_feedback_delete_btn.click(
-                        fn=_delete_by_sql_id,
-                        inputs=[global_profile_select, selected_sql_id],
-                        outputs=[selected_feedback_delete_status_md],
+                        fn=_delete_by_sql_text,
+                        inputs=[global_profile_select, selected_sql_text],
+                        outputs=[selected_feedback_delete_status_md, selected_sql_text],
                     ).then(
                         fn=_view_feedback_index_global,
                         inputs=[global_profile_select],

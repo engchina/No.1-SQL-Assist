@@ -318,7 +318,7 @@ def build_sql_learning_tab(pool):
                 reset_result_md = gr.Markdown(visible=False)
 
         with gr.Accordion(label="2. SELECTの学習（ステップ）", open=True):
-            pd.DataFrame([{k: l[k] for k in ("id", "title", "desc")} for l in lessons])
+            pd.DataFrame([{k: lesson[k] for k in ("id", "title", "desc")} for lesson in lessons])
             # デフォルトレッスン（L01）の情報を取得
             default_lesson = lessons[0]
             default_lesson_text = f"【{default_lesson['id']}】{default_lesson['title']}\n\n{default_lesson['desc']}"
@@ -329,7 +329,7 @@ def build_sql_learning_tab(pool):
                 with gr.Column(scale=5):
                     lesson_select = gr.Dropdown(
                         show_label=False,
-                        choices=[f"{l['id']} - {l['title']}" for l in lessons],
+                        choices=[f"{lesson['id']} - {lesson['title']}" for lesson in lessons],
                         value=f"{lessons[0]['id']} - {lessons[0]['title']}",
                         container=False,
                     )
@@ -419,7 +419,7 @@ def build_sql_learning_tab(pool):
         def _on_lesson_change(choice: str):
             try:
                 sel_id = (choice or "").split(" - ")[0]
-                lmap = {l["id"]: l for l in lessons}
+                lmap = {lesson["id"]: lesson for lesson in lessons}
                 lesson = lmap.get(sel_id)
                 if not lesson:
                     return gr.Markdown(visible=True, value="⚠️ レッスンが見つかりません"), gr.Textbox(value=""),
