@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 
 
 def _schema_sql() -> Tuple[str, str]:
-    """学習用の表作成SQLとビュー作成SQLを返す.
+    """学習用の表作成SQLとビュー作成用のSQLを返す.
 
     Returns:
         tuple[str, str]: (tables_sql, views_sql)
@@ -278,37 +278,37 @@ def build_sql_learning_tab(pool):
 
             with gr.Row():
                 with gr.Column():
-                    show_tables_btn = gr.Button("表のSQLを表示", variant="secondary")
+                    show_tables_btn = gr.Button("表作成用のSQLを表示", variant="secondary")
                 with gr.Column():
                     exec_tables_btn = gr.Button("表を作成", variant="primary")
             # 表示状態を追跡するState変数
             tables_sql_visible_state = gr.State(value=False)
             with gr.Row():
-                tables_sql_text = gr.Textbox(label="表作成SQL", value=tables_sql, lines=10, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_tables_sql")
+                tables_sql_text = gr.Textbox(label="SQL", value=tables_sql, lines=10, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_tables_sql")
             with gr.Row():
                     tables_result_md = gr.Markdown(visible=False)
 
             with gr.Row():
                 with gr.Column():
-                    show_views_btn = gr.Button("ビューのSQLを表示", variant="secondary")
+                    show_views_btn = gr.Button("ビュー作成用のSQLを表示", variant="secondary")
                 with gr.Column():
                     exec_views_btn = gr.Button("ビューを作成", variant="primary")
             # 表示状態を追跡するState変数
             views_sql_visible_state = gr.State(value=False)
             with gr.Row():
-                views_sql_text = gr.Textbox(label="ビュー作成SQL", value=views_sql, lines=8, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_views_sql")
+                views_sql_text = gr.Textbox(label="SQL", value=views_sql, lines=8, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_views_sql")
             with gr.Row():
                 views_result_md = gr.Markdown(visible=False)
 
             with gr.Row():
                 with gr.Column():
-                    show_inserts_btn = gr.Button("INSERTのSQLを表示", variant="secondary")
+                    show_inserts_btn = gr.Button("データ挿入用のSQLを表示", variant="secondary")
                 with gr.Column():
-                    exec_inserts_btn = gr.Button("データを投入", variant="primary")
+                    exec_inserts_btn = gr.Button("データを挿入", variant="primary")
             # 表示状態を追跡するState変数
             inserts_sql_visible_state = gr.State(value=False)
             with gr.Row():
-                inserts_sql_text = gr.Textbox(label="INSERT SQL", value="", lines=8, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_insert_sql")
+                inserts_sql_text = gr.Textbox(label="SQL", value="", lines=8, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_insert_sql")
             with gr.Row():
                 inserts_result_md = gr.Markdown(visible=False)
 
@@ -354,9 +354,9 @@ def build_sql_learning_tab(pool):
                 lesson_result_style = gr.HTML(visible=False)
 
         def _show_tables(current_visible):
-            """表のSQL表示を切り替える."""
+            """表作成用のSQL表示を切り替える."""
             new_visible = not current_visible
-            new_label = "表のSQLを非表示" if new_visible else "表のSQLを表示"
+            new_label = "表作成用のSQLを非表示" if new_visible else "表作成用のSQLを表示"
             return gr.Button(value=new_label), gr.Textbox(visible=new_visible), new_visible
 
         def _exec_tables():
@@ -367,9 +367,9 @@ def build_sql_learning_tab(pool):
                 return gr.Markdown(visible=True, value=f"❌ 表作成に失敗しました: {e}")
 
         def _show_views(current_visible):
-            """ビューのSQL表示を切り替える."""
+            """ビュー作成用のSQL表示を切り替える."""
             new_visible = not current_visible
-            new_label = "ビューのSQLを非表示" if new_visible else "ビューのSQLを表示"
+            new_label = "ビュー作成用SQLを非表示" if new_visible else "ビュー作成用のSQLを表示"
             return gr.Button(value=new_label), gr.Textbox(visible=new_visible), new_visible
 
         def _exec_views():
@@ -380,10 +380,10 @@ def build_sql_learning_tab(pool):
                 return gr.Markdown(visible=True, value=f"❌ ビュー作成に失敗しました: {e}")
 
         def _show_inserts(current_visible):
-            """INSERTのSQL表示を切り替える."""
+            """データ挿入用のSQL表示を切り替える."""
             sql = (inserts["DEPARTMENT"] + "\n" + inserts["EMPLOYEE"] + "\n" + inserts["PROJECT"]).strip()
             new_visible = not current_visible
-            new_label = "INSERTのSQLを非表示" if new_visible else "INSERTのSQLを表示"
+            new_label = "データ挿入用のSQLを非表示" if new_visible else "データ挿入用のSQLを表示"
             return gr.Button(value=new_label), gr.Textbox(visible=new_visible, value=sql if new_visible else ""), new_visible
 
         def _exec_inserts():
@@ -396,23 +396,38 @@ def build_sql_learning_tab(pool):
 
         def _reset_all():
             try:
-                drop_sql = (
-                    "DROP VIEW V_DEPT_PROJECT;\n"
-                    "DROP VIEW V_EMP_DEPT;\n"
-                    "DROP TABLE PROJECT PURGE;\n"
-                    "DROP TABLE EMPLOYEE PURGE;\n"
-                    "DROP TABLE DEPARTMENT PURGE;\n"
-                )
-                # ドロップは失敗しても続行できるように個別実行
-                try:
-                    execute_sql_general(pool, drop_sql, limit=0)
-                except Exception as e:
-                    logger.warning(f"Drop errors ignored: {e}")
+                # 個別に実行するSQLリスト（DROP TABLEは強制実行）
+                drop_sqls = [
+                    "DROP VIEW V_DEPT_PROJECT",
+                    "DROP VIEW V_EMP_DEPT",
+                    "TRUNCATE TABLE PROJECT",
+                    "TRUNCATE TABLE EMPLOYEE",
+                    "TRUNCATE TABLE DEPARTMENT",
+                    "DROP TABLE PROJECT CASCADE CONSTRAINTS PURGE",
+                    "DROP TABLE EMPLOYEE CASCADE CONSTRAINTS PURGE",
+                    "DROP TABLE DEPARTMENT CASCADE CONSTRAINTS PURGE"
+                ]
+
+                error_count = 0
+                with pool.acquire() as conn:
+                    with conn.cursor() as cursor:
+                        for sql in drop_sqls:
+                            try:
+                                cursor.execute(sql)
+                            except Exception as e:
+                                # 失敗しても続行。エラーはログに出力し、カウントする
+                                logger.warning(f"Drop/Truncate ignored error: {e} [SQL: {sql}]")
+                                error_count += 1
+                
+                msg = "✅ 初期化（削除処理）が完了しました"
+                if error_count > 0:
+                    msg += f" (失敗: {error_count}件)"
+                
                 # 再作成
                 # info1, df1, _ = execute_sql_general(pool, tables_sql, limit=0)
                 # info2, df2, _ = execute_sql_general(pool, views_sql, limit=0)
                 # info3, df3, _ = execute_sql_general(pool, (inserts["DEPARTMENT"] + "\n" + inserts["EMPLOYEE"] + "\n" + inserts["PROJECT"]).strip(), limit=0)
-                return gr.Markdown(visible=True, value="✅ 初期化が完了しました")
+                return gr.Markdown(visible=True, value=msg)
             except Exception as e:
                 return gr.Markdown(visible=True, value=f"❌ 初期化に失敗しました: {e}")
 

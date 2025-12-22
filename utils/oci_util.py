@@ -523,7 +523,7 @@ def build_oci_embedding_test_tab(pool):
     
     # UIコンポーネントの構築
     with gr.Accordion(label="", open=True):
-        with gr.Accordion(label="OCI Credentialを作成で生成されたSQL", open=False):
+        with gr.Accordion(label="OCI Credentialを作成で利用されたSQL", open=False):
             with gr.Column():
                 tab_auto_create_sql_text = gr.Textbox(
                     label="SQL",
@@ -761,7 +761,7 @@ END;""", p=json.dumps(cred_params))
 
 def create_oci_db_credential_from_config(pool=None):
     try:
-        yield gr.Button(value="作成中...", interactive=False), gr.Markdown(visible=True, value="⏳ OCI_CRED作成中..."), gr.Textbox(value="")
+        yield gr.Button(value="作成中...", interactive=False), gr.Markdown(visible=True, value="⏳ OCI Credential作成中..."), gr.Textbox(value="")
         oci_config_path = find_dotenv("/root/.oci/config")
         user_ocid = get_key(oci_config_path, "user")
         tenancy_ocid = get_key(oci_config_path, "tenancy")
@@ -771,10 +771,10 @@ def create_oci_db_credential_from_config(pool=None):
         compartment_ocid = os.environ.get("OCI_COMPARTMENT_OCID", "")
         logger.info(f"compartment_ocid: {compartment_ocid}")
         if not all([user_ocid, tenancy_ocid, fingerprint, key_file_path, region]):
-            yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="❌ OCI設定ファイルが不完全です"), gr.Textbox(value="")
+            yield gr.Button(value="OCI Credentialを作成", interactive=True), gr.Markdown(visible=True, value="❌ OCI設定ファイルが不完全です"), gr.Textbox(value="")
             return
         if not compartment_ocid:
-            yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="❌ Compartment OCIDが見つかりません"), gr.Textbox(value="")
+            yield gr.Button(value="OCI Credentialを作成", interactive=True), gr.Markdown(visible=True, value="❌ Compartment OCIDが見つかりません"), gr.Textbox(value="")
             return
         def _proc_key(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -782,7 +782,7 @@ def create_oci_db_credential_from_config(pool=None):
             return "".join(line.strip() for line in lines if not line.startswith("--"))
         private_key = _proc_key(key_file_path)
         if pool is None:
-            yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="❌ データベース接続プール未初期化"), gr.Textbox(value="")
+            yield gr.Button(value="OCI Credentialを作成", interactive=True), gr.Markdown(visible=True, value="❌ データベース接続プール未初期化"), gr.Textbox(value="")
             return
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
@@ -861,10 +861,10 @@ BEGIN
         params => json('{json.dumps(oci_cred)}')
     );
 END;"""
-        yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value="✅ OCI_CREDを作成しました"), gr.Textbox(value=preview.strip())
+        yield gr.Button(value="OCI Credentialを作成", interactive=True), gr.Markdown(visible=True, value="✅ OCI Credentialを作成しました"), gr.Textbox(value=preview.strip())
     except Exception as e:
         logger.error(f"Error creating OCI_CRED from config: {e}")
-        yield gr.Button(value="OCI_CREDを作成", interactive=True), gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+        yield gr.Button(value="OCI Credentialを作成", interactive=True), gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
     
 def _oci_config_with_region(region: str) -> dict:
     cfg_path = find_dotenv("/root/.oci/config")

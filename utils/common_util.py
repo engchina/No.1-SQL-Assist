@@ -22,13 +22,13 @@ def get_dict_value(dictionary, key, default_value=None):
 
 
 def remove_comments(sql_str: str) -> str:
-    """SQL文からコメントを除去する.
+    """SQLからコメントを除去する.
 
     Args:
-        sql_str (str): コメントを除去するSQL文
+        sql_str (str): コメントを除去するSQL
 
     Returns:
-        str: コメントが除去されたSQL文
+        str: コメントが除去されたSQL
     """
     if not sql_str:
         return ""

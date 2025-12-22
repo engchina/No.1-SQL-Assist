@@ -224,7 +224,7 @@ def execute_create_table(pool, create_sql):
     """
     if not create_sql or not create_sql.strip():
         logger.error("CREATE TABLE文が未入力です")
-        return "❌ エラー: SQL文が入力されていません"
+        return "❌ エラー: SQLが入力されていません"
     
     try:
         with pool.acquire() as conn:
@@ -233,8 +233,8 @@ def execute_create_table(pool, create_sql):
                 sql_statements = [stmt.strip() for stmt in create_sql.split(';') if stmt.strip()]
                 
                 if not sql_statements:
-                    logger.error("CREATE TABLEのSQL文が空です")
-                    return "❌ エラー: SQL文が空です"
+                    logger.error("CREATE TABLEのSQLが空です")
+                    return "❌ エラー: SQLが空です"
 
                 disallowed = []
                 for idx, sql_stmt in enumerate(sql_statements, 1):
@@ -545,7 +545,7 @@ def execute_create_view(pool, create_sql):
     """
     if not create_sql or not create_sql.strip():
         logger.error("CREATE VIEW文が未入力です")
-        return "❌ エラー: SQL文が入力されていません"
+        return "❌ エラー: SQLが入力されていません"
     
     try:
         with pool.acquire() as conn:
@@ -554,8 +554,8 @@ def execute_create_view(pool, create_sql):
                 sql_statements = [stmt.strip() for stmt in create_sql.split(';') if stmt.strip()]
                 
                 if not sql_statements:
-                    logger.error("CREATE VIEWのSQL文が空です")
-                    return "❌ エラー: SQL文が空です"
+                    logger.error("CREATE VIEWのSQLが空です")
+                    return "❌ エラー: SQLが空です"
 
                 disallowed = []
                 for idx, sql_stmt in enumerate(sql_statements, 1):
@@ -834,7 +834,7 @@ def execute_data_sql(pool, sql_statements):
     """
     if not sql_statements or not sql_statements.strip():
         logger.error("データSQLが未入力です")
-        return "❌ エラー: SQL文が入力されていません"
+        return "❌ エラー: SQLが入力されていません"
     
     try:
         with pool.acquire() as conn:
@@ -844,7 +844,7 @@ def execute_data_sql(pool, sql_statements):
                 
                 if not statements:
                     logger.error("データSQLの文が空です")
-                    return "❌ エラー: SQL文が空です"
+                    return "❌ エラー: SQLが空です"
                 
                 disallowed = []
                 for idx, sql_stmt in enumerate(statements, 1):
@@ -916,15 +916,15 @@ def execute_comment_sql(pool, sql_statements):
     """
     if not sql_statements or not sql_statements.strip():
         logger.error("COMMENT文が未入力です")
-        return "❌ エラー: SQL文が入力されていません"
+        return "❌ エラー: SQLが入力されていません"
     
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
                 statements = [stmt.strip() for stmt in sql_statements.split(';') if stmt.strip()]
                 if not statements:
-                    logger.error("COMMENTのSQL文が空です")
-                    return "❌ エラー: SQL文が空です"
+                    logger.error("COMMENTのSQLが空です")
+                    return "❌ エラー: SQLが空です"
                 disallowed = []
                 for idx, sql_stmt in enumerate(statements, 1):
                     stmt_upper = sql_stmt.strip().upper()
@@ -967,14 +967,14 @@ def execute_comment_sql(pool, sql_statements):
 def execute_annotation_sql(pool, sql_statements):
     if not sql_statements or not str(sql_statements).strip():
         logger.error("アノテーション文が未入力です")
-        return "❌ エラー: SQL文が入力されていません"
+        return "❌ エラー: SQLが入力されていません"
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
                 statements = [stmt.strip() for stmt in str(sql_statements).split(';') if stmt.strip()]
                 if not statements:
-                    logger.error("アノテーションのSQL文が空です")
-                    return "❌ エラー: SQL文が空です"
+                    logger.error("アノテーションのSQLが空です")
+                    return "❌ エラー: SQLが空です"
                 disallowed = []
                 for idx, sql_stmt in enumerate(statements, 1):
                     up = sql_stmt.strip().upper()
@@ -1112,7 +1112,7 @@ def build_management_tab(pool):
 
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("CREATE TABLE SQL文*", elem_classes="input-label")
+                        gr.Markdown("CREATE TABLE SQL*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_table_sql = gr.Textbox(
                             show_label=False,
@@ -1352,7 +1352,7 @@ def build_management_tab(pool):
                     yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
                     return
                 if not create_sql_text or not str(create_sql_text).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ CREATE TABLE SQL文を入力してください"), gr.Markdown(visible=False)
+                    yield gr.Markdown(visible=True, value="⚠️ CREATE TABLE SQLを入力してください"), gr.Markdown(visible=False)
                     return
                 if not exec_result_text or not str(exec_result_text).strip():
                     yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にテーブル作成を実行してください"), gr.Markdown(visible=False)
@@ -1490,7 +1490,7 @@ def build_management_tab(pool):
 
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("CREATE VIEW SQL文*", elem_classes="input-label")
+                        gr.Markdown("CREATE VIEW SQL*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_view_sql = gr.Textbox(
                             show_label=False,
@@ -1829,7 +1829,7 @@ def build_management_tab(pool):
                     yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
                     return
                 if not create_sql_text or not str(create_sql_text).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ CREATE VIEW SQL文を入力してください"), gr.Markdown(visible=False)
+                    yield gr.Markdown(visible=True, value="⚠️ CREATE VIEW SQLを入力してください"), gr.Markdown(visible=False)
                     return
                 if not exec_result_text or not str(exec_result_text).strip():
                     yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にビュー作成を実行してください"), gr.Markdown(visible=False)
@@ -2007,7 +2007,7 @@ def build_management_tab(pool):
                         gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能")
                 with gr.Row():
                     with gr.Column(scale=1):
-                        gr.Markdown("SQL文*", elem_classes="input-label")
+                        gr.Markdown("SQL*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         data_sql_input = gr.Textbox(
                             show_label=False,
@@ -2258,10 +2258,10 @@ def build_management_tab(pool):
                     yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
                     return
                 if not create_sql_text or not str(create_sql_text).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+                    yield gr.Markdown(visible=True, value="⚠️ SQLを入力してください"), gr.Markdown(visible=False)
                     return
                 if not exec_result_text or not str(exec_result_text).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQL文を実行してください"), gr.Markdown(visible=False)
+                    yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQLを実行してください"), gr.Markdown(visible=False)
                     return
                 
                 loop = asyncio.new_event_loop()

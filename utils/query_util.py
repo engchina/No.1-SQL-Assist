@@ -459,7 +459,7 @@ def build_query_tab(pool):
         gr.Markdown("ℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。\n\nℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。")
         with gr.Row():
             with gr.Column(scale=1):
-                gr.Markdown("SQL文*", elem_classes="input-label")
+                gr.Markdown("SQL*", elem_classes="input-label")
             with gr.Column(scale=5):
                 sql_input = gr.Textbox(
                     show_label=False,
@@ -609,14 +609,14 @@ def build_query_tab(pool):
             yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
             return
         if not sql_text or not str(sql_text).strip():
-            yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+            yield gr.Markdown(visible=True, value="⚠️ SQLを入力してください"), gr.Markdown(visible=False)
             return
         
         # 実行結果メッセージもデータフレームも無い場合はエラーとする
         has_info = result_info_text and str(result_info_text).strip()
         has_df = result_df_val is not None and isinstance(result_df_val, pd.DataFrame) and not result_df_val.empty
         if not has_info and not has_df:
-            yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQL文を実行してください"), gr.Markdown(visible=False)
+            yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先にSQLを実行してください"), gr.Markdown(visible=False)
             return
         
         logger.info(f"AI分析を開始します: model={model_name}, sql_length={len(str(sql_text or ''))}, result_info_length={len(str(result_info_text or ''))}")

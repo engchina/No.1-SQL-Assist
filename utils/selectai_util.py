@@ -961,7 +961,7 @@ def build_selectai_tab(pool):
                                 gr.Markdown("###### ビュー選択*")
                                 views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
 
-                        with gr.Row():
+                        with gr.Row(visible=False):
                             with gr.Column(scale=1):
                                 gr.Markdown("OCI Compartment OCID*", elem_classes="input-label")
                             with gr.Column(scale=9):
@@ -2116,7 +2116,7 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="2. 生成SQL・分析", open=True):
                         dev_generated_sql_text = gr.Textbox(
-                            label="生成されたSQL文*",
+                            label="生成されたSQL*",
                             lines=8,
                             max_lines=15,
                             interactive=False,
@@ -2195,7 +2195,7 @@ def build_selectai_tab(pool):
                         dev_chat_result_style = gr.HTML(visible=False)
 
                     with gr.Accordion(label="4. クエリのフィードバック", open=False):
-                        gr.Markdown("ℹ️ positiveで登録するとsql_id取得のために再実行が必要なため、同等の効果を効率的に得られるnegativeとして保存し、修正SQL(response)には「生成されたSQL文*」を自動入力します。")
+                        gr.Markdown("ℹ️ positiveで登録するとsql_id取得のために再実行が必要なため、同等の効果を効率的に得られるnegativeとして保存し、修正SQL(response)には「生成されたSQL*」を自動入力します。")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -2696,7 +2696,7 @@ def build_selectai_tab(pool):
                                 return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             s = str(sql_text or "").strip()
                             if not s:
-                                return gr.Markdown(visible=True, value="⚠️ SQL文が空です"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                                return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             
                             if str(model_name).startswith("gpt-"):
                                 from openai import AsyncOpenAI
@@ -2793,7 +2793,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             return
                         if not sql_text or not str(sql_text).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ SQL文が空です。先にSQL文を生成してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを生成してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             return
                         yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="..."), gr.Textbox(value="..."), gr.Textbox(value=""), gr.Textbox(value="")
                         
@@ -2914,7 +2914,7 @@ def build_selectai_tab(pool):
                                         fc = str(content_text or "")
                                         ft_val = "NEGATIVE"
                                         if not resp:
-                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 生成されたSQL文が未生成のため、ポジティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
+                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 生成されたSQLが未生成のため、ポジティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
                                             return
                                     # Build PL/SQL text regardless of execution result
                                     def _lit(x):
@@ -3357,7 +3357,7 @@ def build_selectai_tab(pool):
                             cm_generate_status_md = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("生成されたSQL文*", elem_classes="input-label")
+                                gr.Markdown("生成されたSQL*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 cm_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=False, show_copy_button=True, container=False)
 
@@ -3564,7 +3564,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
                             return
                         if not sql_text or not str(sql_text).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+                            yield gr.Markdown(visible=True, value="⚠️ SQLを入力してください"), gr.Markdown(visible=False)
                             return
                         if not exec_result_text or not str(exec_result_text).strip():
                             yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先に一括実行を実行してください"), gr.Markdown(visible=False)
@@ -3807,7 +3807,7 @@ def build_selectai_tab(pool):
                             am_generate_status_md = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("生成されたSQL文", elem_classes="input-label")
+                                gr.Markdown("生成されたSQL", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 am_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False)
 
@@ -4128,7 +4128,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Markdown(visible=False)
                             return
                         if not sql_text or not str(sql_text).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ SQL文を入力してください"), gr.Markdown(visible=False)
+                            yield gr.Markdown(visible=True, value="⚠️ SQLを入力してください"), gr.Markdown(visible=False)
                             return
                         if not exec_result_text or not str(exec_result_text).strip():
                             yield gr.Markdown(visible=True, value="⚠️ 実行結果がありません。先に一括実行を実行してください"), gr.Markdown(visible=False)
@@ -5021,7 +5021,7 @@ def build_selectai_tab(pool):
                         gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("生成されたSQL文", elem_classes="input-label")
+                                gr.Markdown("生成されたSQL", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 generated_sql_text = gr.Textbox(
                                     show_label=False,
