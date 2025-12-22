@@ -3050,7 +3050,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("選択されたSQL_TEXT", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        selected_sql_text = gr.Textbox(show_label=False, interactive=False, container=False)
+                                        selected_sql_text = gr.Textbox(show_label=False, interactive=False, container=False, autoscroll=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
