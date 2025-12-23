@@ -1015,9 +1015,9 @@ def build_selectai_tab(pool):
                                         max_tokens_input = gr.Slider(
                                             show_label=False,
                                             minimum=1000,
-                                            maximum=256000,
+                                            maximum=128000,
                                             step=1000,
-                                            value=128000,
+                                            value=96000,
                                             interactive=True,
                                             container=False,
                                         )
