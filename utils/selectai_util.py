@@ -1017,9 +1017,9 @@ def build_selectai_tab(pool):
                                         max_tokens_input = gr.Slider(
                                             show_label=False,
                                             minimum=1000,
-                                            maximum=128000,
+                                            maximum=32000,
                                             step=1000,
-                                            value=96000,
+                                            value=32000,
                                             interactive=True,
                                             container=False,
                                         )
@@ -4369,7 +4369,7 @@ def build_selectai_tab(pool):
 
                     def _syn_refresh_objects(profile_name):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ テーブル一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.Dropdown(visible=False, choices=[])
+                            yield gr.Markdown(visible=True, value="⏳ テーブル一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[], value=[]), gr.Dropdown(visible=False, choices=[], value=None)
                             tables, _ = _get_profile_objects_from_json(profile_name)
                             if not tables:
                                 prof = _resolve_profile_name(pool, str(profile_name or ""))
@@ -4385,15 +4385,35 @@ def build_selectai_tab(pool):
                                 except Exception as e:
                                     logger.error(f"_syn_refresh_objects filter by profile error: {e}")
                                 tables = table_names
-                            status_text = "✅ 取得完了（データなし）" if (not tables) else "✅ 取得完了"
-                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=tables, visible=True), gr.Dropdown(choices=tables, visible=True)
+                            status_text = "✅ 取得完了(データなし)" if (not tables) else "✅ 取得完了"
+                            # テーブル選択を空にリセット
+                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=tables, visible=True, value=[]), gr.Dropdown(choices=tables, visible=True, value=None)
                         except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.Dropdown(choices=[])
+                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[], value=[]), gr.Dropdown(choices=[], value=None)
 
                     def _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
+                        """合成データ生成処理.
+                        
+                        Args:
+                            profile_name: プロファイル名
+                            tables_selected: 選択されたテーブルリスト
+                            rows_per_table: テーブルあたりの行数
+                            extra_text: 追加プロンプト
+                            sample_rows: サンプル行数
+                            comments: コメントを考慮するか
+                        
+                        Yields:
+                            gr.Markdown: ステータスメッセージ
+                        
+                        Returns:
+                            str or None: オペレーションID(成功時)、None(失敗時)
+                        """
+                        op_id = None
                         try:
+                            yield gr.Markdown(visible=True, value="⏳ 合成データ生成を準備中...")
                             pj = _get_profile_json_entry(str(profile_name or ""))
                             prof = str((pj or {}).get("profile") or "").strip() or str(profile_name or "").strip()
+                            yield gr.Markdown(visible=True, value="⏳ データベースに接続中...")
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     try:
@@ -4402,10 +4422,10 @@ def build_selectai_tab(pool):
                                         }
                                     except Exception:
                                         p_base = {"comments": False}
-                                    op_id = None
                                     try:
                                         sel = list(tables_selected or [])
                                         if len(sel) == 1:
+                                            yield gr.Markdown(visible=True, value=f"⏳ テーブル '{sel[0]}' の合成データ生成中...")
                                             obj_name = str(sel[0])
                                             rc = int(rows_per_table or 0)
                                             p_single = dict(p_base)
@@ -4421,19 +4441,24 @@ def build_selectai_tab(pool):
                                                 p=p_json,
                                             )
                                         else:
+                                            yield gr.Markdown(visible=True, value=f"⏳ {len(sel)} 件のテーブルの合成データ生成中...")
                                             rc = int(rows_per_table or 0)
                                             sr = int(sample_rows or 0)
                                             obj_list = []
                                             for t in sel:
-                                                obj_list.append({"owner": "ADMIN", "name": str(t), "record_count": rc, "sample_rows": sr})
+                                                obj_list.append({"owner": "ADMIN", "name": str(t), "record_count": rc})
                                             obj_json = json.dumps(obj_list, ensure_ascii=False)
-                                            p_json = json.dumps(p_base, ensure_ascii=False)
+                                            # sample_rowsはparamsに含める
+                                            p_multi = dict(p_base)
+                                            p_multi["sample_rows"] = sr
+                                            p_json = json.dumps(p_multi, ensure_ascii=False)
                                             cursor.execute(
                                                 "BEGIN DBMS_CLOUD_AI.GENERATE_SYNTHETIC_DATA(profile_name => :name, object_list => :objlist, params => :p); END;",
                                                 name=prof,
                                                 objlist=obj_json,
                                                 p=p_json,
                                             )
+                                        yield gr.Markdown(visible=True, value="⏳ オペレーションIDを取得中...")
                                         cursor.execute("SELECT max(id) FROM user_load_operations")
                                         rid = cursor.fetchall() or []
                                         if rid and len(rid) > 0:
@@ -4445,12 +4470,59 @@ def build_selectai_tab(pool):
                                                     op_id = str(rid[0][0])
                                                 except Exception:
                                                     op_id = None
-                                    except Exception:
-                                        op_id = None
-                                    info_text = "✅ 合成データ生成を開始しました" if op_id else "⚠️ 合成データ生成を開始しました(オペレーションIDの取得に失敗)"
-                                    return gr.Markdown(visible=True, value=info_text), gr.Textbox(value=str(op_id or "")), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                                    except Exception as e:
+                                        # データベースエラーを詳細にログ出力
+                                        error_msg = str(e)
+                                        logger.error(f"合成データ生成のデータベースエラー: {error_msg}")
+                                        
+                                        # ORA-20003エラーの場合、ステータステーブルからエラー詳細を取得
+                                        if "ORA-20003" in error_msg or "Operation failed" in error_msg:
+                                            try:
+                                                # エラーメッセージからテーブル名を抽出
+                                                import re
+                                                match = re.search(r'SYNTHETIC_DATA\$(\d+)_STATUS', error_msg)
+                                                if match:
+                                                    extracted_op_id = match.group(1)
+                                                    logger.info(f"エラーメッセージからオペレーションID抽出: {extracted_op_id}")
+                                                    
+                                                    # ステータステーブルからERROR_MESSAGEを取得
+                                                    status_table = f'"SYNTHETIC_DATA${extracted_op_id}_STATUS"'
+                                                    status_sql = f"SELECT ERROR_MESSAGE FROM ADMIN.{status_table} WHERE ERROR_MESSAGE IS NOT NULL FETCH FIRST 1 ROWS ONLY"
+                                                    cursor.execute(status_sql)
+                                                    error_rows = cursor.fetchall() or []
+                                                    
+                                                    if error_rows and len(error_rows) > 0:
+                                                        db_error_msg = error_rows[0][0]
+                                                        if hasattr(db_error_msg, 'read'):
+                                                            db_error_msg = db_error_msg.read()
+                                                        db_error_msg = str(db_error_msg).strip()
+                                                        
+                                                        if db_error_msg:
+                                                            logger.info(f"ステータステーブルからエラー詳細取得: {db_error_msg}")
+                                                            yield gr.Markdown(visible=True, value=f"❌ 合成データ生成エラー: {db_error_msg}")
+                                                            return None
+                                            except Exception as status_err:
+                                                logger.error(f"ステータステーブル照会エラー: {status_err}")
+                                            
+                                            # ステータステーブルからエラーが取得できなかった場合
+                                            yield gr.Markdown(visible=True, value="❌ 合成データ生成中にエラーが発生しました。詳細は「ステータスを更新」ボタンで確認してください。")
+                                        elif "ORA-" in error_msg:
+                                            # その他のOracleエラー
+                                            yield gr.Markdown(visible=True, value="❌ データベースエラーが発生しました。設定内容やProfile設定を確認してください。")
+                                        else:
+                                            # 一般的なエラー
+                                            yield gr.Markdown(visible=True, value="❌ 合成データ生成に失敗しました。入力内容を確認してください。")
+                                        return None
+                                    
+                                    if not op_id:
+                                        yield gr.Markdown(visible=True, value="❌ 合成データ生成に失敗しました: オペレーションIDを取得できませんでした")
+                                        return None
+                                    yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました")
+                                    return op_id
                         except Exception as e:
-                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
+                            logger.error(f"合成データ生成処理エラー: {e}")
+                            yield gr.Markdown(visible=True, value="❌ 予期しないエラーが発生しました。")
+                            return None
 
                     def _syn_update_status(op_id):
                         op = str(op_id or "").strip()
@@ -4564,6 +4636,13 @@ def build_selectai_tab(pool):
                         outputs=[syn_refresh_status, syn_tables_input, syn_result_table_select],
                     )
 
+                    # プロファイル変更時にテーブル選択をリセット
+                    syn_profile_select.change(
+                        fn=lambda: gr.CheckboxGroup(value=[]),
+                        inputs=[],
+                        outputs=[syn_tables_input],
+                    )
+
                     def _syn_generate_stream(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
                         try:
                             missing = []
@@ -4575,9 +4654,38 @@ def build_selectai_tab(pool):
                                 msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
                                 yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="")
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 生成開始中..."), gr.Textbox(value="")
-                            _info_md, op_id_comp, _status_df_comp, _status_style_comp = _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments)
-                            yield gr.Markdown(visible=True, value="✅ 生成開始完了"), op_id_comp
+                            
+                            # ジェネレーターからステータスを順次取得
+                            op_id_value = None
+                            gen = _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments)
+                            
+                            # ジェネレータを順次処理し、return値も取得
+                            while True:
+                                try:
+                                    item = next(gen)
+                                    # itemが文字列ならオペレーションID、そうでなければgr.Markdown
+                                    if isinstance(item, str):
+                                        # オペレーションIDを取得
+                                        op_id_value = item
+                                        yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました"), gr.Textbox(value=str(op_id_value))
+                                    elif item is None:
+                                        # エラー：IDが取得できなかった
+                                        yield gr.Markdown(visible=True, value="❌ オペレーションIDの取得に失敗しました"), gr.Textbox(value="")
+                                    else:
+                                        # ステータス更新を出力
+                                        yield item, gr.Textbox(value=str(op_id_value or ""))
+                                except StopIteration as e:
+                                    # ジェネレータの終了時、return値を取得
+                                    returned_value = e.value
+                                    if returned_value is not None and isinstance(returned_value, str) and returned_value.strip():
+                                        op_id_value = returned_value
+                                        yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました"), gr.Textbox(value=str(op_id_value))
+                                    elif op_id_value is None:
+                                        # オペレーションIDが取得できなかった場合
+                                        # 最後のyieldがエラーメッセージの場合はそれが表示されているはず
+                                        pass
+                                    break
+                                
                         except Exception as e:
                             logger.error(f"_syn_generate_stream error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="")

@@ -2385,10 +2385,10 @@ def build_management_tab(pool):
             
             def upload_csv(file, table_name, mode):
                 """Upload CSV file."""
-                yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(visible=True, value="⏳ CSVアップロードを実行中..."), gr.Markdown(visible=False)
+                yield gr.Dataframe(), gr.Markdown(visible=True, value="⏳ CSVアップロードを実行中..."), gr.Markdown(visible=False)
                 preview, result = upload_csv_data(pool, file, table_name, mode)
                 status_md = gr.Markdown(visible=True, value=result)
-                yield preview, gr.Markdown(visible=False), status_md
+                yield gr.Dataframe(visible=True, value=preview), gr.Markdown(visible=False), status_md
             
             def execute_sql(sql):
                 """Execute SQL statements."""
