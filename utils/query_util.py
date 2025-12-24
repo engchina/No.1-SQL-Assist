@@ -343,7 +343,7 @@ def _stmt_type(stmt: str) -> str:
             break
         return x[i:]
     s = strip_comments(s)
-    m = re.match(r"^comment\s+on\s+([a-zA-Z_]+(?:\s+[a-zA-Z_]+)?)\b", s, flags=re.IGNORECASE)
+    m = re.match(r"^comment\s+on\s+([a-zA-Z_]+(?:\s+[a-zA-Z_]+)?(?:\s+[a-zA-Z_]+)?)\b", s, flags=re.IGNORECASE)
     if m:
         # tgt = m.group(1).upper()
         return "COMMENT"
@@ -424,7 +424,6 @@ def execute_sql_general(pool, sql: str, limit: int):
                         logger.error(f"Statement #{idx} failed: {e}")
                         logger.error(traceback.format_exc())
                         rows.append([idx, typ, '失敗', -1, msg, dur])
-                        break
                 if ok:
                     conn.commit()
                 else:
@@ -456,7 +455,16 @@ def execute_sql_general(pool, sql: str, limit: int):
 def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
     with gr.Accordion(label="1. SQLの入力", open=True):
-        gr.Markdown("ℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。\n\nℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。")
+        gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。\n\n")
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("SQLファイル", elem_classes="input-label")
+            with gr.Column(scale=5):
+                sql_file_input = gr.File(
+                    show_label=False,
+                    file_types=[".sql", ".txt"],
+                    type="filepath",
+                )
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("SQL*", elem_classes="input-label")
@@ -468,6 +476,7 @@ def build_query_tab(pool):
                     max_lines=15,
                     show_copy_button=True,
                     container=False,
+                    autoscroll=False,
                 )
 
         with gr.Row():
@@ -642,11 +651,55 @@ def build_query_tab(pool):
 
     def on_clear():
         return ""
+    
+    def load_sql_file(file_path):
+        """
+        SQLファイルを読み込み、テキストボックスに表示する.
+        
+        Args:
+            file_path: アップロードされたファイルのパス
+        
+        Returns:
+            ファイルの内容(文字列)
+        """
+        if not file_path:
+            return ""
+        
+        try:
+            # 複数のエンコーディングで試行
+            encodings = ['utf-8', 'shift_jis', 'cp932', 'latin1', 'euc-jp']
+            content = None
+            
+            for encoding in encodings:
+                try:
+                    with open(file_path, 'r', encoding=encoding) as f:
+                        content = f.read()
+                    logger.info(f"SQLファイルを{encoding}で読み込みました: {file_path}")
+                    break
+                except (UnicodeDecodeError, UnicodeError):
+                    continue
+            
+            if content is None:
+                logger.error(f"SQLファイルの読み込みに失敗しました: {file_path}")
+                return "❌ エラー: ファイルの読み込みに失敗しました。エンコーディングを確認してください。"
+            
+            return content
+            
+        except Exception as e:
+            logger.error(f"SQLファイルの読み込み中にエラーが発生しました: {e}")
+            logger.error(traceback.format_exc())
+            return f"❌ エラー: {str(e)}"
 
     execute_btn.click(
         fn=on_execute,
         inputs=[sql_input, limit_input],
         outputs=[result_info, result_df, result_style],
+    )
+
+    sql_file_input.change(
+        fn=load_sql_file,
+        inputs=[sql_file_input],
+        outputs=[sql_input],
     )
 
     ai_analyze_btn.click(

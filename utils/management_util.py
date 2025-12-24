@@ -241,11 +241,12 @@ def execute_create_table(pool, create_sql):
                     stmt_upper = sql_stmt.strip().upper()
                     is_create_table = stmt_upper.startswith('CREATE TABLE') or bool(re.match(r'^CREATE\s+GLOBAL\s+TEMPORARY\s+TABLE\b', stmt_upper))
                     is_comment = stmt_upper.startswith('COMMENT ON TABLE') or stmt_upper.startswith('COMMENT ON COLUMN')
-                    if not (is_create_table or is_comment):
+                    is_drop_table = stmt_upper.startswith('DROP TABLE')
+                    if not (is_create_table or is_comment or is_drop_table):
                         disallowed.append((idx, sql_stmt))
                 if disallowed:
                     first_idx, first_sql = disallowed[0]
-                    error_msg = f"禁止された操作: CREATE TABLE / COMMENT ON 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    error_msg = f"禁止された操作: CREATE TABLE / COMMENT ON / DROP TABLE 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for table creation: {first_sql[:100]}...")
                     return f"❌ エラー: {error_msg}"
                 
@@ -567,11 +568,12 @@ def execute_create_view(pool, create_sql):
                         or bool(re.match(r'^CREATE\s+OR\s+REPLACE\s+EDITIONABLE\s+VIEW\b', stmt_upper))
                     )
                     is_comment = stmt_upper.startswith('COMMENT ON TABLE') or stmt_upper.startswith('COMMENT ON COLUMN')
-                    if not (is_create_view or is_comment):
+                    is_drop_view = stmt_upper.startswith('DROP VIEW')
+                    if not (is_create_view or is_comment or is_drop_view):
                         disallowed.append((idx, sql_stmt))
                 if disallowed:
                     first_idx, first_sql = disallowed[0]
-                    error_msg = f"禁止された操作: VIEW作成に関係ない文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    error_msg = f"禁止された操作: VIEW作成/削除に関係ない文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for view creation: {first_sql[:100]}...")
                     return f"❌ エラー: {error_msg}"
                 
@@ -853,11 +855,12 @@ def execute_data_sql(pool, sql_statements):
                     is_update = stmt_upper.startswith('UPDATE')
                     is_delete = stmt_upper.startswith('DELETE')
                     is_merge = stmt_upper.startswith('MERGE')
-                    if not (is_insert or is_update or is_delete or is_merge):
+                    is_truncate = stmt_upper.startswith('TRUNCATE')
+                    if not (is_insert or is_update or is_delete or is_merge or is_truncate):
                         disallowed.append((idx, sql_stmt))
                 if disallowed:
                     first_idx, first_sql = disallowed[0]
-                    error_msg = f"禁止された操作: INSERT, UPDATE, DELETE, MERGE 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    error_msg = f"禁止された操作: INSERT, UPDATE, DELETE, MERGE, TRUNCATE 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for data SQL: {first_sql[:100]}...")
                     return f"❌ エラー: {error_msg}"
                 
@@ -905,7 +908,7 @@ def execute_comment_sql(pool, sql_statements):
     """Execute COMMENT ON SQL statement(s).
     
     Supports executing multiple COMMENT statements separated by semicolons.
-    Only COMMENT ON TABLE / COMMENT ON COLUMN を許可。
+    COMMENT ON TABLE / COLUMN / MATERIALIZED VIEW / VIEW を許可。
     
     Args:
         pool: Oracle database connection pool
@@ -930,11 +933,13 @@ def execute_comment_sql(pool, sql_statements):
                     stmt_upper = sql_stmt.strip().upper()
                     is_comment_table = stmt_upper.startswith('COMMENT ON TABLE')
                     is_comment_column = stmt_upper.startswith('COMMENT ON COLUMN')
-                    if not (is_comment_table or is_comment_column):
+                    is_comment_mview = stmt_upper.startswith('COMMENT ON MATERIALIZED VIEW')
+                    is_comment_view = stmt_upper.startswith('COMMENT ON VIEW')
+                    if not (is_comment_table or is_comment_column or is_comment_mview or is_comment_view):
                         disallowed.append((idx, sql_stmt))
                 if disallowed:
                     first_idx, first_sql = disallowed[0]
-                    error_msg = f"禁止された操作: COMMENT ON TABLE/COLUMN 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
+                    error_msg = f"禁止された操作: COMMENT ON TABLE/COLUMN/MATERIALIZED VIEW/VIEW 以外の文は実行できません。\n文{first_idx}: {first_sql[:100]}..."
                     logger.warning(f"Disallowed statement for comments: {first_sql[:100]}...")
                     return f"❌ エラー: {error_msg}"
                 executed_count = 0
@@ -1494,7 +1499,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         create_view_sql = gr.Textbox(
                             show_label=False,
-                            placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\nSELECT id, name FROM test_table;\n\nCOMMENT ON TABLE test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
+                            placeholder="CREATE VIEW文を入力してください\n例:\nCREATE VIEW test_view AS\n\nCOMMENT ON TABLE test_view IS 'テストビュー';\nCOMMENT ON COLUMN test_view.id IS 'ID';\nCOMMENT ON COLUMN test_view.name IS '名称';",
                             lines=10,
                             max_lines=15,
                             show_copy_button=True,
@@ -2011,7 +2016,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=5):
                         data_sql_input = gr.Textbox(
                             show_label=False,
-                            placeholder="INSERT/UPDATE/DELETE/MERGE文を入力してください（注: SELECT文は禁止されています）\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';",
+                            placeholder="INSERT/UPDATE/DELETE/MERGE/TRUNCATE文を入力してください（注: SELECT文は禁止されています）\n例:\nINSERT INTO users (username, email, status) VALUES ('user1', 'user1@example.com', 'A');\nINSERT INTO users (username, email, status) VALUES ('user2', 'user2@example.com', 'A');\nUPDATE users SET status = 'A' WHERE user_id = 1;\nDELETE FROM users WHERE status = 'D';\nTRUNCATE TABLE temp_table;",
                             lines=10,
                             max_lines=15,
                             show_copy_button=True,
