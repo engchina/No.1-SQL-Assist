@@ -1272,6 +1272,15 @@ def build_management_tab(pool):
 
                 with gr.Row():
                     with gr.Column(scale=1):
+                        gr.Markdown("SQLファイル", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        table_sql_file_input = gr.File(
+                            show_label=False,
+                            file_types=[".sql", ".txt"],
+                            type="filepath",
+                        )
+                with gr.Row():
+                    with gr.Column(scale=1):
                         gr.Markdown("CREATE TABLE SQL*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_table_sql = gr.Textbox(
@@ -1281,6 +1290,7 @@ def build_management_tab(pool):
                             max_lines=15,
                             show_copy_button=True,
                             container=False,
+                            autoscroll=False,
                         )
                 
                 with gr.Row():
@@ -1419,6 +1429,44 @@ def build_management_tab(pool):
                 """Clear the SQL input."""
                 return ""
             
+            def load_table_sql_file(file_path):
+                """
+                SQLファイルを読み込み、テキストボックスに表示する.
+                
+                Args:
+                    file_path: アップロードされたファイルのパス
+                
+                Returns:
+                    ファイルの内容(文字列)
+                """
+                if not file_path:
+                    return ""
+                
+                try:
+                    # 複数のエンコーディングで試行
+                    encodings = ['utf-8', 'shift_jis', 'cp932', 'latin1', 'euc-jp']
+                    content = None
+                    
+                    for encoding in encodings:
+                        try:
+                            with open(file_path, 'r', encoding=encoding) as f:
+                                content = f.read()
+                            logger.info(f"SQLファイルを{encoding}で読み込みました: {file_path}")
+                            break
+                        except (UnicodeDecodeError, UnicodeError):
+                            continue
+                    
+                    if content is None:
+                        logger.error(f"SQLファイルの読み込みに失敗しました: {file_path}")
+                        return "❌ エラー: ファイルの読み込みに失敗しました。エンコーディングを確認してください。"
+                    
+                    return content
+                    
+                except Exception as e:
+                    logger.error(f"SQLファイルの読み込み中にエラーが発生しました: {e}")
+                    logger.error(traceback.format_exc())
+                    return f"❌ エラー: {str(e)}"
+            
             # Wire up events
             table_refresh_btn.click(
                 fn=refresh_table_list,
@@ -1452,6 +1500,12 @@ def build_management_tab(pool):
             clear_sql_btn.click(
                 fn=clear_sql,
                 outputs=[create_table_sql]
+            )
+
+            table_sql_file_input.change(
+                fn=load_table_sql_file,
+                inputs=[table_sql_file_input],
+                outputs=[create_table_sql],
             )
 
             async def _table_ai_analyze_async(model_name, create_sql_text, exec_result_text):
@@ -1650,6 +1704,15 @@ def build_management_tab(pool):
 
                 with gr.Row():
                     with gr.Column(scale=1):
+                        gr.Markdown("SQLファイル", elem_classes="input-label")
+                    with gr.Column(scale=5):
+                        view_sql_file_input = gr.File(
+                            show_label=False,
+                            file_types=[".sql", ".txt"],
+                            type="filepath",
+                        )
+                with gr.Row():
+                    with gr.Column(scale=1):
                         gr.Markdown("CREATE VIEW SQL*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_view_sql = gr.Textbox(
@@ -1659,6 +1722,7 @@ def build_management_tab(pool):
                             max_lines=15,
                             show_copy_button=True,
                             container=False,
+                            autoscroll=False,
                         )
                 
                 with gr.Row():
@@ -1792,6 +1856,44 @@ def build_management_tab(pool):
             def clear_view_sql():
                 """Clear the SQL input."""
                 return ""
+            
+            def load_view_sql_file(file_path):
+                """
+                SQLファイルを読み込み、テキストボックスに表示する.
+                
+                Args:
+                    file_path: アップロードされたファイルのパス
+                
+                Returns:
+                    ファイルの内容(文字列)
+                """
+                if not file_path:
+                    return ""
+                
+                try:
+                    # 複数のエンコーディングで試行
+                    encodings = ['utf-8', 'shift_jis', 'cp932', 'latin1', 'euc-jp']
+                    content = None
+                    
+                    for encoding in encodings:
+                        try:
+                            with open(file_path, 'r', encoding=encoding) as f:
+                                content = f.read()
+                            logger.info(f"SQLファイルを{encoding}で読み込みました: {file_path}")
+                            break
+                        except (UnicodeDecodeError, UnicodeError):
+                            continue
+                    
+                    if content is None:
+                        logger.error(f"SQLファイルの読み込みに失敗しました: {file_path}")
+                        return "❌ エラー: ファイルの読み込みに失敗しました。エンコーディングを確認してください。"
+                    
+                    return content
+                    
+                except Exception as e:
+                    logger.error(f"SQLファイルの読み込み中にエラーが発生しました: {e}")
+                    logger.error(traceback.format_exc())
+                    return f"❌ エラー: {str(e)}"
             
             # Wire up events
             view_refresh_btn.click(
@@ -1930,6 +2032,12 @@ def build_management_tab(pool):
             clear_view_sql_btn.click(
                 fn=clear_view_sql,
                 outputs=[create_view_sql]
+            )
+
+            view_sql_file_input.change(
+                fn=load_view_sql_file,
+                inputs=[view_sql_file_input],
+                outputs=[create_view_sql],
             )
 
             async def _view_ai_analyze_async(model_name, create_sql_text, exec_result_text):
@@ -2176,6 +2284,7 @@ def build_management_tab(pool):
                             max_lines=15,
                             show_copy_button=True,
                             container=False,
+                            autoscroll=False,
                         )
                 
                 with gr.Row():

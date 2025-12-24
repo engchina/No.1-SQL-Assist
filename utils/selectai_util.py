@@ -741,6 +741,7 @@ def create_db_profile(
     enforce_object_list: bool,
     comments: bool,
     annotations: bool,
+    constraints: bool,
     tables: list,
     views: list,
     category: str,
@@ -756,6 +757,7 @@ def create_db_profile(
         "enforce_object_list": enforce_object_list,
         "comments": "true" if comments else "false",
         "annotations": "true" if annotations else "false",
+        "constraints": "true" if constraints else "false",
         "temperature": 0.0,
         "object_list": [],
     }
@@ -1095,6 +1097,23 @@ def build_selectai_tab(pool):
                                 with gr.Row():
                                     with gr.Column(scale=1):
                                         gr.Markdown("")
+                        with gr.Row():
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("Constraints*", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        constraints_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=["true", "false"],
+                                            value="true",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
 
                         with gr.Row():
                             build_btn = gr.Button("作成", variant="primary")
@@ -1238,7 +1257,7 @@ def build_selectai_tab(pool):
                         sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
                         return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
 
-                def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, category):
+                def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, constraints, category):
                     if not tables and not views:
                         yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください")
                         return
@@ -1252,6 +1271,7 @@ def build_selectai_tab(pool):
                         eol = bool_map.get(str(enforce_object_list).lower(), True)
                         com = bool_map.get(str(comments).lower(), True)
                         ann = bool_map.get(str(annotations).lower(), True)
+                        con = bool_map.get(str(constraints).lower(), True)
                         create_db_profile(
                             pool,
                             name,
@@ -1263,6 +1283,7 @@ def build_selectai_tab(pool):
                             eol,
                             com,
                             ann,
+                            con,
                             tables or [],
                             views or [],
                             str(category or ""),
@@ -1370,6 +1391,7 @@ def build_selectai_tab(pool):
                         enforce_object_list_input,
                         comments_input,
                         annotations_input,
+                        constraints_input,
                         category_input,
                     ],
                     outputs=[create_info],
