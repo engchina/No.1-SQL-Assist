@@ -7,6 +7,8 @@ Table Management, View Management, and Data Management.
 import logging
 import traceback
 import re
+from datetime import datetime
+from dateutil import parser as dateutil_parser
 
 import gradio as gr
 import pandas as pd
@@ -18,6 +20,108 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
+
+def _convert_to_date(value):
+    """複数の日付フォーマットに対応した柔軟な日付変換.
+    
+    Args:
+        value: 変換する値（文字列、数値、datetime等）
+        
+    Returns:
+        datetime: 変換された日付オブジェクト、またはNone
+    """
+    if value is None or pd.isna(value):
+        return None
+    
+    # 既にdatetimeオブジェクトの場合
+    if isinstance(value, datetime):
+        return value
+    
+    # 数値の場合（Excelのシリアル日付など）
+    if isinstance(value, (int, float)):
+        try:
+            # Excelのシリアル日付形式（1900-01-01からの日数）
+            if 1 <= value <= 2958465:  # 1900-01-01 ～ 9999-12-31
+                # Excelの1900年問題を考慮
+                base_date = datetime(1899, 12, 30)
+                return base_date + pd.Timedelta(days=value)
+        except Exception:
+            pass
+    
+    # 文字列の場合
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        
+        # マイクロ秒を含む日付フォーマットを正規化（Oracle形式など）
+        # 例: 1900/01/01 00:00:00.000000000 → 1900/01/01 00:00:00
+        normalized_value = re.sub(r'(\d{4}[/-]\d{1,2}[/-]\d{1,2}\s+\d{1,2}:\d{1,2}:\d{1,2})\.\d+', r'\1', value)
+        
+        # 1桁の月/日を0パディング（例: 1900/1/1 → 1900/01/01）
+        def _normalize_date_parts(match):
+            year = match.group(1)
+            sep1 = match.group(2)
+            month = match.group(3).zfill(2)
+            sep2 = match.group(4)
+            day = match.group(5).zfill(2)
+            rest = match.group(6) if match.group(6) else ''
+            return f"{year}{sep1}{month}{sep2}{day}{rest}"
+        
+        normalized_value = re.sub(
+            r'(\d{4})([/-])(\d{1,2})([/-])(\d{1,2})(.*)',
+            _normalize_date_parts,
+            normalized_value
+        )
+        
+        # 1桁の時間を0パディング（例: 1900/01/01 0:00 → 1900/01/01 00:00）
+        def _normalize_time_parts(match):
+            date_part = match.group(1)
+            hour = match.group(2).zfill(2)
+            minute = match.group(3).zfill(2)
+            rest = match.group(4) if match.group(4) else ''
+            return f"{date_part} {hour}:{minute}{rest}"
+        
+        normalized_value = re.sub(
+            r'(\d{4}[/-]\d{2}[/-]\d{2})\s+(\d{1,2}):(\d{1,2})(:\d{1,2})?',
+            _normalize_time_parts,
+            normalized_value
+        )
+        
+        # よくある日付フォーマットパターンを定義
+        date_formats = [
+            '%Y-%m-%d',           # 2024-12-24
+            '%Y/%m/%d',           # 2024/12/24
+            '%d-%m-%Y',           # 24-12-2024
+            '%d/%m/%Y',           # 24/12/2024
+            '%m/%d/%Y',           # 12/24/2024
+            '%Y%m%d',             # 20241224
+            '%Y-%m-%d %H:%M:%S',  # 2024-12-24 15:30:00
+            '%Y/%m/%d %H:%M:%S',  # 2024/12/24 15:30:00
+            '%d-%m-%Y %H:%M:%S',  # 24-12-2024 15:30:00
+            '%d/%m/%Y %H:%M:%S',  # 24/12/2024 15:30:00
+            '%Y-%m-%dT%H:%M:%S',  # 2024-12-24T15:30:00 (ISO)
+            '%Y-%m-%d %H:%M',     # 2024-12-24 15:30
+            '%Y/%m/%d %H:%M',     # 2024/12/24 15:30
+        ]
+        
+        # 各フォーマットで変換を試行（正規化された値を使用）
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(normalized_value, fmt)
+            except ValueError:
+                continue
+        
+        # 上記で失敗した場合、dateutilで柔軟にパース
+        try:
+            return dateutil_parser.parse(normalized_value, dayfirst=False)
+        except Exception:
+            pass
+    
+    # 変換できない場合はNoneを返す（エラーを防ぐため）
+    logger.warning(f"日付変換に失敗しました: {value} (type: {type(value)})")
+    return None
 
 
 def get_table_list(pool):
@@ -752,12 +856,17 @@ def upload_csv_data(pool, file, table_name, upload_mode):
         # Execute upload based on mode
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
-                # Get table columns
+                # Get table columns with data types
                 cursor.execute(
-                    "SELECT column_name FROM all_tab_columns WHERE owner = 'ADMIN' AND table_name = :table_name ORDER BY column_id",
+                    """SELECT column_name, data_type 
+                       FROM all_tab_columns 
+                       WHERE owner = 'ADMIN' AND table_name = :table_name 
+                       ORDER BY column_id""",
                     table_name=table_name.upper()
                 )
-                table_columns = [row[0] for row in cursor.fetchall()]
+                table_columns_info = cursor.fetchall()
+                table_columns = [row[0] for row in table_columns_info]
+                column_types = {row[0]: row[1] for row in table_columns_info}
                 
                 if not table_columns:
                     return preview_df, f"❌ エラー: テーブル '{table_name}' が見つかりません"
@@ -791,15 +900,51 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                 
                 for idx, row in df.iterrows():
                     try:
-                        values = [row[csv_col] if csv_col in column_mapping else None for csv_col in column_mapping.keys()]
-                        # Convert NaN to None
-                        values = [None if pd.isna(v) else v for v in values]
+                        values = []
+                        for csv_col in column_mapping.keys():
+                            if csv_col not in column_mapping:
+                                values.append(None)
+                                continue
+                            
+                            value = row[csv_col]
+                            # Convert NaN to None
+                            if pd.isna(value):
+                                values.append(None)
+                                continue
+                            
+                            # Get target column name and type
+                            target_col = column_mapping[csv_col]
+                            col_type = column_types.get(target_col, '')
+                            
+                            # Convert date/timestamp values flexibly
+                            if col_type == 'DATE' or col_type.startswith('TIMESTAMP'):
+                                converted_value = _convert_to_date(value)
+                                values.append(converted_value)
+                            else:
+                                values.append(value)
+                        
                         cursor.execute(insert_sql, values)
                         success_count += 1
                     except Exception as row_error:
                         error_count += 1
                         if error_count <= 5:  # Show first 5 errors
-                            error_messages.append(f"行{idx+1}: {str(row_error)[:100]}")
+                            # 詳細なエラー情報を提供
+                            error_detail = f"行{idx+1}"
+                            error_str = str(row_error)
+                            
+                            # 日付フォーマットエラーの場合、該当する列と値を表示
+                            if 'ORA-01861' in error_str or 'ORA-01843' in error_str or 'format string' in error_str.lower():
+                                date_cols_info = []
+                                for csv_col in column_mapping.keys():
+                                    target_col = column_mapping[csv_col]
+                                    col_type = column_types.get(target_col, '')
+                                    if col_type == 'DATE' or col_type.startswith('TIMESTAMP'):
+                                        val = row[csv_col]
+                                        date_cols_info.append(f"{target_col}={val}")
+                                if date_cols_info:
+                                    error_detail += f" [日付列: {', '.join(date_cols_info)}]"
+                            
+                            error_messages.append(f"{error_detail}: {error_str[:150]}")
                 
                 # Commit transaction
                 conn.commit()
@@ -807,9 +952,19 @@ def upload_csv_data(pool, file, table_name, upload_mode):
                 # Prepare result message
                 result = f"✅ 成功: {success_count}件のデータを挿入しました"
                 if error_count > 0:
+                    # 日付エラーかどうかを判定
+                    has_date_error = any('ORA-01861' in msg or 'format string' in msg.lower() for msg in error_messages)
+                    
                     result += f"\n\n⚠️ 警告: {error_count}件のエラーが発生しました\n" + "\n".join(error_messages)
                     if error_count > 5:
                         result += f"\n... 他 {error_count - 5} 件のエラー"
+                    
+                    # 日付エラーの場合はヒントを追加
+                    if has_date_error:
+                        result += "\n\n💡 ヒント: 日付フォーマットエラーが発生しています。以下の対応をお試しください:\n"
+                        result += "  1. CSVの日付列を 'YYYY-MM-DD' 形式（例: 2024-12-24）に変換\n"
+                        result += "  2. Excelで開いている場合、セルの書式を「文字列」に設定して保存\n"
+                        result += "  3. タイムスタンプの場合は 'YYYY-MM-DD HH:MM:SS' 形式を使用"
                 
                 logger.info(f"CSV upload completed: {success_count} success, {error_count} errors")
                 return preview_df, result
