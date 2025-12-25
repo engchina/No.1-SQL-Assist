@@ -1635,6 +1635,7 @@ def build_management_tab(pool):
                                     show_label=False,
                                     interactive=False,
                                     container=False,
+                                    autoscroll=False,
                                 )
                     with gr.Column(scale=5):
                         with gr.Row():
@@ -2009,9 +2010,9 @@ def build_management_tab(pool):
                         join_text = "None"
                     if not where_text:
                         where_text = "None"
-                    return gr.Textbox(value=join_text), gr.Textbox(value=where_text)
+                    return gr.Textbox(value=join_text, autoscroll=False), gr.Textbox(value=where_text, autoscroll=False)
                 except Exception:
-                    return gr.Textbox(value="None"), gr.Textbox(value="None")
+                    return gr.Textbox(value="None", autoscroll=False), gr.Textbox(value="None", autoscroll=False)
 
             def _view_join_where_ai_extract(model_name, ddl_text):
                 import asyncio

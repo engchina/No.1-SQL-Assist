@@ -284,7 +284,7 @@ def build_sql_learning_tab(pool):
             # 表示状態を追跡するState変数
             tables_sql_visible_state = gr.State(value=False)
             with gr.Row():
-                tables_sql_text = gr.Textbox(label="SQL", value=tables_sql, lines=10, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_tables_sql")
+                tables_sql_text = gr.Textbox(label="SQL", value=tables_sql, lines=10, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_tables_sql", autoscroll=False)
             with gr.Row():
                     tables_result_md = gr.Markdown(visible=False)
 
@@ -296,7 +296,7 @@ def build_sql_learning_tab(pool):
             # 表示状態を追跡するState変数
             views_sql_visible_state = gr.State(value=False)
             with gr.Row():
-                views_sql_text = gr.Textbox(label="SQL", value=views_sql, lines=8, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_views_sql")
+                views_sql_text = gr.Textbox(label="SQL", value=views_sql, lines=8, max_lines=20, interactive=False, show_copy_button=True, visible=False, elem_id="sql_learning_views_sql", autoscroll=False)
             with gr.Row():
                 views_result_md = gr.Markdown(visible=False)
 

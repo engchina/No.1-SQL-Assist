@@ -948,7 +948,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("カテゴリ*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        category_input = gr.Textbox(show_label=False, placeholder="例: 顧客管理、売上分析 等", container=False)
+                                        category_input = gr.Textbox(show_label=False, placeholder="例: 顧客管理、売上分析 等", container=False, autoscroll=False)
 
                         with gr.Row():
                             refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
@@ -967,7 +967,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("OCI Compartment OCID*", elem_classes="input-label")
                             with gr.Column(scale=9):
-                                compartment_id_input = gr.Textbox(show_label=False, placeholder="ocid1.compartment.oc1...", value=os.environ.get("OCI_COMPARTMENT_OCID", ""), container=False)
+                                compartment_id_input = gr.Textbox(show_label=False, placeholder="ocid1.compartment.oc1...", value=os.environ.get("OCI_COMPARTMENT_OCID", ""), container=False, autoscroll=False)
 
                         with gr.Row():
                             with gr.Column(scale=5):
@@ -1907,7 +1907,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=5):
                                 term_upload_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath", container=True)
                         with gr.Row():
-                            term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False)
+                            term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column():
                                 gr.DownloadButton(label="用語集Excelをダウンロード", value=str(_p), variant="secondary")
@@ -2019,6 +2019,7 @@ def build_selectai_tab(pool):
                                     max_lines=10,
                                     show_copy_button=True,
                                     container=False,
+                                    autoscroll=False,
                                 )
 
                         with gr.Row():
@@ -2101,6 +2102,7 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             show_copy_button=True,
                                             container=False,
+                                            autoscroll=False,
                                         )
 
                         with gr.Row():
@@ -2119,7 +2121,7 @@ def build_selectai_tab(pool):
                                             lines=15,
                                             max_lines=15,
                                             show_copy_button=True,
-                                            autoscroll=True,
+                                            autoscroll=False,
                                             container=False,
                                         )
                             dev_include_extra_prompt.change(lambda v: gr.Accordion(visible=v), inputs=dev_include_extra_prompt, outputs=dev_extra_prompt_section)
@@ -2141,7 +2143,7 @@ def build_selectai_tab(pool):
                             label="生成されたSQL*",
                             lines=8,
                             max_lines=15,
-                            interactive=False,
+                            interactive=True,
                             show_copy_button=True,
                             autoscroll=False,
                         )
@@ -2186,25 +2188,18 @@ def build_selectai_tab(pool):
                                 with gr.Column(scale=5):
                                     dev_sql_summary_text = gr.Textbox(label="開発者向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True)
                                 with gr.Column(scale=5):
-                                    user_sql_summary_text = gr.Textbox(label="ユーザー向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True)
+                                    user_sql_summary_text = gr.Textbox(label="ユーザー向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True, autoscroll=False)
 
                             with gr.Row():
-                                with gr.Column():
-                                    dev_join_conditions_text = gr.Textbox(
-                                        label="結合条件",
-                                        lines=6,
-                                        max_lines=15,
-                                        interactive=False,
-                                        show_copy_button=True,
-                                    )
-                                with gr.Column():
-                                    dev_where_conditions_text = gr.Textbox(
-                                        label="Where条件",
-                                        lines=6,
-                                        max_lines=15,
-                                        interactive=False,
-                                        show_copy_button=True,
-                                    )
+                                dev_sql_structure_text = gr.Textbox(
+                                    label="SQL構造分析",
+                                    lines=15,
+                                    max_lines=30,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                    visible=True,
+                                    autoscroll=False,
+                                )
 
                     with gr.Accordion(label="3. 実行結果", open=True):
                         dev_chat_result_df = gr.Dataframe(
@@ -2248,6 +2243,7 @@ def build_selectai_tab(pool):
                                     show_copy_button=True,
                                     interactive=False,
                                     container=False,
+                                    autoscroll=False,
                                 )
 
                         with gr.Row():
@@ -2262,6 +2258,7 @@ def build_selectai_tab(pool):
                                     show_copy_button=True,
                                     interactive=False,
                                     container=False,
+                                    autoscroll=False,
                                 )
 
 
@@ -2276,6 +2273,7 @@ def build_selectai_tab(pool):
                                     interactive=False,
                                     show_copy_button=True,
                                     container=False,
+                                    autoscroll=False,
                                 )
 
                         with gr.Row():
@@ -2736,21 +2734,62 @@ def build_selectai_tab(pool):
                                 )
 
                             prompt = (
-                                "Extract ONLY JOIN and WHERE conditions from the SQL query below.\n"
-                                "Output in STRICT format (no explanations, no markdown, no extra text):\n\n"
-                                "JOIN:\n"
-                                "[JOIN_TYPE] alias1(schema.table1).column1 = alias2(schema.table2).column2\n"
-                                "[JOIN_TYPE] alias3(schema.table3).column3 = alias4(schema.table4).column4\n\n"
-                                "WHERE:\n"
-                                "alias(schema.table).column operator value\n\n"
+                                "Analyze the SQL query and extract its structure in Markdown format.\n"
+                                "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
+                                "## 📊 SQL構造分析\n\n"
+                                "### 🔗 JOIN条件\n"
+                                "- **[JOIN_TYPE]**: schema.table1(alias1).column1 = schema.table2(alias2).column2\n"
+                                "- **[JOIN_TYPE]**: schema.table3(alias3).column3 = schema.table4(alias4).column4\n\n"
+                                "### 🔍 WHERE条件\n"
+                                "- schema.table(alias).column operator value\n"
+                                "- AND/OR ...\n\n"
+                                "### 📦 GROUP BY\n"
+                                "- schema.table(alias).column\n\n"
+                                "### 🎯 HAVING条件\n"
+                                "- aggregate_function(column) operator value\n\n"
+                                "### 📝 WITH句(CTE)\n"
+                                "- **cte_name**: 簡潔な説明\n\n"
+                                "### 🔎 サブクエリ\n"
+                                "- **位置**(WHERE/FROM/SELECT): 簡潔な説明\n\n"
+                                "### 📋 その他\n"
+                                "- **ORDER BY**: column ASC/DESC\n"
+                                "- **集合演算**: UNION/INTERSECT/MINUS\n\n"
+                                "---\n\n"
                                 "Rules:\n"
-                                "- Format: alias(schema.table_name).column or schema.table_name.column (if no alias)\n"
-                                "- JOIN_TYPE must be one of: INNER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN, CROSS JOIN, JOIN\n"
-                                "- Include schema name if present (e.g., ADMIN.USER_ROLE)\n"
-                                "- One condition per line\n"
-                                "- Keep original operators (=, >, <, LIKE, IN, etc.)\n"
-                                "- Preserve exact column names and values with quotes\n"
-                                "- If no JOIN/WHERE exists, output 'JOIN:\\nNone' or 'WHERE:\\nNone'\n\n"
+                                "- Format: schema.table_name(alias).column when alias exists, schema.table_name.column when no alias\n"
+                                "- JOIN_TYPE: INNER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN, CROSS JOIN, NATURAL JOIN\n"
+                                "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id), extract as INNER JOIN\n"
+                                "- For USING clause (JOIN t USING(col)), add USING note\n"
+                                "- For compound JOIN conditions (ON t1.c1=t2.c1 AND t1.c2=t2.c2), list each condition separately\n"
+                                "- Preserve all operators: =, >, <, >=, <=, <>, !=, LIKE, IN, BETWEEN, IS NULL, IS NOT NULL, EXISTS, NOT EXISTS\n"
+                                "- For WHERE/HAVING, preserve AND/OR structure at line start\n"
+                                "- Do NOT include table JOIN conditions in WHERE section\n"
+                                "- WITH句: Extract CTE names and brief purpose\n"
+                                "- サブクエリ: Note location and purpose\n"
+                                "- If section is empty, omit the section entirely (do not write 'None')\n"
+                                "- Use Japanese for descriptions\n\n"
+                                "Example 1 (Simple):\n"
+                                "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ROLES r ON u.role_id = r.id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
+                                "Output:\n"
+                                "## 📊 SQL構造分析\n\n"
+                                "### 🔗 JOIN条件\n"
+                                "- **INNER JOIN**: ADMIN.USERS(u).role_id = ADMIN.ROLES(r).id\n\n"
+                                "### 🔍 WHERE条件\n"
+                                "- ADMIN.USERS(u).status = 'ACTIVE'\n\n"
+                                "### 📋 その他\n"
+                                "- **ORDER BY**: u.created_at DESC\n\n"
+                                "Example 2 (Complex with CTE and Subquery):\n"
+                                "SQL: WITH active_users AS (SELECT * FROM USERS WHERE status='ACTIVE') SELECT u.*, (SELECT COUNT(*) FROM ORDERS o WHERE o.user_id=u.id) as order_count FROM active_users u GROUP BY u.department HAVING COUNT(*) > 5\n\n"
+                                "Output:\n"
+                                "## 📊 SQL構造分析\n\n"
+                                "### 📝 WITH句(CTE)\n"
+                                "- **active_users**: アクティブなユーザーを抽出\n\n"
+                                "### 🔎 サブクエリ\n"
+                                "- **SELECT句**: 各ユーザーの注文数をカウント\n\n"
+                                "### 📦 GROUP BY\n"
+                                "- u.department\n\n"
+                                "### 🎯 HAVING条件\n"
+                                "- COUNT(*) > 5\n\n"
                                 "SQL:\n```sql\n" + s + "\n```"
                             )
 
@@ -2766,21 +2805,17 @@ def build_selectai_tab(pool):
                             ]
 
                             resp = await client.chat.completions.create(model=model_name, messages=messages)
-                            join_text = ""
-                            where_text = ""
+                            sql_structure_md = ""
                             if getattr(resp, "choices", None):
                                 msg = resp.choices[0].message
                                 out = msg.content if hasattr(msg, "content") else ""
-                                s = str(out or "")
-                                s = re.sub(r"```+\w*", "", s)
-                                m = re.search(r"JOIN:\s*([\s\S]*?)\n\s*WHERE:\s*([\s\S]*)$", s, flags=re.IGNORECASE)
-                                if m:
-                                    join_text = m.group(1).strip()
-                                    where_text = m.group(2).strip()
-                            if not join_text:
-                                join_text = "None"
-                            if not where_text:
-                                where_text = "None"
+                                sql_structure_md = str(out or "").strip()
+                                # マークダウンコードブロックを削除
+                                sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
+                                sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
+                                sql_structure_md = sql_structure_md.strip()
+                            if not sql_structure_md:
+                                sql_structure_md = "## 📊 SQL構造分析\n\n情報を抽出できませんでした。"
                             dev_summary = ""
                             user_summary = ""
                             dev_enable=True
@@ -2807,21 +2842,21 @@ def build_selectai_tab(pool):
                                     umsg0 = uresp.choices[0].message
                                     uout = umsg0.content if hasattr(umsg0, "content") else ""
                                     user_summary = re.sub(r"```+\w*", "", str(uout or "")).strip()
-                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=join_text), gr.Textbox(value=where_text), gr.Textbox(value=dev_summary), gr.Textbox(value=user_summary)
+                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=sql_structure_md), gr.Textbox(value=dev_summary), gr.Textbox(value=user_summary)
                         except Exception as e:
                             logger.error(f"_dev_ai_analyze_async error: {e}")
-                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="None"), gr.Textbox(value="None"), gr.Textbox(value=""), gr.Textbox(value="")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
 
                     def _dev_ai_analyze(model_name, sql_text, dev_prompt, user_prompt):
                         import asyncio
                         # 必須入力項目のチェック
                         if not model_name or not str(model_name).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             return
                         if not sql_text or not str(sql_text).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを生成してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを生成してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
                             return
-                        yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="..."), gr.Textbox(value="..."), gr.Textbox(value=""), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="## 📊 SQL構造分析\n\n解析中..."), gr.Textbox(value=""), gr.Textbox(value="")
                         
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
@@ -2998,7 +3033,7 @@ def build_selectai_tab(pool):
                     dev_ai_analyze_btn.click(
                         fn=_dev_ai_analyze,
                         inputs=[dev_analysis_model_input, dev_generated_sql_text, dev_prompt_text, user_prompt_text],
-                        outputs=[dev_ai_analyze_status, dev_join_conditions_text, dev_where_conditions_text, dev_sql_summary_text, user_sql_summary_text],
+                        outputs=[dev_ai_analyze_status, dev_sql_structure_text, dev_sql_summary_text, user_sql_summary_text],
                     )
 
                     dev_chat_clear_btn.click(
@@ -5117,6 +5152,7 @@ def build_selectai_tab(pool):
                                             interactive=True,
                                             show_copy_button=True,
                                             container=False,
+                                            autoscroll=False,
                                         )
 
                         with gr.Row():
@@ -5150,7 +5186,7 @@ def build_selectai_tab(pool):
                                             lines=15,
                                             max_lines=15,
                                             show_copy_button=True,
-                                            autoscroll=True,
+                                            autoscroll=False,
                                             container=False,
                                         )
                             include_extra_prompt.change(lambda v: gr.Accordion(visible=v), inputs=include_extra_prompt, outputs=extra_prompt_section)
@@ -5179,6 +5215,7 @@ def build_selectai_tab(pool):
                                     interactive=False,
                                     show_copy_button=True,
                                     container=False,
+                                    autoscroll=False,
                                 )
 
                     with gr.Accordion(label="3. 実行結果", open=True):

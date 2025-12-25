@@ -33,13 +33,13 @@ def build_selectai_agent_tab(pool):
     with gr.Tabs():
         with gr.TabItem(label="エージェント実行"):
             with gr.Accordion(label="1. 入力", open=True):
-                team_name_input = gr.Textbox(label="Team 名", placeholder="例: RETURNS_TEAM")
-                prompt_input = gr.Textbox(label="プロンプト", lines=3, max_lines=10, show_copy_button=True)
+                team_name_input = gr.Textbox(label="Team 名", placeholder="例: RETURNS_TEAM", autoscroll=False)
+                prompt_input = gr.Textbox(label="プロンプト", lines=3, max_lines=10, show_copy_button=True, autoscroll=False)
                 execute_btn = gr.Button("実行", variant="primary")
 
             with gr.Accordion(label="2. 応答", open=True):
                 agent_reply_md = gr.Markdown(visible=False)
-                raw_output_text = gr.Textbox(label="RAW", visible=False, lines=8, max_lines=15, interactive=False)
+                raw_output_text = gr.Textbox(label="RAW", visible=False, lines=8, max_lines=15, interactive=False, autoscroll=False)
 
             def _run_team(team_name, prompt):
                 tn = str(team_name or "").strip()
@@ -61,15 +61,15 @@ def build_selectai_agent_tab(pool):
                                         cells.append(s)
                             text = "\n".join(cells)
                             reply = _maybe_json_text(text)
-                            return gr.Markdown(visible=True, value=reply or ""), gr.Textbox(visible=bool(text), value=text)
+                            return gr.Markdown(visible=True, value=reply or ""), gr.Textbox(visible=bool(text), value=text, autoscroll=False)
                 except Exception as e:
-                    return gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {e}"), gr.Textbox(visible=True, value=str(e))
+                    return gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {e}"), gr.Textbox(visible=True, value=str(e), autoscroll=False)
 
             execute_btn.click(fn=_run_team, inputs=[team_name_input, prompt_input], outputs=[agent_reply_md, raw_output_text])
 
         with gr.TabItem(label="会話履歴"):
             with gr.Accordion(label="1. 取得", open=True):
-                hist_team_name_input = gr.Textbox(label="Team 名", placeholder="例: RETURNS_TEAM")
+                hist_team_name_input = gr.Textbox(label="Team 名", placeholder="例: RETURNS_TEAM", autoscroll=False)
                 hist_fetch_btn = gr.Button("最新を取得", variant="primary")
             with gr.Accordion(label="2. 表示", open=True):
                 hist_df = gr.Dataframe(label="USER_CLOUD_AI_CONVERSATION_PROMPTS", interactive=False, wrap=True, visible=False, value=pd.DataFrame())
