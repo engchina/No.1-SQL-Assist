@@ -2143,6 +2143,7 @@ def build_selectai_tab(pool):
                             max_lines=15,
                             interactive=False,
                             show_copy_button=True,
+                            autoscroll=False,
                         )
 
                         with gr.Accordion(label="AI分析", open=True):
@@ -3319,22 +3320,22 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("構造情報*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                cm_structure_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
+                                cm_structure_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("主キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                cm_pk_text = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=True, show_copy_button=True, container=False)    
+                                cm_pk_text = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=True, show_copy_button=True, container=False, autoscroll=False)    
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("外部キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                cm_fk_text = gr.Textbox(show_label=False, lines=6, max_lines=14, interactive=True, show_copy_button=True, container=False)
+                                cm_fk_text = gr.Textbox(show_label=False, lines=6, max_lines=14, interactive=True, show_copy_button=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("サンプルデータ(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                cm_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
+                                cm_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("追加入力(オプション)", elem_classes="input-label")
@@ -3346,6 +3347,7 @@ def build_selectai_tab(pool):
                                     lines=8,
                                     max_lines=16,
                                     container=False,
+                                    autoscroll=False,
                                 )
 
                     with gr.Accordion(label="3. コメント自動生成", open=False):
@@ -3381,7 +3383,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("生成されたSQL*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                cm_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=False, show_copy_button=True, container=False)
+                                cm_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False, autoscroll=False)
 
                     with gr.Accordion(label="4. 実行", open=False):
                         with gr.Row():
@@ -3760,22 +3762,22 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("構造情報*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                am_structure_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
+                                am_structure_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("主キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                am_pk_text = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=True, show_copy_button=True, container=False)
+                                am_pk_text = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=True, show_copy_button=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("外部キー情報(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                am_fk_text = gr.Textbox(show_label=False, lines=6, max_lines=14, interactive=True, show_copy_button=True, container=False)
+                                am_fk_text = gr.Textbox(show_label=False, lines=6, max_lines=14, interactive=True, show_copy_button=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("サンプルデータ(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                am_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False)
+                                am_samples_text = gr.Textbox(show_label=False, lines=8, max_lines=16, interactive=True, show_copy_button=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("追加入力(オプション)", elem_classes="input-label")
@@ -3796,6 +3798,7 @@ def build_selectai_tab(pool):
                                     lines=8,
                                     max_lines=16,
                                     container=False,
+                                    autoscroll=False,
                                 )
 
                     with gr.Accordion(label="3. アノテーション自動生成", open=False):
@@ -3829,9 +3832,9 @@ def build_selectai_tab(pool):
                             am_generate_status_md = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("生成されたSQL", elem_classes="input-label")
+                                gr.Markdown("生成されたSQL*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                am_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False)
+                                am_generated_sql = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, container=False, autoscroll=False)
 
                     with gr.Accordion(label="4. 実行", open=False):
                         with gr.Row():
