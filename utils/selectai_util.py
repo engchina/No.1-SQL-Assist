@@ -1106,7 +1106,7 @@ def build_selectai_tab(pool):
                                         constraints_input = gr.Dropdown(
                                             show_label=False,
                                             choices=["true", "false"],
-                                            value="true",
+                                            value="false",
                                             interactive=True,
                                             container=False,
                                         )
@@ -2706,8 +2706,11 @@ def build_selectai_tab(pool):
                                     yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
                         except Exception as e:
                             logger.error(f"_run_sql_common error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（エラー）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
 
-                    def _dev_step_run_sql(generated_sql):
+                    def _dev_step_run_sql(generated_sql, status_text=None):
+                        if status_text and "❌" in str(status_text):
+                            return
                         yield from _run_sql_common(generated_sql, "selectai_dev_chat_result_df")
 
                     async def _dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt):
@@ -2984,7 +2987,7 @@ def build_selectai_tab(pool):
                         outputs=[dev_chat_status_md, dev_generated_sql_text],
                     ).then(
                         fn=_dev_step_run_sql,
-                        inputs=[dev_generated_sql_text],
+                        inputs=[dev_generated_sql_text, dev_chat_status_md],
                         outputs=[dev_chat_status_md, dev_chat_result_df, dev_chat_result_style],
                     ).then(
                         fn=lambda x: gr.Textbox(value=str(x or "")),
@@ -4879,10 +4882,23 @@ def build_selectai_tab(pool):
                             s = remove_comments(str(sql_text or "").strip())
                             
                             prompt = (
-                                "与えられたSQLとデータベースの文脈から、そのSQLが生成されるような最適な日本語の質問を1つだけ作成してください。\n"
-                                "出力は質問文のみ。接頭辞や説明、コードブロック、Markdownは禁止。\n\n"
-                                "前提コンテキスト:\n" + str(ctx_comp or "") + "\n\n"
-                                "対象SQL:\n```sql\n" + s + "\n```"
+                                "与えられたSQLから、そのSQLを生成するための最適な日本語の質問を1つ作成してください。\n\n"
+                                
+                                "【必須ルール】\n"
+                                "1. テーブル名・カラム名を直接使用禁止 → 必ずCOMMENTの業務用語を使用\n"
+                                "2. SELECT句の取得項目を質問に明示（「何を知りたいか」を具体的に）\n"
+                                "3. WHERE句の条件を質問に反映（「どんな条件で」を明確に）\n"
+                                "4. 実際のエンドユーザーが尋ねる自然な表現にする\n\n"
+                                
+                                "【質問の構成例】\n"
+                                "「[条件]における[取得したい項目]は？」\n"
+                                "「[条件]の[対象]の[取得項目]を教えて」\n\n"
+                                
+                                "【出力】\n"
+                                "質問文のみ（前置き・説明・コードブロック・Markdown不要）\n\n"
+                                
+                                "===データベース定義===\n" + str(ctx_comp or "") + "\n\n"
+                                "===対象SQL===\n```sql\n" + s + "\n```"
                             )
                             
                             if str(model_name).startswith("gpt-"):
@@ -5181,7 +5197,9 @@ def build_selectai_tab(pool):
             def _user_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                 yield from _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query)
 
-            def _user_step_run_sql(sql_text):
+            def _user_step_run_sql(sql_text, status_text=None):
+                if status_text and "❌" in str(status_text):
+                    return
                 yield from _run_sql_common(sql_text, "selectai_chat_result_df")
 
             def _on_chat_clear():
@@ -5218,7 +5236,7 @@ def build_selectai_tab(pool):
                 outputs=[chat_status_md, generated_sql_text],
             ).then(
                 fn=_user_step_run_sql,
-                inputs=[generated_sql_text],
+                inputs=[generated_sql_text, chat_status_md],
                 outputs=[chat_status_md, chat_result_df, chat_result_style],
             )
 

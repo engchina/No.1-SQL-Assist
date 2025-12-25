@@ -480,13 +480,33 @@ def get_view_details(pool, view_name):
                 else:
                     col_df = pd.DataFrame(columns=["Column Name", "Data Type", "Nullable", "Comments"])
                 
-                # Get CREATE VIEW statement
+                # Check object type first to avoid ORA-31603 if it's not a standard VIEW
                 cursor.execute(
-                    "SELECT DBMS_METADATA.GET_DDL('VIEW', :view_name, 'ADMIN') FROM DUAL",
-                    view_name=view_name.upper()
+                    "SELECT object_type FROM all_objects WHERE owner = 'ADMIN' AND object_name = :name",
+                    name=view_name.upper()
                 )
-                ddl_result = cursor.fetchone()
-                create_sql = ddl_result[0].read() if ddl_result and ddl_result[0] else ""
+                obj_type_row = cursor.fetchone()
+                obj_type = obj_type_row[0] if obj_type_row else 'VIEW'
+                
+                # Get DDL based on object type
+                ddl_type = 'VIEW'
+                if obj_type == 'MATERIALIZED VIEW':
+                    ddl_type = 'MATERIALIZED_VIEW'
+                elif obj_type == 'TABLE':
+                    ddl_type = 'TABLE'
+                
+                try:
+                    # Get CREATE statement
+                    cursor.execute(
+                        "SELECT DBMS_METADATA.GET_DDL(:type, :name, 'ADMIN') FROM DUAL",
+                        type=ddl_type,
+                        name=view_name.upper()
+                    )
+                    ddl_result = cursor.fetchone()
+                    create_sql = ddl_result[0].read() if ddl_result and ddl_result[0] else ""
+                except Exception as e:
+                    logger.warning(f"Failed to get DDL for {view_name} as {ddl_type}: {e}")
+                    create_sql = f"-- DDL取得失敗 (Type: {ddl_type}): {str(e)}"
                 
                 # Get view comment
                 cursor.execute(
