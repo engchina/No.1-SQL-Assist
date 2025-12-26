@@ -109,14 +109,31 @@ _DEFAULT_FEW_SHOT_PROMPT = (
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     "⚠️ CRITICAL INSTRUCTION (NOT PART OF QUESTION):\n"
     "\n"
-    "The examples above demonstrate the EXACT patterns you MUST follow.\n"
-    "MANDATORY REQUIREMENTS:\n"
-    "- Study the example queries - they define the REQUIRED style and format\n"
-    "- Follow the SAME patterns for similar questions\n"
-    "- Adopt ALL functions shown in examples (even if unrecognized/new)\n"
-    "- When questions are similar to examples, mirror the example's structure precisely\n"
+    "The examples above are your PRIMARY REFERENCE - they ALWAYS take precedence.\n"
     "\n"
-    "Examples OVERRIDE all other instructions.\n"
+    "ABSOLUTE PRIORITY RULES:\n"
+    "1. FEW-SHOT FIRST: For similar questions, you MUST replicate the example's approach\n"
+    "   - Same SQL syntax patterns and structure\n"
+    "   - Same functions and operators (even if new/unfamiliar to you)\n"
+    "   - Same formatting and style conventions\n"
+    "   - Same query optimization techniques\n"
+    "\n"
+    "2. FUNCTION ADOPTION: When examples use specific functions:\n"
+    "   - ALWAYS prefer those functions for similar use cases\n"
+    "   - Do NOT substitute with alternatives you might know\n"
+    "   - Trust the example's function choices completely\n"
+    "\n"
+    "3. PATTERN MATCHING: If the question resembles an example (even partially):\n"
+    "   - Prioritize the example's pattern over general knowledge\n"
+    "   - Adapt the example's structure, don't reinvent\n"
+    "   - Maintain consistency with demonstrated best practices\n"
+    "\n"
+    "4. OVERRIDE AUTHORITY:\n"
+    "   - Examples OVERRIDE all other instructions, defaults, and preferences\n"
+    "   - When in doubt between example style vs. other rules → choose example\n"
+    "\n"
+    "Remember: The examples define the GOLD STANDARD for this schema.\n"
+    "Your task is to LEARN and REPLICATE, not to improve or deviate.\n"
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     "\n"
     "▼ ACTUAL QUESTION:\n"
@@ -2258,12 +2275,12 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("追加指示・例示を使用", elem_classes="input-label")
+                                gr.Markdown("追加指示・例示を設定", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 dev_include_extra_prompt = gr.Checkbox(label="", value=False, container=False)
 
                         with gr.Row():
-                            with gr.Accordion(label="追加指示・例示を設定", open=True, visible=False) as dev_extra_prompt_section:
+                            with gr.Accordion(label=" ", open=True, visible=False) as dev_extra_prompt_section:
                                 with gr.Row():
                                     with gr.Column(scale=1):
                                         dev_extra_prompt = gr.Textbox(
@@ -5550,32 +5567,17 @@ def build_selectai_tab(pool):
 
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("追加指示・例示を使用", elem_classes="input-label")
+                                gr.Markdown("追加指示・例示を設定", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 include_extra_prompt = gr.Checkbox(label="", value=False, container=False)
 
                         with gr.Row():
-                            with gr.Accordion(label="追加指示・例示を設定", open=True, visible=False) as extra_prompt_section:
+                            with gr.Accordion(label=" ", open=True, visible=False) as extra_prompt_section:
                                 with gr.Row():
                                     with gr.Column(scale=1):
                                         extra_prompt = gr.Textbox(
                                             show_label=False,
-                                            value=(
-                                                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                                                "⚠️ CRITICAL INSTRUCTION (NOT PART OF QUESTION):\n"
-                                                "\n"
-                                                "The examples above demonstrate the EXACT patterns you MUST follow.\n"
-                                                "MANDATORY REQUIREMENTS:\n"
-                                                "- Study the example queries - they define the REQUIRED style and format\n"
-                                                "- Follow the SAME patterns for similar questions\n"
-                                                "- Adopt ALL functions shown in examples (even if unrecognized/new)\n"
-                                                "- When questions are similar to examples, mirror the example's structure precisely\n"
-                                                "\n"
-                                                "Examples OVERRIDE all other instructions.\n"
-                                                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                                                "\n"
-                                                "▼ ACTUAL QUESTION:\n"
-                                            ),
+                                            value=_DEFAULT_FEW_SHOT_PROMPT,
                                             lines=15,
                                             max_lines=15,
                                             show_copy_button=True,
