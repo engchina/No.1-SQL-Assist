@@ -7,9 +7,6 @@ custom_css = """
 :root {
   --global-font-family: 
     "Noto Sans JP", 
-    "Noto Sans SC", 
-    "Noto Sans TC", 
-    "Noto Sans HK", 
     "Roboto", 
     Arial, 
     sans-serif;

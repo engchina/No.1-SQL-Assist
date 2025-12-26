@@ -1263,22 +1263,23 @@ def build_management_tab(pool):
                 
                 with gr.Row():
                     with gr.Column(scale=5):
-                        gr.Markdown("### CREATE TABLE SQL")
+                        gr.Markdown("###### CREATE TABLE SQL")
                         table_ddl_text = gr.Textbox(
-                            label="DDL",
-                            show_label=False,
+                            label=" ",
+                            show_label=True,
                             lines=15,
                             max_lines=15,
                             interactive=False,
                             show_copy_button=True,
                             autoscroll=False,
-                            container=False,
+                            container=True,
+                            visible=False,
                         )
                     with gr.Column(scale=5):
-                        gr.Markdown("### 列情報")
+                        gr.Markdown("###### 列情報")
                         table_columns_df = gr.Dataframe(
-                            label="列情報",
-                            show_label=False,
+                            label=" ",
+                            show_label=True,
                             interactive=False,
                             wrap=True,
                             visible=False,
@@ -1290,26 +1291,28 @@ def build_management_tab(pool):
                     with gr.Column(scale=1):
                         gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能")
 
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        gr.Markdown("SQLファイル", elem_classes="input-label")
-                    with gr.Column(scale=5):
-                        table_sql_file_input = gr.File(
-                            show_label=False,
-                            file_types=[".sql", ".txt"],
-                            type="filepath",
-                        )
+                with gr.Accordion(label="SQLファイル", open=False):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown(" ", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            table_sql_file_input = gr.File(
+                                show_label=False,
+                                file_types=[".sql", ".txt"],
+                                type="filepath",
+                            )
                 with gr.Row():
                     with gr.Column(scale=1):
                         gr.Markdown("CREATE TABLE SQL*", elem_classes="input-label")
                     with gr.Column(scale=5):
                         create_table_sql = gr.Textbox(
-                            show_label=False,
+                            label=" ",
+                            show_label=True,
                             placeholder="CREATE TABLE文を入力してください\n例:\nCREATE TABLE test_table (\n  id NUMBER PRIMARY KEY,\n  name VARCHAR2(100)\n);\n\nCOMMENT ON TABLE test_table IS 'テストテーブル';\nCOMMENT ON COLUMN test_table.id IS 'ID';\nCOMMENT ON COLUMN test_table.name IS '名称';",
                             lines=10,
                             max_lines=15,
                             show_copy_button=True,
-                            container=False,
+                            container=True,
                             autoscroll=False,
                         )
                 
@@ -1398,16 +1401,16 @@ def build_management_tab(pool):
                             logger.info(f"Table selected from row {row_index}: {table_name}")
                             col_df, ddl = get_table_details(pool, table_name)
                             if isinstance(col_df, pd.DataFrame) and not col_df.empty:
-                                return table_name, gr.Dataframe(visible=True, value=col_df), ddl
+                                return table_name, gr.Dataframe(visible=True, value=col_df), gr.Textbox(visible=True, value=ddl)
                             else:
-                                return table_name, gr.Dataframe(visible=False, value=pd.DataFrame()), ddl
+                                return table_name, gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value=ddl)
                         else:
                             logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
                     logger.error(f"Error in on_table_select: {e}")
                     logger.error(traceback.format_exc())
                 
-                return "", gr.Dataframe(visible=False, value=pd.DataFrame()), ""
+                return "", gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value="")
             
             def refresh_table_list():
                 try:
@@ -1426,7 +1429,7 @@ def build_management_tab(pool):
                     gr.Markdown(visible=True, value="⏳ テーブルを削除中..."),
                     gr.Textbox(value=str(table_name or ""), autoscroll=False),
                     gr.Dataframe(visible=False, value=pd.DataFrame()),
-                    gr.Textbox(value="", autoscroll=False),
+                    gr.Textbox(visible=False, value="", autoscroll=False),
                 )
                 result = drop_table(pool, table_name)
                 status_md = gr.Markdown(visible=True, value=result)
@@ -1434,7 +1437,7 @@ def build_management_tab(pool):
                     status_md,
                     gr.Textbox(value="", autoscroll=False),
                     gr.Dataframe(value=pd.DataFrame()),
-                    gr.Textbox(value="", autoscroll=False),
+                    gr.Textbox(visible=False, value="", autoscroll=False),
                 )
             
             def execute_create(sql):
@@ -1647,19 +1650,20 @@ def build_management_tab(pool):
                 
                 with gr.Row():                   
                     with gr.Column():
-                        gr.Markdown("### CREATE VIEW SQL")
+                        gr.Markdown("###### CREATE VIEW SQL")
                         view_ddl_text = gr.Textbox(
-                            label="DDL",
-                            show_label=False,
+                            label=" ",
+                            show_label=True,
                             lines=15,
                             max_lines=15,
                             interactive=False,
                             show_copy_button=True,
                             autoscroll=False,
-                            container=False,
+                            container=True,
+                            visible=False,
                         )
                     with gr.Column():
-                        gr.Markdown("### 列情報")
+                        gr.Markdown("###### 列情報")
                         view_columns_df = gr.Dataframe(
                             label="列情報",
                             show_label=False,
@@ -1723,15 +1727,16 @@ def build_management_tab(pool):
                     with gr.Column(scale=1):
                         gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能", elem_classes="input-label")
 
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        gr.Markdown("SQLファイル", elem_classes="input-label")
-                    with gr.Column(scale=5):
-                        view_sql_file_input = gr.File(
-                            show_label=False,
-                            file_types=[".sql", ".txt"],
-                            type="filepath",
-                        )
+                with gr.Accordion(label="SQLファイル", open=False):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown(" ", elem_classes="input-label")
+                        with gr.Column(scale=5):
+                            view_sql_file_input = gr.File(
+                                show_label=False,
+                                file_types=[".sql", ".txt"],
+                                type="filepath",
+                            )
                 with gr.Row():
                     with gr.Column(scale=1):
                         gr.Markdown("CREATE VIEW SQL*", elem_classes="input-label")
@@ -1744,6 +1749,7 @@ def build_management_tab(pool):
                             show_copy_button=True,
                             container=False,
                             autoscroll=False,
+                            visible=False,
                         )
                 
                 with gr.Row():
@@ -1830,16 +1836,16 @@ def build_management_tab(pool):
                             logger.info(f"View selected from row {row_index}: {view_name}")
                             col_df, ddl = get_view_details(pool, view_name)
                             if isinstance(col_df, pd.DataFrame) and not col_df.empty:
-                                return view_name, gr.Dataframe(visible=True, value=col_df), ddl
+                                return view_name, gr.Dataframe(visible=True, value=col_df), gr.Textbox(visible=True, value=ddl)
                             else:
-                                return view_name, gr.Dataframe(visible=False, value=pd.DataFrame()), ddl
+                                return view_name, gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value=ddl)
                         else:
                             logger.warning(f"Row index {row_index} out of bounds, dataframe has {len(current_df)} rows")
                 except Exception as e:
                     logger.error(f"Error in on_view_select: {e}")
                     logger.error(traceback.format_exc())
                 
-                return "", gr.Dataframe(visible=False, value=pd.DataFrame()), ""
+                return "", gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value="")
             
             def refresh_view_list():
                 try:
@@ -1857,14 +1863,14 @@ def build_management_tab(pool):
                 yield (
                     gr.Markdown(visible=True, value="⏳ ビューを削除中..."),
                     "",
-                    pd.DataFrame(),
-                    "",
+                    gr.Dataframe(visible=False, value=pd.DataFrame()),
+                    gr.Textbox(visible=False, value="", autoscroll=False),
                     "",
                     "",
                 )
                 result = drop_view(pool, view_name)
                 status_md = gr.Markdown(visible=True, value=result)
-                yield status_md, "", pd.DataFrame(), "", "", ""
+                yield status_md, "", gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value="", autoscroll=False), "", ""
             
             def execute_create_view_handler(sql):
                 """Execute CREATE VIEW and refresh list."""

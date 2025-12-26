@@ -456,15 +456,16 @@ def build_query_tab(pool):
     """クエリ実行タブのUIを構築する."""
     with gr.Accordion(label="1. SQLの入力", open=True):
         gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。\n\n")
-        with gr.Row():
-            with gr.Column(scale=1):
-                gr.Markdown("SQLファイル", elem_classes="input-label")
-            with gr.Column(scale=5):
-                sql_file_input = gr.File(
-                    show_label=False,
-                    file_types=[".sql", ".txt"],
-                    type="filepath",
-                )
+        with gr.Accordion(label="SQLファイル", open=False):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown(" ", elem_classes="input-label")
+                with gr.Column(scale=5):
+                    sql_file_input = gr.File(
+                        show_label=False,
+                        file_types=[".sql", ".txt"],
+                        type="filepath",
+                    )
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("SQL*", elem_classes="input-label")

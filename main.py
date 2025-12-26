@@ -187,8 +187,9 @@ theme = Default(
     spacing_size="sm",
     font=[
         GoogleFont(name="Noto Sans JP"),
-        GoogleFont(name="Noto Sans SC"),
         GoogleFont(name="Roboto"),
+        "Arial",
+        "sans-serif",
     ],
 ).set()
 

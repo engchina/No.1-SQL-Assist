@@ -2290,14 +2290,20 @@ def build_selectai_tab(pool):
                             dev_chat_status_md = gr.Markdown(visible=False)
 
                     with gr.Accordion(label="2. 生成SQL・分析", open=True):
-                        dev_generated_sql_text = gr.Textbox(
-                            label="生成されたSQL*",
-                            lines=8,
-                            max_lines=15,
-                            interactive=True,
-                            show_copy_button=True,
-                            autoscroll=False,
-                        )
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("生成されたSQL*", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                dev_generated_sql_text = gr.Textbox(
+                                    label=" ",
+                                    show_label=True,
+                                    lines=8,
+                                    max_lines=15,
+                                    interactive=True,
+                                    show_copy_button=True,
+                                    container=True,
+                                    autoscroll=False,
+                                )
 
                         with gr.Accordion(label="AI分析", open=True):
                             with gr.Row():
@@ -2343,7 +2349,7 @@ def build_selectai_tab(pool):
 
                             with gr.Row():
                                 dev_sql_structure_text = gr.Textbox(
-                                    label="SQL構造分析",
+                                    label="SQL構造分析結果",
                                     lines=15,
                                     max_lines=30,
                                     interactive=False,
@@ -4899,7 +4905,7 @@ def build_selectai_tab(pool):
                             rev_analysis_status_md = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("SQL構造分析", elem_classes="input-label")
+                                gr.Markdown("結果", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 rev_sql_structure_output = gr.Textbox(label=" ", show_label=True, lines=15, max_lines=20, interactive=True, show_copy_button=True, container=True, autoscroll=False)
 
@@ -5067,24 +5073,21 @@ def build_selectai_tab(pool):
                                 
                                 "### 📋 SELECT句\n"
                                 "- [DISTINCT] (if present)\n"
-                                "- [テーブル業務用語](別名).[列業務用語] [AS alias]\n"
-                                "- aggregate_function([テーブル業務用語](別名).[列業務用語]) [AS alias]\n"
-                                "- CASE WHEN [condition] THEN [result1] ELSE [result2] END [AS alias]\n"
-                                "- expression [AS alias] (preserve function structure exactly)\n"
+                                "- [テーブル業務用語](alias).[列業務用語] [AS alias]\n"
+                                "- aggregate_function([テーブル業務用語](alias).[列業務用語]) [AS alias]\n"
+                                "- expression [AS alias]\n"
                                 "- (サブクエリ-N) AS alias\n"
                                 "- * (if SELECT *)\n\n"
                                 
                                 "### 📁 FROM句\n"
-                                "- [テーブル業務用語] [AS alias]\n"
-                                "- [結合方式]: EXPLICIT_JOIN (JOIN...ON) / IMPLICIT_JOIN (FROM t1, t2 WHERE)\n"
+                                "- [テーブル業務用語] AS alias\n"
                                 "- (サブクエリ-N) AS alias (if inline view)\n\n"
                                 
                                 "### 🔗 JOIN句\n"
                                 "- **[JOIN_TYPE]**: [テーブルA業務用語](aliasA) JOIN [テーブルB業務用語](aliasB)\n"
                                 "  - ON: [テーブルA業務用語](aliasA).[列A業務用語] = [テーブルB業務用語](aliasB).[列B業務用語]\n"
                                 "  - ON: condition2 (if multiple conditions)\n"
-                                "  - USING: ([列業務用語]) (if USING clause)\n"
-                                "- **IMPLICIT**: [テーブルA業務用語](aliasA), [テーブルB業務用語](aliasB) - condition in WHERE\n\n"
+                                "  - USING: ([列業務用語]) (if USING clause)\n\n"
                                 
                                 "### 🔍 WHERE句\n"
                                 "- [テーブル業務用語](alias).[列業務用語] operator value\n"
@@ -5094,8 +5097,7 @@ def build_selectai_tab(pool):
                                 "- AND/OR EXISTS (サブクエリ-N)\n"
                                 "- AND/OR [テーブル業務用語](alias).[列業務用語] BETWEEN value1 AND value2\n"
                                 "- AND/OR [テーブル業務用語](alias).[列業務用語] LIKE 'pattern'\n"
-                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IS [NOT] NULL\n"
-                                "- Complex expressions: preserve function structure exactly\n\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IS [NOT] NULL\n\n"
                                 
                                 "### 📦 GROUP BY句\n"
                                 "- [テーブル業務用語](alias).[列業務用語1]\n"
@@ -5125,11 +5127,10 @@ def build_selectai_tab(pool):
                                 
                                 "### 🔎 サブクエリ\n"
                                 "- **サブクエリ-N** [Location: SELECT/FROM/WHERE/HAVING in main/CTE]:\n"
-                                "  - SELECT: [DISTINCT] [columns/expressions using 業務用語]\n"
+                                "  - SELECT: [DISTINCT] columns/expressions\n"
                                 "  - FROM: [テーブル業務用語](alias)\n"
                                 "  - JOIN: **[JOIN_TYPE]** [テーブル業務用語](alias) ON condition\n"
-                                "  - WHERE: conditions (use 業務用語)\n"
-                                "  - Correlation: [内部テーブル業務用語](alias).[列業務用語] = [外部テーブル業務用語](alias).[列業務用語]\n"
+                                "  - WHERE: conditions\n"
                                 "  - **NESTED-N-M**: (nested subquery with same structure)\n\n"
                                 
                                 "### 🔀 SET演算\n"
@@ -5141,7 +5142,7 @@ def build_selectai_tab(pool):
                                 
                                 "CRITICAL RULES for 100% SQL Reconstruction:\n"
                                 "- Replace physical table/column names with business terms from COMMENT\n"
-                                "- Preserve alias exactly as in original SQL (e.g., ZHR, ZER, ADR)\n"
+                                "- Preserve alias exactly as in original SQL\n"
                                 "- Format: [テーブル業務用語](alias).[列業務用語]\n"
                                 "- MUST preserve ALL literal values exactly: strings with quotes, numbers, date literals\n"
                                 "- MUST preserve ALL operators exactly: =, >, <, >=, <=, <>, !=, LIKE, IN, BETWEEN, IS NULL\n"
@@ -5149,40 +5150,60 @@ def build_selectai_tab(pool):
                                 "- MUST preserve CASE expression structure completely with WHEN/THEN/ELSE\n"
                                 "- MUST preserve nested function structure: TO_NUMBER(TO_CHAR(TO_DATE(...)))\n"
                                 "- MUST preserve AND/OR/NOT logical structure exactly\n"
-                                "- MUST distinguish EXPLICIT JOIN (JOIN...ON) vs IMPLICIT JOIN (FROM t1, t2 WHERE)\n"
-                                "- For IMPLICIT JOIN: list tables with comma in FROM, show join condition in WHERE\n"
+                                "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id): list in FROM, show condition in WHERE\n"
                                 "- サブクエリ: Number sequentially (サブクエリ-1, サブクエリ-2...) and expand completely\n"
-                                "- For correlated subqueries: show Correlation with inner.col = outer.col\n"
                                 "- For nested subqueries: label as NESTED-X-Y and expand\n"
                                 "- If section is empty/not present, omit that section entirely\n\n"
                                 
-                                "Example:\n"
-                                "SQL: SELECT ZHR.EMPLID, CASE WHEN TO_NUMBER(TO_CHAR(TO_DATE(substr(ZER.CAL_ID,4,6)||'01','YYYYMMDD'),'MM'))>=4 THEN TO_NUMBER(TO_CHAR(TO_DATE(substr(ZER.CAL_ID,4,6)||'01','YYYYMMDD'),'YYYY')) ELSE TO_NUMBER(TO_CHAR(TO_DATE(substr(ZER.CAL_ID,4,6)||'01','YYYYMMDD'),'YYYY'))-1 END AS FiscalYear FROM PS_Z_IF_HRBASE_VW ZHR, PS_Z_GP_WA_SAL_ER ZER WHERE ZHR.EMPLID=ZER.EMPLID AND ZHR.EFFDT=(SELECT MAX(ZHR1.EFFDT) FROM PS_Z_IF_HRBASE_VW ZHR1 WHERE ZHR1.EMPLID=ZHR.EMPLID AND ZHR1.EFFDT<=SYSDATE)\n\n"
+                                "Example 1 (Simple):\n"
+                                "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ORDERS o ON u.id = o.user_id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
                                 
                                 "Output:\n"
                                 "## 📋 SQL論理構造 (業務用語版)\n\n"
                                 
                                 "### 📋 SELECT句\n"
-                                "- [人事基本](ZHR).[社員番号]\n"
-                                "- CASE WHEN TO_NUMBER(TO_CHAR(TO_DATE(SUBSTR([給与計算結果(支給)](ZER).[カレンダーID], 4, 6) || '01', 'YYYYMMDD'), 'MM')) >= 4 THEN TO_NUMBER(TO_CHAR(TO_DATE(SUBSTR([給与計算結果(支給)](ZER).[カレンダーID], 4, 6) || '01', 'YYYYMMDD'), 'YYYY')) ELSE TO_NUMBER(TO_CHAR(TO_DATE(SUBSTR([給与計算結果(支給)](ZER).[カレンダーID], 4, 6) || '01', 'YYYYMMDD'), 'YYYY')) - 1 END AS FiscalYear\n\n"
+                                "- *\n\n"
                                 
                                 "### 📁 FROM句\n"
-                                "- [人事基本] AS ZHR\n"
-                                "- [給与計算結果(支給)] AS ZER\n"
-                                "- [結合方式]: IMPLICIT_JOIN\n\n"
+                                "- [ユーザマスタ] AS u\n\n"
+                                
+                                "### 🔗 JOIN句\n"
+                                "- **INNER JOIN**: [ユーザマスタ](u) JOIN [注文明細](o)\n"
+                                "  - ON: [ユーザマスタ](u).[ユーザID] = [注文明細](o).[ユーザID]\n\n"
                                 
                                 "### 🔍 WHERE句\n"
-                                "- [人事基本](ZHR).[社員番号] = [給与計算結果(支給)](ZER).[社員番号]\n"
-                                "- AND [人事基本](ZHR).[有効日] = (サブクエリ-1)\n\n"
+                                "- [ユーザマスタ](u).[ステータス] = 'ACTIVE'\n\n"
+                                
+                                "### 📊 ORDER BY句\n"
+                                "- [ユーザマスタ](u).[作成日時] DESC\n\n"
+                                
+                                "Example 2 (Complex with implicit JOIN and correlated subquery):\n"
+                                "SQL: SELECT u.id, u.name, o.total FROM USERS u, ORDERS o WHERE u.id = o.user_id AND o.order_date = (SELECT MAX(o2.order_date) FROM ORDERS o2 WHERE o2.user_id = u.id) ORDER BY u.id\n\n"
+                                
+                                "Output:\n"
+                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                
+                                "### 📋 SELECT句\n"
+                                "- [ユーザマスタ](u).[ユーザID]\n"
+                                "- [ユーザマスタ](u).[氏名]\n"
+                                "- [注文明細](o).[合計金額]\n\n"
+                                
+                                "### 📁 FROM句\n"
+                                "- [ユーザマスタ] AS u\n"
+                                "- [注文明細] AS o\n\n"
+                                
+                                "### 🔍 WHERE句\n"
+                                "- [ユーザマスタ](u).[ユーザID] = [注文明細](o).[ユーザID]\n"
+                                "- AND [注文明細](o).[注文日] = (サブクエリ-1)\n\n"
+                                
+                                "### 📊 ORDER BY句\n"
+                                "- [ユーザマスタ](u).[ユーザID] ASC\n\n"
                                 
                                 "### 🔎 サブクエリ\n"
                                 "- **サブクエリ-1** [Location: WHERE in main query]:\n"
-                                "  - SELECT: MAX([人事基本](ZHR1).[有効日])\n"
-                                "  - FROM: [人事基本](ZHR1)\n"
-                                "  - WHERE:\n"
-                                "    - [人事基本](ZHR1).[社員番号] = [人事基本](ZHR).[社員番号]\n"
-                                "    - AND [人事基本](ZHR1).[有効日] <= SYSDATE\n"
-                                "  - Correlation: [人事基本](ZHR1).[社員番号] = [人事基本](ZHR).[社員番号]\n\n"
+                                "  - SELECT: MAX([注文明細](o2).[注文日])\n"
+                                "  - FROM: [注文明細] AS o2\n"
+                                "  - WHERE: [注文明細](o2).[ユーザID] = [ユーザマスタ](u).[ユーザID]\n\n"
                                 
                                 "===SQL構造分析===\n" + (sql_structure if sql_structure else "(未分析)") + "\n\n"
                                 "===データベース定義===\n" + str(ctx_comp or "") + "\n\n"
