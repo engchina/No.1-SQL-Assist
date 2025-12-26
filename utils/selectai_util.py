@@ -122,6 +122,156 @@ _DEFAULT_FEW_SHOT_PROMPT = (
     "▼ ACTUAL QUESTION:\n"
 )
 
+# SQL構造分析用のグローバルプロンプト
+_SQL_STRUCTURE_ANALYSIS_PROMPT = (
+    "Analyze the SQL query and extract its COMPLETE structure in Markdown format.\n"
+    "GOAL: Output must contain 100% of SQL information to enable exact SQL reconstruction.\n"
+    "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
+    "## 📊 SQL構造分析\n\n"
+    "### 📋 SELECT句\n"
+    "- [DISTINCT] (if present)\n"
+    "- schema.table(alias).column1 [AS alias1]\n"
+    "- schema.table(alias).column2 [AS alias2]\n"
+    "- aggregate_function(schema.table(alias).column) [AS alias]\n"
+    "- expression [AS alias]\n"
+    "- (サブクエリ-N) AS alias\n"
+    "- * (if SELECT *)\n\n"
+    "### 📁 FROM句\n"
+    "- schema.table_name [AS alias]\n"
+    "- (サブクエリ-N) AS alias (if inline view)\n\n"
+    "### 🔗 JOIN句\n"
+    "- **[JOIN_TYPE]**: schema.table1(alias1) JOIN schema.table2(alias2)\n"
+    "  - ON: condition1\n"
+    "  - ON: condition2 (if multiple conditions)\n"
+    "  - USING: (column_name) (if USING clause)\n\n"
+    "### 🔍 WHERE句\n"
+    "- schema.table(alias).column operator value\n"
+    "- AND/OR schema.table(alias).column operator value\n"
+    "- AND/OR schema.table(alias).column IN (サブクエリ-N)\n"
+    "- AND/OR EXISTS (サブクエリ-N)\n"
+    "- AND/OR schema.table(alias).column BETWEEN value1 AND value2\n"
+    "- AND/OR schema.table(alias).column LIKE 'pattern'\n"
+    "- AND/OR schema.table(alias).column IS [NOT] NULL\n\n"
+    "### 📦 GROUP BY句\n"
+    "- schema.table(alias).column1\n"
+    "- schema.table(alias).column2\n\n"
+    "### 🎯 HAVING句\n"
+    "- aggregate_function(schema.table(alias).column) operator value\n"
+    "- AND/OR aggregate_function(column) operator (サブクエリ-N)\n\n"
+    "### 📊 ORDER BY句\n"
+    "- schema.table(alias).column1 ASC/DESC [NULLS FIRST/LAST]\n"
+    "- schema.table(alias).column2 ASC/DESC\n\n"
+    "### 📏 LIMIT/OFFSET句\n"
+    "- LIMIT: n / FETCH FIRST n ROWS ONLY\n"
+    "- OFFSET: m / OFFSET m ROWS\n\n"
+    "### 📝 WITH句(CTE)\n"
+    "- **cte_name1**:\n"
+    "  - SELECT: [DISTINCT] col1, col2, aggregate_func(col) AS alias, (サブクエリ-N) AS alias\n"
+    "  - FROM: schema.table_name(alias)\n"
+    "  - JOIN: **[JOIN_TYPE]** schema.table(alias) ON condition\n"
+    "  - WHERE: condition1 AND/OR condition2\n"
+    "  - GROUP BY: col1, col2\n"
+    "  - HAVING: aggregate_condition\n"
+    "  - ORDER BY: col ASC/DESC\n"
+    "- **cte_name2**: (same structure)\n\n"
+    "### 🔎 サブクエリ\n"
+    "- **サブクエリ-1** [Location: SELECT/FROM/WHERE/HAVING in main/CTE]:\n"
+    "  - SELECT: [DISTINCT] columns/expressions\n"
+    "  - FROM: schema.table_name(alias)\n"
+    "  - JOIN: **[JOIN_TYPE]** schema.table(alias) ON condition\n"
+    "  - WHERE: conditions\n"
+    "  - GROUP BY: columns\n"
+    "  - HAVING: conditions\n"
+    "  - ORDER BY: columns\n"
+    "  - **NESTED-1-1**: (nested subquery with same structure)\n"
+    "- **サブクエリ-2**: (same structure)\n\n"
+    "### 🔀 SET演算\n"
+    "- **[UNION/UNION ALL/INTERSECT/MINUS/EXCEPT]**:\n"
+    "  - Query1: (expand structure or reference)\n"
+    "  - Query2: (expand structure or reference)\n\n"
+    "---\n\n"
+    "Rules for 100% SQL Reconstruction:\n"
+    "- MUST output ALL columns in SELECT with exact order, aliases, and expressions\n"
+    "- MUST preserve ALL literal values, operators, and functions exactly as written\n"
+    "- MUST include schema prefix when present in original SQL\n"
+    "- Format: schema.table_name(alias).column when alias exists\n"
+    "- JOIN_TYPE: INNER JOIN, LEFT [OUTER] JOIN, RIGHT [OUTER] JOIN, FULL [OUTER] JOIN, CROSS JOIN, NATURAL JOIN\n"
+    "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id), list in FROM and show condition in WHERE\n"
+    "- For compound JOIN conditions, list each ON condition separately\n"
+    "- Preserve ALL operators: =, >, <, >=, <=, <>, !=, LIKE, NOT LIKE, IN, NOT IN, BETWEEN, IS NULL, IS NOT NULL, EXISTS, NOT EXISTS\n"
+    "- Preserve ALL string literals with quotes, numeric values, date literals\n"
+    "- Preserve AND/OR/NOT logical structure exactly\n"
+    "- Do NOT merge JOIN ON conditions into WHERE\n"
+    "- WITH句(CTE): Expand EACH CTE completely\n"
+    "- サブクエリ: Number sequentially (サブクエリ-1, サブクエリ-2...) and expand completely\n"
+    "- For nested subqueries, label as NESTED-X-Y and expand\n"
+    "- If section is empty/not present, omit that section entirely\n"
+    "- Output content in English (except section headers in Japanese)\n\n"
+    "Example 1 (Simple):\n"
+    "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ROLES r ON u.role_id = r.id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
+    "Output:\n"
+    "## 📊 SQL構造分析\n\n"
+    "### 📋 SELECT句\n"
+    "- *\n\n"
+    "### 📁 FROM句\n"
+    "- ADMIN.USERS AS u\n\n"
+    "### 🔗 JOIN句\n"
+    "- **INNER JOIN**: ADMIN.USERS(u) JOIN ADMIN.ROLES(r)\n"
+    "  - ON: ADMIN.USERS(u).role_id = ADMIN.ROLES(r).id\n\n"
+    "### 🔍 WHERE句\n"
+    "- ADMIN.USERS(u).status = 'ACTIVE'\n\n"
+    "### 📊 ORDER BY句\n"
+    "- ADMIN.USERS(u).created_at DESC\n\n"
+    "Example 2 (Complex with nested subqueries in WHERE, SELECT, and CTE):\n"
+    "SQL: WITH active_users AS (SELECT user_id, status, (SELECT dept_name FROM DEPARTMENTS d WHERE d.id=u.dept_id) as dept FROM USERS u WHERE status='ACTIVE' AND dept_id IN (SELECT id FROM DEPARTMENTS WHERE budget > 10000)) SELECT u.*, (SELECT COUNT(*) FROM ORDERS o WHERE o.user_id=u.user_id AND o.status IN (SELECT code FROM ORDER_STATUS WHERE active=1)) as order_count FROM active_users u WHERE EXISTS (SELECT 1 FROM PAYMENTS p WHERE p.user_id=u.user_id AND p.amount > (SELECT AVG(amount) FROM PAYMENTS)) ORDER BY u.user_id\n\n"
+    "Output:\n"
+    "## 📊 SQL構造分析\n\n"
+    "### 📝 WITH句(CTE)\n"
+    "- **active_users**:\n"
+    "  - SELECT: USERS(u).user_id, USERS(u).status, (サブクエリ-1) AS dept\n"
+    "  - FROM: USERS(u)\n"
+    "  - WHERE: \n"
+    "    - USERS(u).status = 'ACTIVE'\n"
+    "    - AND USERS(u).dept_id IN (サブクエリ-2)\n\n"
+    "### 📋 SELECT句\n"
+    "- active_users(u).*\n"
+    "- (サブクエリ-4) AS order_count\n\n"
+    "### 📁 FROM句\n"
+    "- active_users AS u\n\n"
+    "### 🔍 WHERE句\n"
+    "- EXISTS (サブクエリ-3)\n\n"
+    "### 📊 ORDER BY句\n"
+    "- active_users(u).user_id ASC\n\n"
+    "### 🔎 サブクエリ\n"
+    "- **サブクエリ-1** [Location: SELECT in CTE active_users]:\n"
+    "  - SELECT: DEPARTMENTS(d).dept_name\n"
+    "  - FROM: DEPARTMENTS(d)\n"
+    "  - WHERE: DEPARTMENTS(d).id = USERS(u).dept_id\n"
+    "- **サブクエリ-2** [Location: WHERE in CTE active_users]:\n"
+    "  - SELECT: DEPARTMENTS.id\n"
+    "  - FROM: DEPARTMENTS\n"
+    "  - WHERE: DEPARTMENTS.budget > 10000\n"
+    "- **サブクエリ-3** [Location: WHERE in main query]:\n"
+    "  - SELECT: 1\n"
+    "  - FROM: PAYMENTS(p)\n"
+    "  - WHERE: \n"
+    "    - PAYMENTS(p).user_id = active_users(u).user_id\n"
+    "    - AND PAYMENTS(p).amount > (NESTED-3-1)\n"
+    "  - **NESTED-3-1**:\n"
+    "    - SELECT: AVG(PAYMENTS.amount)\n"
+    "    - FROM: PAYMENTS\n"
+    "- **サブクエリ-4** [Location: SELECT in main query]:\n"
+    "  - SELECT: COUNT(*)\n"
+    "  - FROM: ORDERS(o)\n"
+    "  - WHERE: \n"
+    "    - ORDERS(o).user_id = active_users(u).user_id\n"
+    "    - AND ORDERS(o).status IN (NESTED-4-1)\n"
+    "  - **NESTED-4-1**:\n"
+    "    - SELECT: ORDER_STATUS.code\n"
+    "    - FROM: ORDER_STATUS\n"
+    "    - WHERE: ORDER_STATUS.active = 1\n"
+)
+
 _TABLE_DF_CACHE = {"df": None, "ts": 0.0}
 _VIEW_DF_CACHE = {"df": None, "ts": 0.0}
 
@@ -1230,13 +1380,13 @@ def build_selectai_tab(pool):
                         if not orig:
                             attrs = {}
                             sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
-                            return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
+                            return gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), edited_name, gr.Textbox(value=bd, autoscroll=False), sql, (new or orig or "")
                         if not new:
                             new = orig
                         if not bd:
                             attrs = _get_profile_attributes(pool, orig) or {}
                             sql = _generate_create_sql_from_attrs(orig, attrs, "")
-                            return gr.Markdown(visible=True, value="⚠️ カテゴリを入力してください"), new, gr.Textbox(value=bd), sql, orig
+                            return gr.Markdown(visible=True, value="⚠️ カテゴリを入力してください"), new, gr.Textbox(value=bd, autoscroll=False), sql, orig
                         attrs = _get_profile_attributes(pool, orig) or {}
                         attr_str = json.dumps(attrs, ensure_ascii=False)
                         with pool.acquire() as conn:
@@ -1251,12 +1401,12 @@ def build_selectai_tab(pool):
                         # JSONファイルを更新（対象のprofileのみ）
                         _save_profile_to_json(pool, new, bd, original_name=orig)
                         sql = _generate_create_sql_from_attrs(new, attrs, bd)
-                        return gr.Markdown(visible=True, value=f"✅ 更新しました: {new}"), new, gr.Textbox(value=bd), sql, new
+                        return gr.Markdown(visible=True, value=f"✅ 更新しました: {new}"), new, gr.Textbox(value=bd, autoscroll=False), sql, new
                     except Exception as e:
                         logger.error(f"update_selected_profile error: {e}")
                         attrs = _get_profile_attributes(pool, orig or edited_name) or {}
                         sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
-                        return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), edited_name, gr.Textbox(value=bd), sql, (new or orig or "")
+                        return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), edited_name, gr.Textbox(value=bd, autoscroll=False), sql, (new or orig or "")
 
                 def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, constraints, category):
                     if not tables and not views:
@@ -1721,7 +1871,7 @@ def build_selectai_tab(pool):
                         
                         logger.info("Prediction completed successfully")
                         logger.info("="*50)
-                        return gr.Markdown(visible=True, value="\n".join(lines)), gr.Textbox(value=pred)
+                        return gr.Markdown(visible=True, value="\n".join(lines)), gr.Textbox(value=pred, autoscroll=False)
                         
                     except Exception as e:
                         error_msg = f"テストに失敗しました: {e}"
@@ -1963,11 +2113,11 @@ def build_selectai_tab(pool):
                             try:
                                 df = pd.read_excel(str(file_path))
                             except Exception:
-                                return gr.Textbox(visible=True, value="Excel読み込みに失敗しました")
+                                return gr.Textbox(visible=True, value="Excel読み込みに失敗しました", autoscroll=False)
                             cols_map = {str(c).upper(): c for c in df.columns.tolist()}
                             required = {"TERM", "DEFINITION"}
                             if not required.issubset(set(cols_map.keys())):
-                                return gr.Textbox(visible=True, value="列名は TERM, DESCRIPTION が必要です")
+                                return gr.Textbox(visible=True, value="列名は TERM, DESCRIPTION が必要です", autoscroll=False)
                             out_df = pd.DataFrame({
                                 "TERM": df[cols_map["TERM"]],
                                 "DEFINITION": df[cols_map["DEFINITION"]],
@@ -1979,10 +2129,10 @@ def build_selectai_tab(pool):
                                 dest.unlink()
                             with pd.ExcelWriter(dest) as writer:
                                 out_df.to_excel(writer, sheet_name="terms", index=False)
-                            return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件")
+                            return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件", autoscroll=False)
                         except Exception as e:
                             logger.error(f"用語集Excelアップロードに失敗しました: {e}")
-                            return gr.Textbox(visible=True, value=f"❌ エラー: {e}")
+                            return gr.Textbox(visible=True, value=f"❌ エラー: {e}", autoscroll=False)
 
                     term_preview_btn.click(
                         fn=_term_refresh,
@@ -2655,7 +2805,7 @@ def build_selectai_tab(pool):
                                     if run_sql.endswith(";"):
                                         run_sql = run_sql[:-1]
                                     cursor.execute(run_sql)
-                                    exec_rows = cursor.fetchmany(size=100)
+                                    exec_rows = cursor.fetchmany(size=10000)
                                     exec_cols = [d[0] for d in cursor.description] if cursor.description else []
                                     if exec_rows:
                                         cleaned_rows = []
@@ -2734,155 +2884,8 @@ def build_selectai_tab(pool):
                                     compartment_id=compartment_id,
                                 )
 
-                            prompt = (
-                                "Analyze the SQL query and extract its COMPLETE structure in Markdown format.\n"
-                                "GOAL: Output must contain 100% of SQL information to enable exact SQL reconstruction.\n"
-                                "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
-                                "## 📊 SQL構造分析\n\n"
-                                "### 📋 SELECT句\n"
-                                "- [DISTINCT] (if present)\n"
-                                "- schema.table(alias).column1 [AS alias1]\n"
-                                "- schema.table(alias).column2 [AS alias2]\n"
-                                "- aggregate_function(schema.table(alias).column) [AS alias]\n"
-                                "- expression [AS alias]\n"
-                                "- (サブクエリ-N) AS alias\n"
-                                "- * (if SELECT *)\n\n"
-                                "### 📁 FROM句\n"
-                                "- schema.table_name [AS alias]\n"
-                                "- (サブクエリ-N) AS alias (if inline view)\n\n"
-                                "### 🔗 JOIN句\n"
-                                "- **[JOIN_TYPE]**: schema.table1(alias1) JOIN schema.table2(alias2)\n"
-                                "  - ON: condition1\n"
-                                "  - ON: condition2 (if multiple conditions)\n"
-                                "  - USING: (column_name) (if USING clause)\n\n"
-                                "### 🔍 WHERE句\n"
-                                "- schema.table(alias).column operator value\n"
-                                "- AND/OR schema.table(alias).column operator value\n"
-                                "- AND/OR schema.table(alias).column IN (サブクエリ-N)\n"
-                                "- AND/OR EXISTS (サブクエリ-N)\n"
-                                "- AND/OR schema.table(alias).column BETWEEN value1 AND value2\n"
-                                "- AND/OR schema.table(alias).column LIKE 'pattern'\n"
-                                "- AND/OR schema.table(alias).column IS [NOT] NULL\n\n"
-                                "### 📦 GROUP BY句\n"
-                                "- schema.table(alias).column1\n"
-                                "- schema.table(alias).column2\n\n"
-                                "### 🎯 HAVING句\n"
-                                "- aggregate_function(schema.table(alias).column) operator value\n"
-                                "- AND/OR aggregate_function(column) operator (サブクエリ-N)\n\n"
-                                "### 📊 ORDER BY句\n"
-                                "- schema.table(alias).column1 ASC/DESC [NULLS FIRST/LAST]\n"
-                                "- schema.table(alias).column2 ASC/DESC\n\n"
-                                "### 📏 LIMIT/OFFSET句\n"
-                                "- LIMIT: n / FETCH FIRST n ROWS ONLY\n"
-                                "- OFFSET: m / OFFSET m ROWS\n\n"
-                                "### 📝 WITH句(CTE)\n"
-                                "- **cte_name1**:\n"
-                                "  - SELECT: [DISTINCT] col1, col2, aggregate_func(col) AS alias, (サブクエリ-N) AS alias\n"
-                                "  - FROM: schema.table_name(alias)\n"
-                                "  - JOIN: **[JOIN_TYPE]** schema.table(alias) ON condition\n"
-                                "  - WHERE: condition1 AND/OR condition2\n"
-                                "  - GROUP BY: col1, col2\n"
-                                "  - HAVING: aggregate_condition\n"
-                                "  - ORDER BY: col ASC/DESC\n"
-                                "- **cte_name2**: (same structure)\n\n"
-                                "### 🔎 サブクエリ\n"
-                                "- **サブクエリ-1** [Location: SELECT/FROM/WHERE/HAVING in main/CTE]:\n"
-                                "  - SELECT: [DISTINCT] columns/expressions\n"
-                                "  - FROM: schema.table_name(alias)\n"
-                                "  - JOIN: **[JOIN_TYPE]** schema.table(alias) ON condition\n"
-                                "  - WHERE: conditions\n"
-                                "  - GROUP BY: columns\n"
-                                "  - HAVING: conditions\n"
-                                "  - ORDER BY: columns\n"
-                                "  - **NESTED-1-1**: (nested subquery with same structure)\n"
-                                "- **サブクエリ-2**: (same structure)\n\n"
-                                "### 🔀 SET演算\n"
-                                "- **[UNION/UNION ALL/INTERSECT/MINUS/EXCEPT]**:\n"
-                                "  - Query1: (expand structure or reference)\n"
-                                "  - Query2: (expand structure or reference)\n\n"
-                                "---\n\n"
-                                "Rules for 100% SQL Reconstruction:\n"
-                                "- MUST output ALL columns in SELECT with exact order, aliases, and expressions\n"
-                                "- MUST preserve ALL literal values, operators, and functions exactly as written\n"
-                                "- MUST include schema prefix when present in original SQL\n"
-                                "- Format: schema.table_name(alias).column when alias exists\n"
-                                "- JOIN_TYPE: INNER JOIN, LEFT [OUTER] JOIN, RIGHT [OUTER] JOIN, FULL [OUTER] JOIN, CROSS JOIN, NATURAL JOIN\n"
-                                "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id), list in FROM and show condition in WHERE\n"
-                                "- For compound JOIN conditions, list each ON condition separately\n"
-                                "- Preserve ALL operators: =, >, <, >=, <=, <>, !=, LIKE, NOT LIKE, IN, NOT IN, BETWEEN, IS NULL, IS NOT NULL, EXISTS, NOT EXISTS\n"
-                                "- Preserve ALL string literals with quotes, numeric values, date literals\n"
-                                "- Preserve AND/OR/NOT logical structure exactly\n"
-                                "- Do NOT merge JOIN ON conditions into WHERE\n"
-                                "- WITH句(CTE): Expand EACH CTE completely\n"
-                                "- サブクエリ: Number sequentially (サブクエリ-1, サブクエリ-2...) and expand completely\n"
-                                "- For nested subqueries, label as NESTED-X-Y and expand\n"
-                                "- If section is empty/not present, omit that section entirely\n"
-                                "- Output content in English (except section headers in Japanese)\n\n"
-                                "Example 1 (Simple):\n"
-                                "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ROLES r ON u.role_id = r.id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
-                                "Output:\n"
-                                "## 📊 SQL構造分析\n\n"
-                                "### 📋 SELECT句\n"
-                                "- *\n\n"
-                                "### 📁 FROM句\n"
-                                "- ADMIN.USERS AS u\n\n"
-                                "### 🔗 JOIN句\n"
-                                "- **INNER JOIN**: ADMIN.USERS(u) JOIN ADMIN.ROLES(r)\n"
-                                "  - ON: ADMIN.USERS(u).role_id = ADMIN.ROLES(r).id\n\n"
-                                "### 🔍 WHERE句\n"
-                                "- ADMIN.USERS(u).status = 'ACTIVE'\n\n"
-                                "### 📊 ORDER BY句\n"
-                                "- ADMIN.USERS(u).created_at DESC\n\n"
-                                "Example 2 (Complex with nested subqueries in WHERE, SELECT, and CTE):\n"
-                                "SQL: WITH active_users AS (SELECT user_id, status, (SELECT dept_name FROM DEPARTMENTS d WHERE d.id=u.dept_id) as dept FROM USERS u WHERE status='ACTIVE' AND dept_id IN (SELECT id FROM DEPARTMENTS WHERE budget > 10000)) SELECT u.*, (SELECT COUNT(*) FROM ORDERS o WHERE o.user_id=u.user_id AND o.status IN (SELECT code FROM ORDER_STATUS WHERE active=1)) as order_count FROM active_users u WHERE EXISTS (SELECT 1 FROM PAYMENTS p WHERE p.user_id=u.user_id AND p.amount > (SELECT AVG(amount) FROM PAYMENTS)) ORDER BY u.user_id\n\n"
-                                "Output:\n"
-                                "## 📊 SQL構造分析\n\n"
-                                "### 📝 WITH句(CTE)\n"
-                                "- **active_users**:\n"
-                                "  - SELECT: USERS(u).user_id, USERS(u).status, (サブクエリ-1) AS dept\n"
-                                "  - FROM: USERS(u)\n"
-                                "  - WHERE: \n"
-                                "    - USERS(u).status = 'ACTIVE'\n"
-                                "    - AND USERS(u).dept_id IN (サブクエリ-2)\n\n"
-                                "### 📋 SELECT句\n"
-                                "- active_users(u).*\n"
-                                "- (サブクエリ-4) AS order_count\n\n"
-                                "### 📁 FROM句\n"
-                                "- active_users AS u\n\n"
-                                "### 🔍 WHERE句\n"
-                                "- EXISTS (サブクエリ-3)\n\n"
-                                "### 📊 ORDER BY句\n"
-                                "- active_users(u).user_id ASC\n\n"
-                                "### 🔎 サブクエリ\n"
-                                "- **サブクエリ-1** [Location: SELECT in CTE active_users]:\n"
-                                "  - SELECT: DEPARTMENTS(d).dept_name\n"
-                                "  - FROM: DEPARTMENTS(d)\n"
-                                "  - WHERE: DEPARTMENTS(d).id = USERS(u).dept_id\n"
-                                "- **サブクエリ-2** [Location: WHERE in CTE active_users]:\n"
-                                "  - SELECT: DEPARTMENTS.id\n"
-                                "  - FROM: DEPARTMENTS\n"
-                                "  - WHERE: DEPARTMENTS.budget > 10000\n"
-                                "- **サブクエリ-3** [Location: WHERE in main query]:\n"
-                                "  - SELECT: 1\n"
-                                "  - FROM: PAYMENTS(p)\n"
-                                "  - WHERE: \n"
-                                "    - PAYMENTS(p).user_id = active_users(u).user_id\n"
-                                "    - AND PAYMENTS(p).amount > (NESTED-3-1)\n"
-                                "  - **NESTED-3-1**:\n"
-                                "    - SELECT: AVG(PAYMENTS.amount)\n"
-                                "    - FROM: PAYMENTS\n"
-                                "- **サブクエリ-4** [Location: SELECT in main query]:\n"
-                                "  - SELECT: COUNT(*)\n"
-                                "  - FROM: ORDERS(o)\n"
-                                "  - WHERE: \n"
-                                "    - ORDERS(o).user_id = active_users(u).user_id\n"
-                                "    - AND ORDERS(o).status IN (NESTED-4-1)\n"
-                                "  - **NESTED-4-1**:\n"
-                                "    - SELECT: ORDER_STATUS.code\n"
-                                "    - FROM: ORDER_STATUS\n"
-                                "    - WHERE: ORDER_STATUS.active = 1\n\n"
-                                "SQL:\n```sql\n" + s + "\n```"
-                            )
+                            # グローバルプロンプトを使用
+                            prompt = _SQL_STRUCTURE_ANALYSIS_PROMPT + "SQL:\n```sql\n" + s + "\n```"
 
                             messages = [
                                 {
@@ -3617,7 +3620,7 @@ def build_selectai_tab(pool):
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Textbox(value="ℹ️ OCI設定が不足しています")
+                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
                             from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             client = AsyncOciOpenAI(
                                 service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
@@ -3633,10 +3636,10 @@ def build_selectai_tab(pool):
                             if resp.choices and len(resp.choices) > 0:
                                 msg = resp.choices[0].message
                                 text = msg.content if hasattr(msg, 'content') else ''
-                            return gr.Textbox(value=text)
+                            return gr.Textbox(value=text, autoscroll=False)
                         except Exception as e:
                             logger.error(f"_cm_generate_async error: {e}")
-                            return gr.Textbox(value=f"❌ エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
 
                     def _cm_generate(obj_name, model_name, extra_text, struct_text, pk_text, fk_text, samples_text):
                         loop = asyncio.new_event_loop()
@@ -3759,7 +3762,7 @@ def build_selectai_tab(pool):
                                     lines.append(f"- {row['Column Name']}: {row['Data Type']} NULLABLE={row['Nullable']}")
                             struct_chunks.append("\n".join(lines))
                         struct_text = "\n\n".join(struct_chunks)
-                        return gr.Textbox(value=struct_text, interactive=True)
+                        return gr.Textbox(value=struct_text, interactive=True, autoscroll=False)
 
                     def _cm_fetch_pk(tables_selected, views_selected):
                         tables_selected = tables_selected or []
@@ -3776,7 +3779,7 @@ def build_selectai_tab(pool):
                             if pk_info:
                                 pk_chunks.append(f"OBJECT: {name}\n{pk_info}")
                         pk_text = "\n\n".join(pk_chunks) if pk_chunks else ""
-                        return gr.Textbox(value=pk_text, interactive=True)
+                        return gr.Textbox(value=pk_text, interactive=True, autoscroll=False)
 
                     def _cm_fetch_fk(tables_selected, views_selected):
                         tables_selected = tables_selected or []
@@ -3793,7 +3796,7 @@ def build_selectai_tab(pool):
                             if fk_info:
                                 fk_chunks.append(f"OBJECT: {name}\n{fk_info}")
                         fk_text = "\n\n".join(fk_chunks) if fk_chunks else ""
-                        return gr.Textbox(value=fk_text, interactive=True)
+                        return gr.Textbox(value=fk_text, interactive=True, autoscroll=False)
 
                     def _cm_fetch_samples(tables_selected, views_selected, sample_limit):
                         tables_selected = tables_selected or []
@@ -3812,7 +3815,7 @@ def build_selectai_tab(pool):
                                 if isinstance(df, pd.DataFrame) and not df.empty:
                                     samples_chunks.append(f"OBJECT: {name}\n" + df.to_csv(index=False))
                         samples_text = "\n\n".join(samples_chunks) if samples_chunks else ""
-                        return gr.Textbox(value=samples_text, interactive=True)
+                        return gr.Textbox(value=samples_text, interactive=True, autoscroll=False)
 
                     cm_fetch_btn.click(
                         fn=_cm_fetch_stream,
@@ -3841,8 +3844,8 @@ def build_selectai_tab(pool):
                     def _on_feedback_type_change(fb_type, gen_sql_text):
                         t = str(fb_type or "").lower()
                         if t == "positive":
-                            return gr.Textbox(value=str(gen_sql_text or ""), interactive=False), gr.Textbox(interactive=True)
-                        return gr.Textbox(interactive=True), gr.Textbox(interactive=True)
+                            return gr.Textbox(value=str(gen_sql_text or ""), interactive=False, autoscroll=False), gr.Textbox(interactive=True, autoscroll=False)
+                        return gr.Textbox(interactive=True, autoscroll=False), gr.Textbox(interactive=True, autoscroll=False)
 
                     dev_feedback_type_select.change(
                         fn=_on_feedback_type_change,
@@ -4035,7 +4038,7 @@ def build_selectai_tab(pool):
                                     lines.append(f"- {row['Column Name']}: {row['Data Type']} NULLABLE={row['Nullable']}")
                             struct_chunks.append("\n".join(lines))
                         struct_text = "\n\n".join(struct_chunks)
-                        return gr.Textbox(value=struct_text, interactive=True)
+                        return gr.Textbox(value=struct_text, interactive=True, autoscroll=False)
 
                     def _am_fetch_pk(tables_selected, views_selected):
                         tables_selected = tables_selected or []
@@ -4052,7 +4055,7 @@ def build_selectai_tab(pool):
                             if pk_info:
                                 pk_chunks.append(f"OBJECT: {name}\n{pk_info}")
                         pk_text = "\n\n".join(pk_chunks) if pk_chunks else ""
-                        return gr.Textbox(value=pk_text, interactive=True)
+                        return gr.Textbox(value=pk_text, interactive=True, autoscroll=False)
 
                     def _am_fetch_fk(tables_selected, views_selected):
                         tables_selected = tables_selected or []
@@ -4069,7 +4072,7 @@ def build_selectai_tab(pool):
                             if fk_info:
                                 fk_chunks.append(f"OBJECT: {name}\n{fk_info}")
                         fk_text = "\n\n".join(fk_chunks) if fk_chunks else ""
-                        return gr.Textbox(value=fk_text, interactive=True)
+                        return gr.Textbox(value=fk_text, interactive=True, autoscroll=False)
 
                     def _am_fetch_samples(tables_selected, views_selected, sample_limit):
                         tables_selected = tables_selected or []
@@ -4088,7 +4091,7 @@ def build_selectai_tab(pool):
                                 if isinstance(df, pd.DataFrame) and not df.empty:
                                     samples_chunks.append(f"OBJECT: {name}\n" + df.to_csv(index=False))
                         samples_text = "\n\n".join(samples_chunks) if samples_chunks else ""
-                        return gr.Textbox(value=samples_text, interactive=True)
+                        return gr.Textbox(value=samples_text, interactive=True, autoscroll=False)
 
                     def _am_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text):
                         has_samples = bool(str(samples_text or "").strip())
@@ -4124,7 +4127,7 @@ def build_selectai_tab(pool):
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
                                 logger.error("_am_generate_async missing OCI configuration: region or compartment_id is empty")
-                                return gr.Textbox(value="ℹ️ OCI設定が不足しています")
+                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
                             
                             if str(model_name).startswith("gpt-"):
                                 from openai import AsyncOpenAI
@@ -4228,10 +4231,10 @@ def build_selectai_tab(pool):
                                     text = "\n".join(out_lines)
                                 except Exception:
                                     pass
-                            return gr.Textbox(value=text)
+                            return gr.Textbox(value=text, autoscroll=False)
                         except Exception as e:
                             logger.error(f"_am_generate_async error: {e}")
-                            return gr.Textbox(value=f"❌ エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
 
                     async def _am_ai_analyze_async(model_name, sql_text, exec_result_text):
                         from utils.chat_util import get_oci_region, get_compartment_id
@@ -4489,7 +4492,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("取得件数*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        syn_result_limit = gr.Number(show_label=False, value=50, minimum=0, maximum=10000, container=False)
+                                        syn_result_limit = gr.Number(show_label=False, value=100, minimum=1, maximum=10000, container=False)
                         with gr.Row():
                             syn_result_btn = gr.Button("データを表示", variant="primary")
                         with gr.Row():
@@ -4799,19 +4802,19 @@ def build_selectai_tab(pool):
                                     if isinstance(item, str):
                                         # オペレーションIDを取得
                                         op_id_value = item
-                                        yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました"), gr.Textbox(value=str(op_id_value))
+                                        yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました"), gr.Textbox(value=str(op_id_value), autoscroll=False)
                                     elif item is None:
                                         # エラー：IDが取得できなかった
                                         yield gr.Markdown(visible=True, value="❌ オペレーションIDの取得に失敗しました"), gr.Textbox(value="", autoscroll=False)
                                     else:
                                         # ステータス更新を出力
-                                        yield item, gr.Textbox(value=str(op_id_value or ""))
+                                        yield item, gr.Textbox(value=str(op_id_value or ""), autoscroll=False)
                                 except StopIteration as e:
                                     # ジェネレータの終了時、return値を取得
                                     returned_value = e.value
                                     if returned_value is not None and isinstance(returned_value, str) and returned_value.strip():
                                         op_id_value = returned_value
-                                        yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました"), gr.Textbox(value=str(op_id_value))
+                                        yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました"), gr.Textbox(value=str(op_id_value), autoscroll=False)
                                     elif op_id_value is None:
                                         # オペレーションIDが取得できなかった場合
                                         # 最後のyieldがエラーメッセージの場合はそれが表示されているはず
@@ -4857,13 +4860,48 @@ def build_selectai_tab(pool):
                         outputs=[syn_result_status_md, syn_result_df, syn_result_style],
                     )
 
-                with gr.TabItem(label="SQL→質問 逆生成") as reverse_tab:
+                with gr.TabItem(label="SQL分析→質問 逆生成") as reverse_tab:
                     with gr.Accordion(label="1. 入力", open=True):
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("対象SQL*", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 rev_sql_input = gr.Textbox(show_label=False, lines=8, max_lines=15, show_copy_button=True, container=False, autoscroll=False)
+
+                    with gr.Accordion(label="SQL構造分析", open=True):
+                        with gr.Row():
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("モデル*", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        rev_analysis_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        rev_analysis_btn = gr.Button("AI分析（時間がかかる場合があります）", variant="primary")
+                        with gr.Row():
+                            rev_analysis_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("SQL構造分析", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rev_sql_structure_output = gr.Textbox(label=" ", show_label=True, lines=15, max_lines=20, interactive=True, show_copy_button=True, container=True, autoscroll=False)
 
                     with gr.Accordion(label="2. 参照コンテキスト", open=True):
                         with gr.Row():
@@ -4893,7 +4931,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("送信するメタ情報*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                rev_context_text = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False, container=False)
+                                rev_context_text = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False, container=True)
 
                     with gr.Accordion(label="3. 生成", open=True):
                         with gr.Row():
@@ -4935,7 +4973,16 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("推奨質問(日本語)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                rev_question_output = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=False, show_copy_button=True, container=False, autoscroll=False)
+                                rev_question_output = gr.Textbox(
+                                    label=" ",
+                                    show_label=True,
+                                    lines=4,
+                                    max_lines=10,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                    container=True,
+                                    autoscroll=False,
+                                )
 
                     def _rev_build_context_text(profile_name):
                         try:
@@ -4970,25 +5017,26 @@ def build_selectai_tab(pool):
                     def _rev_build_context(profile_name):
                         try:
                             txt = _rev_build_context_text(profile_name)
-                            return gr.Textbox(value=txt)
+                            return gr.Textbox(value=txt, autoscroll=False)
                         except Exception as e:
-                            return gr.Textbox(value=f"❌ エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
 
                     def _on_profile_change_set_context_stream(p):
                         try:
                             yield gr.Markdown(visible=True, value="⏳ メタ情報取得中..."), gr.Textbox(value="", interactive=True, autoscroll=False)
                             txt = _rev_build_context_text(p)
                             status_text = "✅ 取得完了" if str(txt).strip() else "✅ 取得完了（メタ情報なし）"
-                            yield gr.Markdown(visible=True, value=status_text), gr.Textbox(value=txt, interactive=True)
+                            yield gr.Markdown(visible=True, value=status_text), gr.Textbox(value=txt, interactive=True, autoscroll=False)
                         except Exception as e:
                             logger.error(f"_on_profile_change_set_context_stream error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="", interactive=True, autoscroll=False)
 
-                    async def _rev_generate_async(model_name, context_text, sql_text, use_glossary):
+                    async def _rev_generate_async(model_name, sql_structure_text, context_text, sql_text, use_glossary):
                         """SQL→質問逆生成処理.
                         
                         Args:
                             model_name: 使用するLLMモデル
+                            sql_structure_text: SQL構造分析結果
                             context_text: スキーマやDDLのコンテキスト
                             sql_text: 対象SQL
                             use_glossary: 用語集を利用するか
@@ -5001,28 +5049,142 @@ def build_selectai_tab(pool):
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Textbox(value="ℹ️ OCI設定が不足しています")
+                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
                             ctx_comp = str(context_text or "")
                             
                             # コメントを除去
                             s = remove_comments(str(sql_text or "").strip())
                             
+                            # SQL構造分析の情報を利用
+                            sql_structure = str(sql_structure_text or "").strip()
+                            
                             prompt = (
-                                "与えられたSQLから、そのSQLを生成するための最適な日本語の質問を1つ作成してください。\n\n"
+                                "Convert the SQL structure analysis from physical names to business terms (COMMENT).\n"
+                                "GOAL: Output must contain 100% of SQL information using business terms to enable exact SQL reconstruction.\n"
+                                "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
                                 
-                                "【必須ルール】\n"
-                                "1. テーブル名・カラム名を直接使用禁止 → 必ずCOMMENTの業務用語を使用\n"
-                                "2. SELECT句の取得項目を質問に明示（「何を知りたいか」を具体的に）\n"
-                                "3. WHERE句の条件を質問に反映（「どんな条件で」を明確に）\n"
-                                "4. 実際のエンドユーザーが尋ねる自然な表現にする\n\n"
+                                "## 📋 SQL論理構造 (業務用語版)\n\n"
                                 
-                                "【質問の構成例】\n"
-                                "「[条件]における[取得したい項目]は？」\n"
-                                "「[条件]の[対象]の[取得項目]を教えて」\n\n"
+                                "### 📋 SELECT句\n"
+                                "- [DISTINCT] (if present)\n"
+                                "- [テーブル業務用語](別名).[列業務用語] [AS alias]\n"
+                                "- aggregate_function([テーブル業務用語](別名).[列業務用語]) [AS alias]\n"
+                                "- CASE WHEN [condition] THEN [result1] ELSE [result2] END [AS alias]\n"
+                                "- expression [AS alias] (preserve function structure exactly)\n"
+                                "- (サブクエリ-N) AS alias\n"
+                                "- * (if SELECT *)\n\n"
                                 
-                                "【出力】\n"
-                                "質問文のみ（前置き・説明・コードブロック・Markdown不要）\n\n"
+                                "### 📁 FROM句\n"
+                                "- [テーブル業務用語] [AS alias]\n"
+                                "- [結合方式]: EXPLICIT_JOIN (JOIN...ON) / IMPLICIT_JOIN (FROM t1, t2 WHERE)\n"
+                                "- (サブクエリ-N) AS alias (if inline view)\n\n"
                                 
+                                "### 🔗 JOIN句\n"
+                                "- **[JOIN_TYPE]**: [テーブルA業務用語](aliasA) JOIN [テーブルB業務用語](aliasB)\n"
+                                "  - ON: [テーブルA業務用語](aliasA).[列A業務用語] = [テーブルB業務用語](aliasB).[列B業務用語]\n"
+                                "  - ON: condition2 (if multiple conditions)\n"
+                                "  - USING: ([列業務用語]) (if USING clause)\n"
+                                "- **IMPLICIT**: [テーブルA業務用語](aliasA), [テーブルB業務用語](aliasB) - condition in WHERE\n\n"
+                                
+                                "### 🔍 WHERE句\n"
+                                "- [テーブル業務用語](alias).[列業務用語] operator value\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] operator value\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IN (サブクエリ-N)\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] = (サブクエリ-N)\n"
+                                "- AND/OR EXISTS (サブクエリ-N)\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] BETWEEN value1 AND value2\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] LIKE 'pattern'\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IS [NOT] NULL\n"
+                                "- Complex expressions: preserve function structure exactly\n\n"
+                                
+                                "### 📦 GROUP BY句\n"
+                                "- [テーブル業務用語](alias).[列業務用語1]\n"
+                                "- [テーブル業務用語](alias).[列業務用語2]\n\n"
+                                
+                                "### 🎯 HAVING句\n"
+                                "- aggregate_function([テーブル業務用語](alias).[列業務用語]) operator value\n"
+                                "- AND/OR aggregate_function([列業務用語]) operator (サブクエリ-N)\n\n"
+                                
+                                "### 📊 ORDER BY句\n"
+                                "- [テーブル業務用語](alias).[列業務用語1] ASC/DESC [NULLS FIRST/LAST]\n"
+                                "- [テーブル業務用語](alias).[列業務用語2] ASC/DESC\n\n"
+                                
+                                "### 📏 LIMIT/OFFSET句\n"
+                                "- LIMIT: n / FETCH FIRST n ROWS ONLY\n"
+                                "- OFFSET: m / OFFSET m ROWS\n\n"
+                                
+                                "### 📝 WITH句(CTE)\n"
+                                "- **cte_name**:\n"
+                                "  - SELECT: [DISTINCT] [列業務用語1], [列業務用語2], aggregate_func([列業務用語]) AS alias, (サブクエリ-N) AS alias\n"
+                                "  - FROM: [テーブル業務用語](alias)\n"
+                                "  - JOIN: **[JOIN_TYPE]** [テーブル業務用語](alias) ON condition\n"
+                                "  - WHERE: condition1 AND/OR condition2\n"
+                                "  - GROUP BY: [列業務用語1], [列業務用語2]\n"
+                                "  - HAVING: aggregate_condition\n"
+                                "  - ORDER BY: [列業務用語] ASC/DESC\n\n"
+                                
+                                "### 🔎 サブクエリ\n"
+                                "- **サブクエリ-N** [Location: SELECT/FROM/WHERE/HAVING in main/CTE]:\n"
+                                "  - SELECT: [DISTINCT] [columns/expressions using 業務用語]\n"
+                                "  - FROM: [テーブル業務用語](alias)\n"
+                                "  - JOIN: **[JOIN_TYPE]** [テーブル業務用語](alias) ON condition\n"
+                                "  - WHERE: conditions (use 業務用語)\n"
+                                "  - Correlation: [内部テーブル業務用語](alias).[列業務用語] = [外部テーブル業務用語](alias).[列業務用語]\n"
+                                "  - **NESTED-N-M**: (nested subquery with same structure)\n\n"
+                                
+                                "### 🔀 SET演算\n"
+                                "- **[UNION/UNION ALL/INTERSECT/MINUS/EXCEPT]**:\n"
+                                "  - Query1: (expand structure)\n"
+                                "  - Query2: (expand structure)\n\n"
+                                
+                                "---\n\n"
+                                
+                                "CRITICAL RULES for 100% SQL Reconstruction:\n"
+                                "- Replace physical table/column names with business terms from COMMENT\n"
+                                "- Preserve alias exactly as in original SQL (e.g., ZHR, ZER, ADR)\n"
+                                "- Format: [テーブル業務用語](alias).[列業務用語]\n"
+                                "- MUST preserve ALL literal values exactly: strings with quotes, numbers, date literals\n"
+                                "- MUST preserve ALL operators exactly: =, >, <, >=, <=, <>, !=, LIKE, IN, BETWEEN, IS NULL\n"
+                                "- MUST preserve function calls with EXACT parameters: SUBSTR(col,4,6) ≠ SUBSTR(col,1,6)\n"
+                                "- MUST preserve CASE expression structure completely with WHEN/THEN/ELSE\n"
+                                "- MUST preserve nested function structure: TO_NUMBER(TO_CHAR(TO_DATE(...)))\n"
+                                "- MUST preserve AND/OR/NOT logical structure exactly\n"
+                                "- MUST distinguish EXPLICIT JOIN (JOIN...ON) vs IMPLICIT JOIN (FROM t1, t2 WHERE)\n"
+                                "- For IMPLICIT JOIN: list tables with comma in FROM, show join condition in WHERE\n"
+                                "- サブクエリ: Number sequentially (サブクエリ-1, サブクエリ-2...) and expand completely\n"
+                                "- For correlated subqueries: show Correlation with inner.col = outer.col\n"
+                                "- For nested subqueries: label as NESTED-X-Y and expand\n"
+                                "- If section is empty/not present, omit that section entirely\n\n"
+                                
+                                "Example:\n"
+                                "SQL: SELECT ZHR.EMPLID, CASE WHEN TO_NUMBER(TO_CHAR(TO_DATE(substr(ZER.CAL_ID,4,6)||'01','YYYYMMDD'),'MM'))>=4 THEN TO_NUMBER(TO_CHAR(TO_DATE(substr(ZER.CAL_ID,4,6)||'01','YYYYMMDD'),'YYYY')) ELSE TO_NUMBER(TO_CHAR(TO_DATE(substr(ZER.CAL_ID,4,6)||'01','YYYYMMDD'),'YYYY'))-1 END AS FiscalYear FROM PS_Z_IF_HRBASE_VW ZHR, PS_Z_GP_WA_SAL_ER ZER WHERE ZHR.EMPLID=ZER.EMPLID AND ZHR.EFFDT=(SELECT MAX(ZHR1.EFFDT) FROM PS_Z_IF_HRBASE_VW ZHR1 WHERE ZHR1.EMPLID=ZHR.EMPLID AND ZHR1.EFFDT<=SYSDATE)\n\n"
+                                
+                                "Output:\n"
+                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                
+                                "### 📋 SELECT句\n"
+                                "- [人事基本](ZHR).[社員番号]\n"
+                                "- CASE WHEN TO_NUMBER(TO_CHAR(TO_DATE(SUBSTR([給与計算結果(支給)](ZER).[カレンダーID], 4, 6) || '01', 'YYYYMMDD'), 'MM')) >= 4 THEN TO_NUMBER(TO_CHAR(TO_DATE(SUBSTR([給与計算結果(支給)](ZER).[カレンダーID], 4, 6) || '01', 'YYYYMMDD'), 'YYYY')) ELSE TO_NUMBER(TO_CHAR(TO_DATE(SUBSTR([給与計算結果(支給)](ZER).[カレンダーID], 4, 6) || '01', 'YYYYMMDD'), 'YYYY')) - 1 END AS FiscalYear\n\n"
+                                
+                                "### 📁 FROM句\n"
+                                "- [人事基本] AS ZHR\n"
+                                "- [給与計算結果(支給)] AS ZER\n"
+                                "- [結合方式]: IMPLICIT_JOIN\n\n"
+                                
+                                "### 🔍 WHERE句\n"
+                                "- [人事基本](ZHR).[社員番号] = [給与計算結果(支給)](ZER).[社員番号]\n"
+                                "- AND [人事基本](ZHR).[有効日] = (サブクエリ-1)\n\n"
+                                
+                                "### 🔎 サブクエリ\n"
+                                "- **サブクエリ-1** [Location: WHERE in main query]:\n"
+                                "  - SELECT: MAX([人事基本](ZHR1).[有効日])\n"
+                                "  - FROM: [人事基本](ZHR1)\n"
+                                "  - WHERE:\n"
+                                "    - [人事基本](ZHR1).[社員番号] = [人事基本](ZHR).[社員番号]\n"
+                                "    - AND [人事基本](ZHR1).[有効日] <= SYSDATE\n"
+                                "  - Correlation: [人事基本](ZHR1).[社員番号] = [人事基本](ZHR).[社員番号]\n\n"
+                                
+                                "===SQL構造分析===\n" + (sql_structure if sql_structure else "(未分析)") + "\n\n"
                                 "===データベース定義===\n" + str(ctx_comp or "") + "\n\n"
                                 "===対象SQL===\n```sql\n" + s + "\n```"
                             )
@@ -5039,7 +5201,10 @@ def build_selectai_tab(pool):
                                 )
                             
                             messages = [
-                                {"role": "system", "content": "あなたはBIアナリストです。ユーザーがSQL生成エージェントに投げる自然言語の質問文を短く具体的に作ることが仕事です。出力は質問文のみ。"},
+                                {
+                                    "role": "system", 
+                                    "content": "You are a Text-to-SQL reverse engineer. Generate STRUCTURED natural language specifications that preserve 100% of SQL semantics for exact reconstruction. Output the specified format ONLY."
+                                },
                                 {"role": "user", "content": prompt},
                             ]
                             resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
@@ -5079,18 +5244,19 @@ def build_selectai_tab(pool):
                                         # 元の質問と用語集適用後の質問を\n\nで連結
                                         out_text = str(out_text) + "\n\n" + glossary_result
                             
-                            return gr.Textbox(value=out_text)
+                            return gr.Textbox(value=out_text, autoscroll=False)
                         except Exception as e:
                             logger.error(f"_rev_generate_async error: {e}")
                             import traceback
                             logger.error(traceback.format_exc())
-                            return gr.Textbox(value=f"❌ エラー: {e}")
+                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
 
-                    def _rev_generate(model_name, context_text, sql_text, use_glossary):
+                    def _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary):
                         """SQL→質問逆生成のラッパー関数.
                         
                         Args:
                             model_name: 使用するLLMモデル
+                            sql_structure_text: SQL構造分析結果
                             context_text: スキーマやDDLのコンテキスト
                             sql_text: 対象SQL
                             use_glossary: 用語集を利用するか
@@ -5102,11 +5268,11 @@ def build_selectai_tab(pool):
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            return loop.run_until_complete(_rev_generate_async(model_name, context_text, sql_text, use_glossary))
+                            return loop.run_until_complete(_rev_generate_async(model_name, sql_structure_text, context_text, sql_text, use_glossary))
                         finally:
                             loop.close()
 
-                    def _rev_generate_stream(model_name, context_text, sql_text, use_glossary):
+                    def _rev_generate_stream(model_name, sql_structure_text, context_text, sql_text, use_glossary):
                         try:
                             ctx = str(context_text or "").strip()
                             sql = str(sql_text or "").strip()
@@ -5120,14 +5286,129 @@ def build_selectai_tab(pool):
                                 yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False, autoscroll=False)
                                 return
                             yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False, autoscroll=False)
-                            out = _rev_generate(model_name, context_text, sql_text, use_glossary)
+                            out = _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary)
                             yield gr.Markdown(visible=True, value="✅ 生成完了"), out
                         except Exception as e:
                             logger.error(f"_rev_generate_stream error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False, autoscroll=False)
 
+                    async def _rev_ai_analyze_async(model_name, sql_text):
+                        """逆生成タブ用のAI分析処理.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_text: 対象SQL
+                        
+                        Returns:
+                            tuple: (status_md, structure_output)
+                        """
+                        try:
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
+                            
+                            s = str(sql_text or "").strip()
+                            if not s:
+                                return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value="", autoscroll=False)
+                            
+                            # グローバルプロンプトを使用
+                            prompt = _SQL_STRUCTURE_ANALYSIS_PROMPT + "SQL:\n```sql\n" + s + "\n```"
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                            
+                            messages = [
+                                {
+                                    "role": "system", 
+                                    "content": "You are a SQL parser. Output ONLY the requested format. No explanations."
+                                },
+                                {
+                                    "role": "user", 
+                                    "content": prompt
+                                },
+                            ]
+                            
+                            resp = await client.chat.completions.create(model=model_name, messages=messages)
+                            sql_structure_md = ""
+                            if getattr(resp, "choices", None):
+                                msg = resp.choices[0].message
+                                out = msg.content if hasattr(msg, "content") else ""
+                                sql_structure_md = str(out or "").strip()
+                                # マークダウンコードブロックを削除
+                                sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
+                                sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
+                                sql_structure_md = sql_structure_md.strip()
+                            
+                            if not sql_structure_md:
+                                sql_structure_md = "## 📊 SQL構造分析\n\n情報を抽出できませんでした。"
+                            
+                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=sql_structure_md, autoscroll=False)
+                        except Exception as e:
+                            logger.error(f"_rev_ai_analyze_async error: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
+
+                    def _rev_ai_analyze(model_name, sql_text):
+                        """逆生成タブ用のAI分析ラッパー関数.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_text: 対象SQL
+                        
+                        Returns:
+                            tuple: (status_md, structure_output)
+                        """
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            return loop.run_until_complete(_rev_ai_analyze_async(model_name, sql_text))
+                        finally:
+                            loop.close()
+
+                    def _rev_ai_analyze_stream(model_name, sql_text):
+                        """逆生成タブ用のAI分析ストリーム関数.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_text: 対象SQL
+                        
+                        Yields:
+                            tuple: (status_md, structure_output)
+                        """
+                        try:
+                            if not model_name or not str(model_name).strip():
+                                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="", autoscroll=False)
+                                return
+                            if not sql_text or not str(sql_text).strip():
+                                yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを入力してください"), gr.Textbox(value="", autoscroll=False)
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="## 📊 SQL構造分析\n\n解析中...", autoscroll=False)
+                            result = _rev_ai_analyze(model_name, sql_text)
+                            yield result
+                        except Exception as e:
+                            logger.error(f"_rev_ai_analyze_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 分析に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
+
                     def _on_profile_change_set_context(p):
                         return _rev_build_context(p)
+
+                    rev_analysis_btn.click(
+                        fn=_rev_ai_analyze_stream,
+                        inputs=[rev_analysis_model_input, rev_sql_input],
+                        outputs=[rev_analysis_status_md, rev_sql_structure_output],
+                    )
 
                     rev_context_meta_btn.click(
                         fn=_on_profile_change_set_context_stream,
@@ -5137,7 +5418,7 @@ def build_selectai_tab(pool):
 
                     rev_generate_btn.click(
                         fn=_rev_generate_stream,
-                        inputs=[rev_model_input, rev_context_text, rev_sql_input, rev_use_glossary],
+                        inputs=[rev_model_input, rev_sql_structure_output, rev_context_text, rev_sql_input, rev_use_glossary],
                         outputs=[rev_generate_status_md, rev_question_output],
                     )
 

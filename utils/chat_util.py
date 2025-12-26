@@ -277,7 +277,6 @@ def build_oci_chat_test_tab(pool):
                             lines=2,
                             max_lines=8,
                             container=False,
-                            autoscroll=False,
                         )
 
                 with gr.Row():

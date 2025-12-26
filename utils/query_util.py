@@ -489,7 +489,7 @@ def build_query_tab(pool):
                             show_label=False,
                             value=100,
                             minimum=1,
-                            maximum=1000,
+                            maximum=10000,
                             container=False,
                         )
             with gr.Column(scale=5):

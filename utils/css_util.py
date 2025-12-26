@@ -4,34 +4,6 @@ GradioアプリケーションのカスタムCSSスタイルを提供します�
 """
 
 custom_css = """
-@font-face {
-  font-family: 'Noto Sans JP';
-  src: url('fonts/NotoSansJP-Regular.otf') format('opentype');
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Noto Sans SC';
-  src: url('fonts/NotoSansSC-Regular.otf') format('opentype');
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Noto Sans TC';
-  src: url('fonts/NotoSansSC-Regular.otf') format('opentype');
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Roboto';
-  src: url('fonts/Roboto-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-}
-
 :root {
   --global-font-family: 
     "Noto Sans JP", 

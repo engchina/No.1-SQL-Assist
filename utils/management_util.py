@@ -1424,7 +1424,7 @@ def build_management_tab(pool):
                 """Drop the selected table and refresh list."""
                 yield (
                     gr.Markdown(visible=True, value="⏳ テーブルを削除中..."),
-                    gr.Textbox(value=str(table_name or "")),
+                    gr.Textbox(value=str(table_name or ""), autoscroll=False),
                     gr.Dataframe(visible=False, value=pd.DataFrame()),
                     gr.Textbox(value="", autoscroll=False),
                 )
@@ -2027,11 +2027,11 @@ def build_management_tab(pool):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="..."), gr.Textbox(value="...")
+                    yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="...", autoscroll=False), gr.Textbox(value="...", autoscroll=False)
                     join_text, where_text = loop.run_until_complete(_view_join_where_ai_extract_async(model_name, ddl_text))
                     yield gr.Markdown(visible=True, value="✅ 分析完了"), join_text, where_text
                 except Exception as e:
-                    yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="Error"), gr.Textbox(value=str(e))
+                    yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="Error", autoscroll=False), gr.Textbox(value=str(e), autoscroll=False)
                 finally:
                     loop.close()
 
@@ -2170,7 +2170,7 @@ def build_management_tab(pool):
                                     show_label=False,
                                     value=100,
                                     minimum=1,
-                                    maximum=1000,
+                                    maximum=10000,
                                     container=False,
                                 )
                 
