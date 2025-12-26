@@ -1426,15 +1426,15 @@ def build_management_tab(pool):
                     gr.Markdown(visible=True, value="⏳ テーブルを削除中..."),
                     gr.Textbox(value=str(table_name or "")),
                     gr.Dataframe(visible=False, value=pd.DataFrame()),
-                    gr.Textbox(value=""),
+                    gr.Textbox(value="", autoscroll=False),
                 )
                 result = drop_table(pool, table_name)
                 status_md = gr.Markdown(visible=True, value=result)
                 yield (
                     status_md,
-                    gr.Textbox(value=""),
+                    gr.Textbox(value="", autoscroll=False),
                     gr.Dataframe(value=pd.DataFrame()),
-                    gr.Textbox(value=""),
+                    gr.Textbox(value="", autoscroll=False),
                 )
             
             def execute_create(sql):
@@ -1944,11 +1944,11 @@ def build_management_tab(pool):
                     region = get_oci_region()
                     compartment_id = get_compartment_id()
                     if not region or not compartment_id:
-                        return gr.Textbox(value=""), gr.Textbox(value="")
+                        return gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                 try:
                     s = str(ddl_text or "").strip()
                     if not s:
-                        return gr.Textbox(value=""), gr.Textbox(value="")
+                        return gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                     m = re.search(r"\b(SELECT|WITH)\b[\s\S]*", s, flags=re.IGNORECASE)
                     if m:
                         s = m.group(0)
@@ -2018,10 +2018,10 @@ def build_management_tab(pool):
                 import asyncio
                 # 必須入力項目のチェック
                 if not model_name or not str(model_name).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value="")
+                    yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                     return
                 if not ddl_text or not str(ddl_text).strip():
-                    yield gr.Markdown(visible=True, value="⚠️ CREATE VIEW SQLのDDLが空です。ビューを選択してください"), gr.Textbox(value=""), gr.Textbox(value="")
+                    yield gr.Markdown(visible=True, value="⚠️ CREATE VIEW SQLのDDLが空です。ビューを選択してください"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                     return
                 
                 loop = asyncio.new_event_loop()

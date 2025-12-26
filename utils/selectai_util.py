@@ -906,13 +906,13 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("選択されたProfile名*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        selected_profile_name = gr.Textbox(show_label=False, interactive=True, container=False)
+                                        selected_profile_name = gr.Textbox(show_label=False, interactive=True, container=False, autoscroll=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
                                         gr.Markdown("カテゴリ*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        category_text = gr.Textbox(show_label=False, value="", interactive=True, container=False)
+                                        category_text = gr.Textbox(show_label=False, value="", interactive=True, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("Profile 作成SQL", elem_classes="input-label")
@@ -923,6 +923,7 @@ def build_selectai_tab(pool):
                                     max_lines=10,
                                     show_copy_button=True,
                                     container=False,
+                                    autoscroll=False,
                                 )
                         selected_profile_original_name = gr.State("")
                         with gr.Row():
@@ -1322,26 +1323,26 @@ def build_selectai_tab(pool):
                 def _delete_profile_handler(name):
                     try:
                         logger.info(f"_delete_profile_handler: invoked name='{name}'")
-                        yield gr.Markdown(visible=True, value="⏳ 削除中..."), name, gr.Textbox(value=""), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value="⏳ 削除中..."), name, gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                         logger.info("_delete_profile_handler: calling delete_selected_profile")
                         md, sel_name, bd_text, json_text = delete_selected_profile(name)
                         logger.info(f"_delete_profile_handler: delete done sel_name='{sel_name}'")
                         yield md, sel_name, bd_text, json_text
                     except Exception as e:
                         logger.error(f"_delete_profile_handler error: {e}")
-                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), name, gr.Textbox(value=""), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), name, gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
 
                 def _update_profile_handler(original_name, edited_name, category):
                     try:
                         logger.info(f"_update_profile_handler: invoked original='{original_name}', edited='{edited_name}'")
-                        yield gr.Markdown(visible=True, value="⏳ 更新中..."), edited_name, gr.Textbox(value=category), gr.Textbox(value=""), original_name
+                        yield gr.Markdown(visible=True, value="⏳ 更新中..."), edited_name, gr.Textbox(value=category), gr.Textbox(value="", autoscroll=False), original_name
                         logger.info("_update_profile_handler: calling update_selected_profile")
                         md, sel_name, bd_text, sql_text, orig_out = update_selected_profile(original_name, edited_name, category)
                         logger.info(f"_update_profile_handler: update done sel_name='{sel_name}', orig_out='{orig_out}'")
                         yield md, sel_name, bd_text, sql_text, orig_out
                     except Exception as e:
                         logger.error(f"_update_profile_handler error: {e}")
-                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), edited_name, gr.Textbox(value=category), gr.Textbox(value=""), original_name
+                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), edited_name, gr.Textbox(value=category), gr.Textbox(value="", autoscroll=False), original_name
 
                 profile_delete_btn.click(
                     fn=_delete_profile_handler,
@@ -1645,7 +1646,7 @@ def build_selectai_tab(pool):
                         if not _generative_ai_inference_client or not _COMPARTMENT_ID:
                             error_msg = "OCI GenAI クライアントが初期化されていません。環境変数を確認してください"
                             logger.error(error_msg)
-                            return gr.Markdown(visible=True, value=f"❌ {error_msg}"), gr.Textbox(value="")
+                            return gr.Markdown(visible=True, value=f"❌ {error_msg}"), gr.Textbox(value="", autoscroll=False)
                         
                         logger.info("OCI GenAI client check passed")
                         
@@ -1653,7 +1654,7 @@ def build_selectai_tab(pool):
                         mname = str(trained_model_name or "").strip()
                         if not mname:
                             logger.warning("モデルが選択されていません")
-                            return gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="")
+                            return gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="", autoscroll=False)
                         
                         logger.info(f"Using model: {mname}")
                         
@@ -1666,7 +1667,7 @@ def build_selectai_tab(pool):
                         if not model_path.exists() or not meta_path.exists():
                             error_msg = f"モデルファイルが見つかりません (model: {model_path.exists()}, meta: {meta_path.exists()})"
                             logger.error(error_msg)
-                            return gr.Markdown(visible=True, value="ℹ️ モデルが未学習です。まず『学習を実行』してください"), gr.Textbox(value="")
+                            return gr.Markdown(visible=True, value="ℹ️ モデルが未学習です。まず『学習を実行』してください"), gr.Textbox(value="", autoscroll=False)
                         
                         # メタ情報を読み込み
                         logger.info("Loading model metadata...")
@@ -1728,7 +1729,7 @@ def build_selectai_tab(pool):
                         import traceback
                         logger.error(traceback.format_exc())
                         logger.info("="*50)
-                        return gr.Markdown(visible=True, value=f"❌ {error_msg}"), gr.Textbox(value="")
+                        return gr.Markdown(visible=True, value=f"❌ {error_msg}"), gr.Textbox(value="", autoscroll=False)
 
                 def _mt_test(text):
                     import asyncio
@@ -1743,15 +1744,15 @@ def build_selectai_tab(pool):
                 def _td_upload_excel(file_path):
                     try:
                         if not file_path:
-                            return gr.Textbox(visible=True, value="ファイルを選択してください")
+                            return gr.Textbox(visible=True, value="ファイルを選択してください", autoscroll=False)
                         try:
                             df = pd.read_excel(str(file_path))
                         except Exception:
-                            return gr.Textbox(visible=True, value="Excel読み込みに失敗しました")
+                            return gr.Textbox(visible=True, value="Excel読み込みに失敗しました", autoscroll=False)
                         cols_map = {str(c).upper(): c for c in df.columns.tolist()}
                         required = {"CATEGORY","TEXT"}
                         if not required.issubset(set(cols_map.keys())):
-                            return gr.Textbox(visible=True, value="列名は CATEGORY, TEXT が必要です")
+                            return gr.Textbox(visible=True, value="列名は CATEGORY, TEXT が必要です", autoscroll=False)
                         out_df = pd.DataFrame({
                             "CATEGORY": df[cols_map["CATEGORY"]],
                             "TEXT": df[cols_map["TEXT"]],
@@ -1763,10 +1764,10 @@ def build_selectai_tab(pool):
                             dest.unlink()
                         with pd.ExcelWriter(dest) as writer:
                             out_df.to_excel(writer, sheet_name="training_data", index=False)
-                        return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件")
+                        return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件", autoscroll=False)
                     except Exception as e:
                         logger.error(f"Excelアップロードに失敗しました: {e}")
-                        return gr.Textbox(visible=True, value=f"❌ エラー: {e}")
+                        return gr.Textbox(visible=True, value=f"❌ エラー: {e}", autoscroll=False)
 
                 with gr.TabItem(label="モデル管理"):
                     with gr.Accordion(label="0. モデル学習の概要", open=False):
@@ -1833,14 +1834,14 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("テキスト*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                mt_text_input = gr.Textbox(show_label=False, lines=4, max_lines=8, container=False)
+                                mt_text_input = gr.Textbox(show_label=False, lines=4, max_lines=8, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
                                         gr.Markdown("カテゴリ", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        mt_label_text = gr.Textbox(show_label=False, interactive=False, container=False)
+                                        mt_label_text = gr.Textbox(show_label=False, interactive=False, container=False, autoscroll=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -1958,7 +1959,7 @@ def build_selectai_tab(pool):
                     def _term_upload_excel(file_path):
                         try:
                             if not file_path:
-                                return gr.Textbox(visible=True, value="ファイルを選択してください")
+                                return gr.Textbox(visible=True, value="ファイルを選択してください", autoscroll=False)
                             try:
                                 df = pd.read_excel(str(file_path))
                             except Exception:
@@ -2186,7 +2187,7 @@ def build_selectai_tab(pool):
 
                             with gr.Row():
                                 with gr.Column(scale=5):
-                                    dev_sql_summary_text = gr.Textbox(label="開発者向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True)
+                                    dev_sql_summary_text = gr.Textbox(label="開発者向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True, autoscroll=False)
                                 with gr.Column(scale=5):
                                     user_sql_summary_text = gr.Textbox(label="ユーザー向け SQLの概要説明", lines=6, max_lines=12, interactive=False, show_copy_button=True, autoscroll=False)
 
@@ -2388,28 +2389,28 @@ def build_selectai_tab(pool):
                         try:
                             # 入力チェック
                             if not model_name or not str(model_name).strip():
-                                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="", autoscroll=False)
                                 return
                             if not original_query or not str(original_query).strip():
-                                yield gr.Markdown(visible=True, value="⚠️ 元の質問を入力してください"), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="⚠️ 元の質問を入力してください"), gr.Textbox(value="", autoscroll=False)
                                 return
                             
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
                                 return
                             
                             # ステップ1/2が両方OFFの場合は警告して終了
                             if (not use_glossary) and (not use_schema):
-                                yield gr.Markdown(visible=True, value="⚠️ ステップ1（用語集）とステップ2（スキーマ）がOFFです。少なくとも1つをONにしてください"), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="⚠️ ステップ1（用語集）とステップ2（スキーマ）がOFFです。少なくとも1つをONにしてください"), gr.Textbox(value="", autoscroll=False)
                                 return
                             
                             step1_result = str(original_query).strip()
                             
                             # 第1ステップ: 用語集で分析・置換（ONの場合のみ）
                             if use_glossary:
-                                yield gr.Markdown(visible=True, value="⏳ 第1ステップ: 用語集で分析・置換中..."), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="⏳ 第1ステップ: 用語集で分析・置換中..."), gr.Textbox(value="", autoscroll=False)
                                 
                                 terms = _load_terminology()
                                 if terms:
@@ -2523,7 +2524,7 @@ def build_selectai_tab(pool):
                             logger.error(f"_dev_rewrite_query error: {e}")
                             import traceback
                             logger.error(traceback.format_exc())
-                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     def _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                         if enable_rewrite and rewritten_query and str(rewritten_query).strip():
@@ -2534,16 +2535,16 @@ def build_selectai_tab(pool):
                         inc = bool(include_extra)
                         final = s if not inc or not ep else (ep + "\n\n" + s)
                         if not profile or not str(profile).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="", autoscroll=False)
                             return
                         if not final:
-                            yield gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="", autoscroll=False)
                             return
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ SQL生成中..."), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⏳ SQL生成中..."), gr.Textbox(value="", autoscroll=False)
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     try:
@@ -2587,13 +2588,13 @@ def build_selectai_tab(pool):
                                                         err_msg = inner_msg
                                         except Exception as _inner_err:
                                             logger.error(f"inner error parse failed: {_inner_err}")
-                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {err_msg}"), gr.Textbox(value="")
+                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {err_msg}"), gr.Textbox(value="", autoscroll=False)
                                         show_text = ""
                                         return
                                     # try:
                                     #     cursor.execute(showsql_stmt)
                                     # except Exception as e:
-                                    #     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                                    #     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
                                     #     return
                                     # _ = _get_sql_id_for_text(showsql_stmt)
                                     def _extract_sql(text: str) -> str:
@@ -2636,7 +2637,7 @@ def build_selectai_tab(pool):
                                         gen_sql_display = gen_sql_display
                                     yield gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
                         except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     def _dev_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                         yield from _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query)
@@ -2717,10 +2718,10 @@ def build_selectai_tab(pool):
                             region = get_oci_region()
                             compartment_id = get_compartment_id()
                             if not region or not compartment_id:
-                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             s = str(sql_text or "").strip()
                             if not s:
-                                return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                                return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             
                             if str(model_name).startswith("gpt-"):
                                 from openai import AsyncOpenAI
@@ -2734,62 +2735,152 @@ def build_selectai_tab(pool):
                                 )
 
                             prompt = (
-                                "Analyze the SQL query and extract its structure in Markdown format.\n"
+                                "Analyze the SQL query and extract its COMPLETE structure in Markdown format.\n"
+                                "GOAL: Output must contain 100% of SQL information to enable exact SQL reconstruction.\n"
                                 "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
                                 "## 📊 SQL構造分析\n\n"
-                                "### 🔗 JOIN条件\n"
-                                "- **[JOIN_TYPE]**: schema.table1(alias1).column1 = schema.table2(alias2).column2\n"
-                                "- **[JOIN_TYPE]**: schema.table3(alias3).column3 = schema.table4(alias4).column4\n\n"
-                                "### 🔍 WHERE条件\n"
+                                "### 📋 SELECT句\n"
+                                "- [DISTINCT] (if present)\n"
+                                "- schema.table(alias).column1 [AS alias1]\n"
+                                "- schema.table(alias).column2 [AS alias2]\n"
+                                "- aggregate_function(schema.table(alias).column) [AS alias]\n"
+                                "- expression [AS alias]\n"
+                                "- (サブクエリ-N) AS alias\n"
+                                "- * (if SELECT *)\n\n"
+                                "### 📁 FROM句\n"
+                                "- schema.table_name [AS alias]\n"
+                                "- (サブクエリ-N) AS alias (if inline view)\n\n"
+                                "### 🔗 JOIN句\n"
+                                "- **[JOIN_TYPE]**: schema.table1(alias1) JOIN schema.table2(alias2)\n"
+                                "  - ON: condition1\n"
+                                "  - ON: condition2 (if multiple conditions)\n"
+                                "  - USING: (column_name) (if USING clause)\n\n"
+                                "### 🔍 WHERE句\n"
                                 "- schema.table(alias).column operator value\n"
-                                "- AND/OR ...\n\n"
-                                "### 📦 GROUP BY\n"
-                                "- schema.table(alias).column\n\n"
-                                "### 🎯 HAVING条件\n"
-                                "- aggregate_function(column) operator value\n\n"
+                                "- AND/OR schema.table(alias).column operator value\n"
+                                "- AND/OR schema.table(alias).column IN (サブクエリ-N)\n"
+                                "- AND/OR EXISTS (サブクエリ-N)\n"
+                                "- AND/OR schema.table(alias).column BETWEEN value1 AND value2\n"
+                                "- AND/OR schema.table(alias).column LIKE 'pattern'\n"
+                                "- AND/OR schema.table(alias).column IS [NOT] NULL\n\n"
+                                "### 📦 GROUP BY句\n"
+                                "- schema.table(alias).column1\n"
+                                "- schema.table(alias).column2\n\n"
+                                "### 🎯 HAVING句\n"
+                                "- aggregate_function(schema.table(alias).column) operator value\n"
+                                "- AND/OR aggregate_function(column) operator (サブクエリ-N)\n\n"
+                                "### 📊 ORDER BY句\n"
+                                "- schema.table(alias).column1 ASC/DESC [NULLS FIRST/LAST]\n"
+                                "- schema.table(alias).column2 ASC/DESC\n\n"
+                                "### 📏 LIMIT/OFFSET句\n"
+                                "- LIMIT: n / FETCH FIRST n ROWS ONLY\n"
+                                "- OFFSET: m / OFFSET m ROWS\n\n"
                                 "### 📝 WITH句(CTE)\n"
-                                "- **cte_name**: 簡潔な説明\n\n"
+                                "- **cte_name1**:\n"
+                                "  - SELECT: [DISTINCT] col1, col2, aggregate_func(col) AS alias, (サブクエリ-N) AS alias\n"
+                                "  - FROM: schema.table_name(alias)\n"
+                                "  - JOIN: **[JOIN_TYPE]** schema.table(alias) ON condition\n"
+                                "  - WHERE: condition1 AND/OR condition2\n"
+                                "  - GROUP BY: col1, col2\n"
+                                "  - HAVING: aggregate_condition\n"
+                                "  - ORDER BY: col ASC/DESC\n"
+                                "- **cte_name2**: (same structure)\n\n"
                                 "### 🔎 サブクエリ\n"
-                                "- **位置**(WHERE/FROM/SELECT): 簡潔な説明\n\n"
-                                "### 📋 その他\n"
-                                "- **ORDER BY**: column ASC/DESC\n"
-                                "- **集合演算**: UNION/INTERSECT/MINUS\n\n"
+                                "- **サブクエリ-1** [Location: SELECT/FROM/WHERE/HAVING in main/CTE]:\n"
+                                "  - SELECT: [DISTINCT] columns/expressions\n"
+                                "  - FROM: schema.table_name(alias)\n"
+                                "  - JOIN: **[JOIN_TYPE]** schema.table(alias) ON condition\n"
+                                "  - WHERE: conditions\n"
+                                "  - GROUP BY: columns\n"
+                                "  - HAVING: conditions\n"
+                                "  - ORDER BY: columns\n"
+                                "  - **NESTED-1-1**: (nested subquery with same structure)\n"
+                                "- **サブクエリ-2**: (same structure)\n\n"
+                                "### 🔀 SET演算\n"
+                                "- **[UNION/UNION ALL/INTERSECT/MINUS/EXCEPT]**:\n"
+                                "  - Query1: (expand structure or reference)\n"
+                                "  - Query2: (expand structure or reference)\n\n"
                                 "---\n\n"
-                                "Rules:\n"
-                                "- Format: schema.table_name(alias).column when alias exists, schema.table_name.column when no alias\n"
-                                "- JOIN_TYPE: INNER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN, CROSS JOIN, NATURAL JOIN\n"
-                                "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id), extract as INNER JOIN\n"
-                                "- For USING clause (JOIN t USING(col)), add USING note\n"
-                                "- For compound JOIN conditions (ON t1.c1=t2.c1 AND t1.c2=t2.c2), list each condition separately\n"
-                                "- Preserve all operators: =, >, <, >=, <=, <>, !=, LIKE, IN, BETWEEN, IS NULL, IS NOT NULL, EXISTS, NOT EXISTS\n"
-                                "- For WHERE/HAVING, preserve AND/OR structure at line start\n"
-                                "- Do NOT include table JOIN conditions in WHERE section\n"
-                                "- WITH句: Extract CTE names and brief purpose\n"
-                                "- サブクエリ: Note location and purpose\n"
-                                "- If section is empty, omit the section entirely (do not write 'None')\n"
-                                "- Use Japanese for descriptions\n\n"
+                                "Rules for 100% SQL Reconstruction:\n"
+                                "- MUST output ALL columns in SELECT with exact order, aliases, and expressions\n"
+                                "- MUST preserve ALL literal values, operators, and functions exactly as written\n"
+                                "- MUST include schema prefix when present in original SQL\n"
+                                "- Format: schema.table_name(alias).column when alias exists\n"
+                                "- JOIN_TYPE: INNER JOIN, LEFT [OUTER] JOIN, RIGHT [OUTER] JOIN, FULL [OUTER] JOIN, CROSS JOIN, NATURAL JOIN\n"
+                                "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id), list in FROM and show condition in WHERE\n"
+                                "- For compound JOIN conditions, list each ON condition separately\n"
+                                "- Preserve ALL operators: =, >, <, >=, <=, <>, !=, LIKE, NOT LIKE, IN, NOT IN, BETWEEN, IS NULL, IS NOT NULL, EXISTS, NOT EXISTS\n"
+                                "- Preserve ALL string literals with quotes, numeric values, date literals\n"
+                                "- Preserve AND/OR/NOT logical structure exactly\n"
+                                "- Do NOT merge JOIN ON conditions into WHERE\n"
+                                "- WITH句(CTE): Expand EACH CTE completely\n"
+                                "- サブクエリ: Number sequentially (サブクエリ-1, サブクエリ-2...) and expand completely\n"
+                                "- For nested subqueries, label as NESTED-X-Y and expand\n"
+                                "- If section is empty/not present, omit that section entirely\n"
+                                "- Output content in English (except section headers in Japanese)\n\n"
                                 "Example 1 (Simple):\n"
                                 "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ROLES r ON u.role_id = r.id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
                                 "Output:\n"
                                 "## 📊 SQL構造分析\n\n"
-                                "### 🔗 JOIN条件\n"
-                                "- **INNER JOIN**: ADMIN.USERS(u).role_id = ADMIN.ROLES(r).id\n\n"
-                                "### 🔍 WHERE条件\n"
+                                "### 📋 SELECT句\n"
+                                "- *\n\n"
+                                "### 📁 FROM句\n"
+                                "- ADMIN.USERS AS u\n\n"
+                                "### 🔗 JOIN句\n"
+                                "- **INNER JOIN**: ADMIN.USERS(u) JOIN ADMIN.ROLES(r)\n"
+                                "  - ON: ADMIN.USERS(u).role_id = ADMIN.ROLES(r).id\n\n"
+                                "### 🔍 WHERE句\n"
                                 "- ADMIN.USERS(u).status = 'ACTIVE'\n\n"
-                                "### 📋 その他\n"
-                                "- **ORDER BY**: u.created_at DESC\n\n"
-                                "Example 2 (Complex with CTE and Subquery):\n"
-                                "SQL: WITH active_users AS (SELECT * FROM USERS WHERE status='ACTIVE') SELECT u.*, (SELECT COUNT(*) FROM ORDERS o WHERE o.user_id=u.id) as order_count FROM active_users u GROUP BY u.department HAVING COUNT(*) > 5\n\n"
+                                "### 📊 ORDER BY句\n"
+                                "- ADMIN.USERS(u).created_at DESC\n\n"
+                                "Example 2 (Complex with nested subqueries in WHERE, SELECT, and CTE):\n"
+                                "SQL: WITH active_users AS (SELECT user_id, status, (SELECT dept_name FROM DEPARTMENTS d WHERE d.id=u.dept_id) as dept FROM USERS u WHERE status='ACTIVE' AND dept_id IN (SELECT id FROM DEPARTMENTS WHERE budget > 10000)) SELECT u.*, (SELECT COUNT(*) FROM ORDERS o WHERE o.user_id=u.user_id AND o.status IN (SELECT code FROM ORDER_STATUS WHERE active=1)) as order_count FROM active_users u WHERE EXISTS (SELECT 1 FROM PAYMENTS p WHERE p.user_id=u.user_id AND p.amount > (SELECT AVG(amount) FROM PAYMENTS)) ORDER BY u.user_id\n\n"
                                 "Output:\n"
                                 "## 📊 SQL構造分析\n\n"
                                 "### 📝 WITH句(CTE)\n"
-                                "- **active_users**: アクティブなユーザーを抽出\n\n"
+                                "- **active_users**:\n"
+                                "  - SELECT: USERS(u).user_id, USERS(u).status, (サブクエリ-1) AS dept\n"
+                                "  - FROM: USERS(u)\n"
+                                "  - WHERE: \n"
+                                "    - USERS(u).status = 'ACTIVE'\n"
+                                "    - AND USERS(u).dept_id IN (サブクエリ-2)\n\n"
+                                "### 📋 SELECT句\n"
+                                "- active_users(u).*\n"
+                                "- (サブクエリ-4) AS order_count\n\n"
+                                "### 📁 FROM句\n"
+                                "- active_users AS u\n\n"
+                                "### 🔍 WHERE句\n"
+                                "- EXISTS (サブクエリ-3)\n\n"
+                                "### 📊 ORDER BY句\n"
+                                "- active_users(u).user_id ASC\n\n"
                                 "### 🔎 サブクエリ\n"
-                                "- **SELECT句**: 各ユーザーの注文数をカウント\n\n"
-                                "### 📦 GROUP BY\n"
-                                "- u.department\n\n"
-                                "### 🎯 HAVING条件\n"
-                                "- COUNT(*) > 5\n\n"
+                                "- **サブクエリ-1** [Location: SELECT in CTE active_users]:\n"
+                                "  - SELECT: DEPARTMENTS(d).dept_name\n"
+                                "  - FROM: DEPARTMENTS(d)\n"
+                                "  - WHERE: DEPARTMENTS(d).id = USERS(u).dept_id\n"
+                                "- **サブクエリ-2** [Location: WHERE in CTE active_users]:\n"
+                                "  - SELECT: DEPARTMENTS.id\n"
+                                "  - FROM: DEPARTMENTS\n"
+                                "  - WHERE: DEPARTMENTS.budget > 10000\n"
+                                "- **サブクエリ-3** [Location: WHERE in main query]:\n"
+                                "  - SELECT: 1\n"
+                                "  - FROM: PAYMENTS(p)\n"
+                                "  - WHERE: \n"
+                                "    - PAYMENTS(p).user_id = active_users(u).user_id\n"
+                                "    - AND PAYMENTS(p).amount > (NESTED-3-1)\n"
+                                "  - **NESTED-3-1**:\n"
+                                "    - SELECT: AVG(PAYMENTS.amount)\n"
+                                "    - FROM: PAYMENTS\n"
+                                "- **サブクエリ-4** [Location: SELECT in main query]:\n"
+                                "  - SELECT: COUNT(*)\n"
+                                "  - FROM: ORDERS(o)\n"
+                                "  - WHERE: \n"
+                                "    - ORDERS(o).user_id = active_users(u).user_id\n"
+                                "    - AND ORDERS(o).status IN (NESTED-4-1)\n"
+                                "  - **NESTED-4-1**:\n"
+                                "    - SELECT: ORDER_STATUS.code\n"
+                                "    - FROM: ORDER_STATUS\n"
+                                "    - WHERE: ORDER_STATUS.active = 1\n\n"
                                 "SQL:\n```sql\n" + s + "\n```"
                             )
 
@@ -2845,18 +2936,18 @@ def build_selectai_tab(pool):
                             return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=sql_structure_md), gr.Textbox(value=dev_summary), gr.Textbox(value=user_summary)
                         except Exception as e:
                             logger.error(f"_dev_ai_analyze_async error: {e}")
-                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
 
                     def _dev_ai_analyze(model_name, sql_text, dev_prompt, user_prompt):
                         import asyncio
                         # 必須入力項目のチェック
                         if not model_name or not str(model_name).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             return
                         if not sql_text or not str(sql_text).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを生成してください"), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを生成してください"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             return
-                        yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="## 📊 SQL構造分析\n\n解析中..."), gr.Textbox(value=""), gr.Textbox(value="")
+                        yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="## 📊 SQL構造分析\n\n解析中..."), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                         
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
@@ -2938,7 +3029,7 @@ def build_selectai_tab(pool):
                     def _send_feedback(fb_type, response_text, content_text, prompt_text, profile_name):
                         plsql = ""
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Markdown(visible=False), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⏳ フィードバック送信中..."), gr.Markdown(visible=False), gr.Textbox(value="", autoscroll=False)
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     prof, _t, _v, _bd = _resolve_profile_name_from_json(pool, str(profile_name or ""))
@@ -2946,7 +3037,7 @@ def build_selectai_tab(pool):
                                     if q.endswith(";"):
                                         q = q[:-1]
                                     if not q:
-                                        yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 質問が未入力のため、フィードバックを送信できませんでした"), gr.Textbox(value="")
+                                        yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 質問が未入力のため、フィードバックを送信できませんでした"), gr.Textbox(value="", autoscroll=False)
                                         return
                                     prompt_text = f"select ai showsql {q}"
                                     # gen_stmt = "select dbms_cloud_ai.generate(prompt=> :q, profile_name => :name, action=> :a)"
@@ -2968,14 +3059,14 @@ def build_selectai_tab(pool):
                                         resp = str(response_text or "").strip()
                                         fc = str(content_text or "")
                                         if not resp:
-                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
+                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 修正SQLが未入力のため、ネガティブ・フィードバックを送信できませんでした"), gr.Textbox(value="", autoscroll=False)
                                             return
                                     elif t == "positive":
                                         resp = str(response_text or "").strip()
                                         fc = str(content_text or "")
                                         ft_val = "NEGATIVE"
                                         if not resp:
-                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 生成されたSQLが未生成のため、ポジティブ・フィードバックを送信できませんでした"), gr.Textbox(value="")
+                                            yield gr.Markdown(visible=False), gr.Markdown(visible=True, value="⚠️ 生成されたSQLが未生成のため、ポジティブ・フィードバックを送信できませんでした"), gr.Textbox(value="", autoscroll=False)
                                             return
                                     # Build PL/SQL text regardless of execution result
                                     def _lit(x):
@@ -3233,7 +3324,7 @@ def build_selectai_tab(pool):
                         try:
                             yield gr.Markdown(visible=True, value="⏳ 削除中..."), gr.Textbox(value=str(sql_text or ""))
                             if not sql_text:
-                                yield gr.Markdown(visible=True, value="❌ 失敗: SQL_TEXTが選択されていません"), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="❌ 失敗: SQL_TEXTが選択されていません"), gr.Textbox(value="", autoscroll=False)
                                 return
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
@@ -3251,10 +3342,10 @@ def build_selectai_tab(pool):
                                         p=str(prof),
                                         st=str(sql_text),
                                     )
-                            yield gr.Markdown(visible=True, value="✅ 成功"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="✅ 成功"), gr.Textbox(value="", autoscroll=False)
                         except Exception as e:
                             logger.error(f"_delete_by_sql_text error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {str(e)}"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {str(e)}"), gr.Textbox(value="", autoscroll=False)
 
                     selected_feedback_delete_btn.click(
                         fn=_delete_by_sql_text,
@@ -3487,20 +3578,20 @@ def build_selectai_tab(pool):
                             if lim < 0:
                                 lim = 0
                             if not tbls and not vws:
-                                yield gr.Markdown(visible=True, value="⚠️ 対象を選択してください"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="⚠️ 対象を選択してください"), gr.Accordion(open=True), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 取得中..."), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⏳ 取得中..."), gr.Accordion(open=True), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             struct = _cm_fetch_structure(tbls, vws)
-                            yield gr.Markdown(visible=True, value="✅ 構造情報取得完了"), gr.Accordion(open=True), struct, gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="✅ 構造情報取得完了"), gr.Accordion(open=True), struct, gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             pk = _cm_fetch_pk(tbls, vws)
-                            yield gr.Markdown(visible=True, value="✅ 主キー情報取得完了"), gr.Accordion(open=True), struct, pk, gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="✅ 主キー情報取得完了"), gr.Accordion(open=True), struct, pk, gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             fk = _cm_fetch_fk(tbls, vws)
-                            yield gr.Markdown(visible=True, value="✅ 外部キー情報取得完了"), gr.Accordion(open=True), struct, pk, fk, gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="✅ 外部キー情報取得完了"), gr.Accordion(open=True), struct, pk, fk, gr.Textbox(value="", autoscroll=False)
                             samples = _cm_fetch_samples(tbls, vws, lim)
                             yield gr.Markdown(visible=True, value="✅ サンプル取得完了"), gr.Accordion(open=True), struct, pk, fk, samples
                         except Exception as e:
                             logger.error(f"_cm_fetch_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Accordion(open=True), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
 
                     def _cm_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text):
                         try:
@@ -3565,14 +3656,14 @@ def build_selectai_tab(pool):
                                 missing.append("構造情報")
                             if missing:
                                 msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
-                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", autoscroll=False)
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", autoscroll=False)
                             result = _cm_generate(obj_tables, model_name, extra_text, struct_text, pk_text, fk_text, samples_text)
                             yield gr.Markdown(visible=True, value="✅ 生成完了"), result
                         except Exception as e:
                             logger.error(f"_cm_generate_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     def _cm_execute(sql_text):
                         from utils.management_util import execute_comment_sql
@@ -3655,7 +3746,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         struct_chunks = []
                         for kind, name in targets:
                             if kind == "VIEW":
@@ -3677,7 +3768,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         from utils.management_util import get_primary_key_info
                         pk_chunks = []
                         for _kind, name in targets:
@@ -3694,7 +3785,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         from utils.management_util import get_foreign_key_info
                         fk_chunks = []
                         for _kind, name in targets:
@@ -3711,7 +3802,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         from utils.management_util import display_table_data
                         lim = int(sample_limit)
                         samples_chunks = []
@@ -3931,7 +4022,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         struct_chunks = []
                         for kind, name in targets:
                             if kind == "VIEW":
@@ -3953,7 +4044,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         from utils.management_util import get_primary_key_info
                         pk_chunks = []
                         for _kind, name in targets:
@@ -3970,7 +4061,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         from utils.management_util import get_foreign_key_info
                         fk_chunks = []
                         for _kind, name in targets:
@@ -3987,7 +4078,7 @@ def build_selectai_tab(pool):
                         targets.extend([("TABLE", t) for t in tables_selected])
                         targets.extend([("VIEW", v) for v in views_selected])
                         if not targets:
-                            return gr.Textbox(value="", interactive=True)
+                            return gr.Textbox(value="", interactive=True, autoscroll=False)
                         from utils.management_util import display_table_data
                         lim = int(sample_limit)
                         samples_chunks = []
@@ -4246,20 +4337,20 @@ def build_selectai_tab(pool):
                             if lim < 0:
                                 lim = 0
                             if not tbls and not vws:
-                                yield gr.Markdown(visible=True, value="⚠️ 対象を選択してください"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value="⚠️ 対象を選択してください"), gr.Accordion(open=True), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 取得中..."), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⏳ 取得中..."), gr.Accordion(open=True), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             struct = _am_fetch_structure(tbls, vws)
-                            yield gr.Markdown(visible=True, value="✅ 構造情報取得完了"), gr.Accordion(open=True), struct, gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="✅ 構造情報取得完了"), gr.Accordion(open=True), struct, gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             pk = _am_fetch_pk(tbls, vws)
-                            yield gr.Markdown(visible=True, value="✅ 主キー情報取得完了"), gr.Accordion(open=True), struct, pk, gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="✅ 主キー情報取得完了"), gr.Accordion(open=True), struct, pk, gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             fk = _am_fetch_fk(tbls, vws)
-                            yield gr.Markdown(visible=True, value="✅ 外部キー情報取得完了"), gr.Accordion(open=True), struct, pk, fk, gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="✅ 外部キー情報取得完了"), gr.Accordion(open=True), struct, pk, fk, gr.Textbox(value="", autoscroll=False)
                             samples = _am_fetch_samples(tbls, vws, lim)
                             yield gr.Markdown(visible=True, value="✅ サンプル取得完了"), gr.Accordion(open=True), struct, pk, fk, samples
                         except Exception as e:
                             logger.error(f"_am_fetch_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Accordion(open=True), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value=""), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Accordion(open=True), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
 
                     am_fetch_btn.click(
                         fn=_am_fetch_stream,
@@ -4276,14 +4367,14 @@ def build_selectai_tab(pool):
                                 missing.append("構造情報")
                             if missing:
                                 msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
-                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", autoscroll=False)
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", autoscroll=False)
                             result = _am_generate(model_name, struct_text, pk_text, fk_text, samples_text, extra_text)
                             yield gr.Markdown(visible=True, value="✅ 生成完了"), result
                         except Exception as e:
                             logger.error(f"_am_generate_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     am_generate_btn.click(
                         fn=_am_generate_stream,
@@ -4344,7 +4435,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("生成の指示(オプション)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                syn_prompt_input = gr.Textbox(show_label=False, placeholder="スキーマ特性や分布、制約などを自然言語で記述", lines=4, max_lines=10, container=False)
+                                syn_prompt_input = gr.Textbox(show_label=False, placeholder="スキーマ特性や分布、制約などを自然言語で記述", lines=4, max_lines=10, container=False, autoscroll=False)
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -4371,7 +4462,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=1):
                                         gr.Markdown("オペレーションID*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        syn_operation_id_text = gr.Textbox(show_label=False, interactive=False, container=False)
+                                        syn_operation_id_text = gr.Textbox(show_label=False, interactive=False, container=False, autoscroll=False)
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -4693,7 +4784,7 @@ def build_selectai_tab(pool):
                                 missing.append("テーブル選択")
                             if missing:
                                 msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
-                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="")
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", autoscroll=False)
                                 return
                             
                             # ジェネレーターからステータスを順次取得
@@ -4711,7 +4802,7 @@ def build_selectai_tab(pool):
                                         yield gr.Markdown(visible=True, value="✅ 合成データ生成を開始しました"), gr.Textbox(value=str(op_id_value))
                                     elif item is None:
                                         # エラー：IDが取得できなかった
-                                        yield gr.Markdown(visible=True, value="❌ オペレーションIDの取得に失敗しました"), gr.Textbox(value="")
+                                        yield gr.Markdown(visible=True, value="❌ オペレーションIDの取得に失敗しました"), gr.Textbox(value="", autoscroll=False)
                                     else:
                                         # ステータス更新を出力
                                         yield item, gr.Textbox(value=str(op_id_value or ""))
@@ -4729,7 +4820,7 @@ def build_selectai_tab(pool):
                                 
                         except Exception as e:
                             logger.error(f"_syn_generate_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     def _syn_update_status_stream(op_id):
                         try:
@@ -4772,7 +4863,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("対象SQL*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                rev_sql_input = gr.Textbox(show_label=False, lines=8, max_lines=15, show_copy_button=True, container=False)
+                                rev_sql_input = gr.Textbox(show_label=False, lines=8, max_lines=15, show_copy_button=True, container=False, autoscroll=False)
 
                     with gr.Accordion(label="2. 参照コンテキスト", open=True):
                         with gr.Row():
@@ -4844,7 +4935,7 @@ def build_selectai_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("推奨質問(日本語)", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                rev_question_output = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=False, show_copy_button=True, container=False)
+                                rev_question_output = gr.Textbox(show_label=False, lines=4, max_lines=10, interactive=False, show_copy_button=True, container=False, autoscroll=False)
 
                     def _rev_build_context_text(profile_name):
                         try:
@@ -4885,13 +4976,13 @@ def build_selectai_tab(pool):
 
                     def _on_profile_change_set_context_stream(p):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ メタ情報取得中..."), gr.Textbox(value="", interactive=True)
+                            yield gr.Markdown(visible=True, value="⏳ メタ情報取得中..."), gr.Textbox(value="", interactive=True, autoscroll=False)
                             txt = _rev_build_context_text(p)
                             status_text = "✅ 取得完了" if str(txt).strip() else "✅ 取得完了（メタ情報なし）"
                             yield gr.Markdown(visible=True, value=status_text), gr.Textbox(value=txt, interactive=True)
                         except Exception as e:
                             logger.error(f"_on_profile_change_set_context_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="", interactive=True)
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="", interactive=True, autoscroll=False)
 
                     async def _rev_generate_async(model_name, context_text, sql_text, use_glossary):
                         """SQL→質問逆生成処理.
@@ -5026,14 +5117,14 @@ def build_selectai_tab(pool):
                                 missing.append("対象SQL")
                             if missing:
                                 msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
-                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False)
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False, autoscroll=False)
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False)
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False, autoscroll=False)
                             out = _rev_generate(model_name, context_text, sql_text, use_glossary)
                             yield gr.Markdown(visible=True, value="✅ 生成完了"), out
                         except Exception as e:
                             logger.error(f"_rev_generate_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False)
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False, autoscroll=False)
 
                     def _on_profile_change_set_context(p):
                         return _rev_build_context(p)
@@ -5241,7 +5332,7 @@ def build_selectai_tab(pool):
 
             def _on_chat_clear():
                 ch = _profile_names() or [("", "")]
-                return "", gr.Dropdown(choices=ch, value=ch[0][1]), gr.Textbox(value="")
+                return "", gr.Dropdown(choices=ch, value=ch[0][1]), gr.Textbox(value="", autoscroll=False)
             
             def _user_rewrite_query(model_name, profile_name, original_query, use_glossary, use_schema):
                 """ユーザー向けクエリ書き換え処理.

@@ -357,7 +357,7 @@ def build_sql_learning_tab(pool):
             """表作成用のSQL表示を切り替える."""
             new_visible = not current_visible
             new_label = "表作成用のSQLを非表示" if new_visible else "表作成用のSQLを表示"
-            return gr.Button(value=new_label), gr.Textbox(visible=new_visible), new_visible
+            return gr.Button(value=new_label), gr.Textbox(visible=new_visible, autoscroll=False), new_visible
 
         def _exec_tables():
             try:
@@ -370,7 +370,7 @@ def build_sql_learning_tab(pool):
             """ビュー作成用のSQL表示を切り替える."""
             new_visible = not current_visible
             new_label = "ビュー作成用SQLを非表示" if new_visible else "ビュー作成用のSQLを表示"
-            return gr.Button(value=new_label), gr.Textbox(visible=new_visible), new_visible
+            return gr.Button(value=new_label), gr.Textbox(visible=new_visible, autoscroll=False), new_visible
 
         def _exec_views():
             try:
@@ -384,7 +384,7 @@ def build_sql_learning_tab(pool):
             sql = (inserts["DEPARTMENT"] + "\n" + inserts["EMPLOYEE"] + "\n" + inserts["PROJECT"]).strip()
             new_visible = not current_visible
             new_label = "データ挿入用のSQLを非表示" if new_visible else "データ挿入用のSQLを表示"
-            return gr.Button(value=new_label), gr.Textbox(visible=new_visible, value=sql if new_visible else ""), new_visible
+            return gr.Button(value=new_label), gr.Textbox(visible=new_visible, value=sql if new_visible else "", autoscroll=False), new_visible
 
         def _exec_inserts():
             try:
@@ -437,10 +437,10 @@ def build_sql_learning_tab(pool):
                 lmap = {lesson["id"]: lesson for lesson in lessons}
                 lesson = lmap.get(sel_id)
                 if not lesson:
-                    return gr.Markdown(visible=True, value="⚠️ レッスンが見つかりません"), gr.Textbox(value=""),
-                return gr.Markdown(visible=True, value=f"【{lesson['id']}】{lesson['title']}\n\n{lesson['desc']}"), gr.Textbox(value=lesson["sql"]) 
+                    return gr.Markdown(visible=True, value="⚠️ レッスンが見つかりません"), gr.Textbox(value="", autoscroll=False),
+                return gr.Markdown(visible=True, value=f"【{lesson['id']}】{lesson['title']}\n\n{lesson['desc']}"), gr.Textbox(value=lesson["sql"], autoscroll=False) 
             except Exception as e:
-                return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="")
+                return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
 
         def _run_lesson(sql_text: str):
             try:

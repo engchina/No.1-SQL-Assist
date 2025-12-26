@@ -514,13 +514,13 @@ def build_oci_embedding_test_tab(pool):
         logger.info(f"Model selected: {embed_model}")
         logger.info(f"Text preview: {str(test_query_text)[:80]}")
         try:
-            yield gr.Markdown(visible=True, value="⏳ Embedding生成中..."), gr.Textbox(value="")
+            yield gr.Markdown(visible=True, value="⏳ Embedding生成中..."), gr.Textbox(value="", autoscroll=False)
             res = test_oci_cred(test_query_text, embed_model, pool)
             logger.info("Embedding test completed")
             yield gr.Markdown(visible=True, value="✅ 完了"), res
         except Exception as e:
             logger.error(f"Embedding test failed: {e}")
-            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="")
+            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
     
     # UIコンポーネントの構築
     with gr.Accordion(label="", open=True):

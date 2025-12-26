@@ -45,9 +45,9 @@ def build_selectai_agent_tab(pool):
                 tn = str(team_name or "").strip()
                 q = str(prompt or "").strip()
                 if not tn:
-                    return gr.Markdown(visible=True, value="⚠️ Team 名を入力してください"), gr.Textbox(visible=False, value="")
+                    return gr.Markdown(visible=True, value="⚠️ Team 名を入力してください"), gr.Textbox(visible=False, value="", autoscroll=False)
                 if not q:
-                    return gr.Markdown(visible=True, value="⚠️ プロンプトを入力してください"), gr.Textbox(visible=False, value="")
+                    return gr.Markdown(visible=True, value="⚠️ プロンプトを入力してください"), gr.Textbox(visible=False, value="", autoscroll=False)
                 try:
                     with pool.acquire() as conn:
                         with conn.cursor() as cursor:
