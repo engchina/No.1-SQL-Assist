@@ -92,7 +92,8 @@ textarea {
     border-top: 1px solid #e7e7ea;
     border-right: 4px solid #485C69;
     border-color: #485C69;
-    min-width: 150px;
+    min-width: 120px;
+    text-align: center;
 
     &.selected {
       color: var(--text-light);

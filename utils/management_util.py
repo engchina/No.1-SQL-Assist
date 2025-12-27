@@ -1291,7 +1291,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=1):
                         gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能")
 
-                with gr.Accordion(label="SQLファイル", open=False):
+                with gr.Accordion(label="SQLファイル（.sql / .txt 形式をサポート）", open=False):
                     with gr.Row():
                         with gr.Column(scale=1):
                             gr.Markdown(" ", elem_classes="input-label")
@@ -1727,7 +1727,7 @@ def build_management_tab(pool):
                     with gr.Column(scale=1):
                         gr.Markdown("ℹ️ 複数の文をセミコロンで区切って入力可能", elem_classes="input-label")
 
-                with gr.Accordion(label="SQLファイル", open=False):
+                with gr.Accordion(label="SQLファイル（.sql / .txt 形式をサポート）", open=False):
                     with gr.Row():
                         with gr.Column(scale=1):
                             gr.Markdown(" ", elem_classes="input-label")

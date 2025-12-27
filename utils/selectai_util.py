@@ -111,6 +111,14 @@ _DEFAULT_FEW_SHOT_PROMPT = (
     "\n"
     "The examples above are your PRIMARY REFERENCE - they ALWAYS take precedence.\n"
     "\n"
+    "🚨 OUTPUT FORMAT - ABSOLUTELY MANDATORY:\n"
+    "   - Return ONLY pure SQL code, nothing else\n"
+    "   - NO explanations, NO comments, NO markdown\n"
+    "   - NO ```sql blocks, NO natural language\n"
+    "   - NO 'Here is the query...', NO introductions\n"
+    "   - NO follow-up suggestions or alternatives\n"
+    "   - JUST the executable SQL statement(s)\n"
+    "\n"
     "ABSOLUTE PRIORITY RULES:\n"
     "1. FEW-SHOT FIRST: For similar questions, you MUST replicate the example's approach\n"
     "   - Same SQL syntax patterns and structure\n"
@@ -134,6 +142,7 @@ _DEFAULT_FEW_SHOT_PROMPT = (
     "\n"
     "Remember: The examples define the GOLD STANDARD for this schema.\n"
     "Your task is to LEARN and REPLICATE, not to improve or deviate.\n"
+    "Output SQL ONLY - any non-SQL text is a critical failure.\n"
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     "\n"
     "▼ ACTUAL QUESTION:\n"
@@ -154,7 +163,7 @@ _SQL_STRUCTURE_ANALYSIS_PROMPT = (
     "- (サブクエリ-N) AS alias\n"
     "- * (if SELECT *)\n\n"
     "### 📁 FROM句\n"
-    "- schema.table_name [AS alias]\n"
+    "- schema.table_name [alias]\n"
     "- (サブクエリ-N) AS alias (if inline view)\n\n"
     "### 🔗 JOIN句\n"
     "- **[JOIN_TYPE]**: schema.table1(alias1) JOIN schema.table2(alias2)\n"
@@ -231,7 +240,7 @@ _SQL_STRUCTURE_ANALYSIS_PROMPT = (
     "### 📋 SELECT句\n"
     "- *\n\n"
     "### 📁 FROM句\n"
-    "- ADMIN.USERS AS u\n\n"
+    "- ADMIN.USERS u\n\n"
     "### 🔗 JOIN句\n"
     "- **INNER JOIN**: ADMIN.USERS(u) JOIN ADMIN.ROLES(r)\n"
     "  - ON: ADMIN.USERS(u).role_id = ADMIN.ROLES(r).id\n\n"
@@ -254,7 +263,7 @@ _SQL_STRUCTURE_ANALYSIS_PROMPT = (
     "- active_users(u).*\n"
     "- (サブクエリ-4) AS order_count\n\n"
     "### 📁 FROM句\n"
-    "- active_users AS u\n\n"
+    "- active_users u\n\n"
     "### 🔍 WHERE句\n"
     "- EXISTS (サブクエリ-3)\n\n"
     "### 📊 ORDER BY句\n"
@@ -2038,131 +2047,6 @@ def build_selectai_tab(pool):
                         outputs=[mt_test_result, mt_label_text],
                     )
 
-                with gr.TabItem(label="用語集管理"):
-                    with gr.Accordion(label="0. 用語集の概要", open=False):
-                        gr.Markdown(
-                            """
-                            目的: 組織で使う用語を一元管理し、チャット/分析で参照できるようにします。
-
-                            手順:
-                            - 用語集Excelをダウンロードし、`TERM` と `DEFINITION` の2列を記入します。
-                            - 用語集Excelをアップロードすると、`uploads/terms.xlsx` に保存されます。
-                            - 「用語集をプレビュー」で内容と件数を確認します。
-
-                            注意:
-                            - 列名は必ず `TERM`, `DEFINITION` を使用してください。
-                            - 文字列以外の値は保存時に文字列化されます。
-                            - 個人情報や機密情報は含めないでください。
-                            """
-                        )
-                    with gr.Accordion(label="1. 用語集", open=True):
-                        # 用語集Excelのテンプレートファイルを事前作成し、そのままダウンロード可能にする
-                        up_dir = Path("uploads")
-                        up_dir.mkdir(parents=True, exist_ok=True)
-                        _p = up_dir / "terms.xlsx"
-                        if not _p.exists():
-                            _df = pd.DataFrame(columns=["TERM", "DEFINITION"])
-                            with pd.ExcelWriter(_p) as _writer:
-                                _df.to_excel(_writer, sheet_name="terms", index=False)
-    
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("ℹ️ ファイルをドロップすると自動的にアップロードされます")
-                            
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("用語集Excelをアップロード*", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                term_upload_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath", container=True)
-                        with gr.Row():
-                            term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False, autoscroll=False)
-                        with gr.Row():
-                            with gr.Column():
-                                gr.DownloadButton(label="用語集Excelをダウンロード", value=str(_p), variant="secondary")
-                            with gr.Column():
-                                term_preview_btn = gr.Button("用語集をプレビュー", variant="primary")
-                        with gr.Row():
-                            term_preview_status = gr.Markdown(visible=False)
-                        with gr.Row():
-                            term_preview_df = gr.Dataframe(
-                                label="用語集プレビュー（件数: 0）",
-                                interactive=False,
-                                wrap=True,
-                                visible=False,
-                                value=pd.DataFrame(columns=["TERM", "DEFINITION"]),
-                            )
-
-                    def _term_list():
-                        try:
-                            p = Path("uploads") / "terms.xlsx"
-                            if not p.exists():
-                                return pd.DataFrame(columns=["TERM", "DEFINITION"])
-                            df = pd.read_excel(str(p))
-                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
-                            t_col = cols_map.get("TERM")
-                            d_col = cols_map.get("DEFINITION")
-                            if not t_col or not d_col:
-                                return pd.DataFrame(columns=["TERM", "DEFINITION"])
-                            out = pd.DataFrame({
-                                "TERM": df[t_col].astype(str),
-                                "DEFINITION": df[d_col].astype(str),
-                            })
-                            return out
-                        except Exception as e:
-                            logger.error(f"用語集一覧の取得に失敗しました: {e}")
-                            return pd.DataFrame(columns=["TERM", "DEFINITION"])
-
-                    def _term_refresh():
-                        try:
-                            yield gr.Markdown(visible=True, value="⏳ 用語集を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
-                            df = _term_list()
-                            if df is None or df.empty:
-                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["TERM", "DEFINITION"]), label="用語集プレビュー（件数: 0）")
-                                return
-                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=df, label=f"用語集プレビュー（件数: {len(df)}）")
-                        except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
-
-                    def _term_upload_excel(file_path):
-                        try:
-                            if not file_path:
-                                return gr.Textbox(visible=True, value="ファイルを選択してください", autoscroll=False)
-                            try:
-                                df = pd.read_excel(str(file_path))
-                            except Exception:
-                                return gr.Textbox(visible=True, value="Excel読み込みに失敗しました", autoscroll=False)
-                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
-                            required = {"TERM", "DEFINITION"}
-                            if not required.issubset(set(cols_map.keys())):
-                                return gr.Textbox(visible=True, value="列名は TERM, DESCRIPTION が必要です", autoscroll=False)
-                            out_df = pd.DataFrame({
-                                "TERM": df[cols_map["TERM"]],
-                                "DEFINITION": df[cols_map["DEFINITION"]],
-                            })
-                            up_dir = Path("uploads")
-                            up_dir.mkdir(parents=True, exist_ok=True)
-                            dest = up_dir / "terms.xlsx"
-                            if dest.exists():
-                                dest.unlink()
-                            with pd.ExcelWriter(dest) as writer:
-                                out_df.to_excel(writer, sheet_name="terms", index=False)
-                            return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件", autoscroll=False)
-                        except Exception as e:
-                            logger.error(f"用語集Excelアップロードに失敗しました: {e}")
-                            return gr.Textbox(visible=True, value=f"❌ エラー: {e}", autoscroll=False)
-
-                    term_preview_btn.click(
-                        fn=_term_refresh,
-                        outputs=[term_preview_status, term_preview_df],
-                    )
-
-                    # ダウンロードはボタン自体で実行（クリックハンドラ不要）
-                    term_upload_file.change(
-                        fn=_term_upload_excel,
-                        inputs=[term_upload_file],
-                        outputs=[term_upload_result],
-                    )
-
                 with gr.TabItem(label="チャット・分析") as dev_chat_tab:
                     with gr.Accordion(label="1. チャット", open=True):
                         def _dev_profile_names():
@@ -2242,17 +2126,17 @@ def build_selectai_tab(pool):
                                                 gr.Markdown("")
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("ステップ1: 用語集を利用", elem_classes="input-label")
+                                        gr.Markdown("用語集を利用", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         dev_rewrite_use_glossary = gr.Checkbox(label="", value=True, container=False)
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("ステップ2: スキーマ情報を利用", elem_classes="input-label")
+                                        gr.Markdown("スキーマ情報を利用", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         dev_rewrite_use_schema = gr.Checkbox(label="", value=False, container=False)
                                 with gr.Row():
                                     gr.Markdown(
-                                        "ℹ️ 「ステップ1: 用語集を利用」または「ステップ2: スキーマ情報を利用」のいずれかをONにしてください。両方OFFの場合、書き換えは実行されません。",
+                                        "ℹ️ 「用語集を利用」または「スキーマ情報を利用」のいずれかをONにしてください。両方OFFの場合、書き換えは実行されません。",
                                         elem_classes="input-hint",
                                     )
                                 with gr.Row():
@@ -2323,11 +2207,26 @@ def build_selectai_tab(pool):
                                 )
 
                         with gr.Accordion(label="AI分析", open=True):
-                            with gr.Row():
-                                with gr.Column(scale=5):
-                                    dev_prompt_text = gr.Textbox(label="開発者向けのプロンプト", lines=4, max_lines=10, visible=True, show_copy_button=True, value="以下のSQLを技術的観点で短く要約してください。目的、主要テーブル/結合、主なフィルタ、出力の概要を含めてください。")
-                                with gr.Column(scale=5):
-                                    user_prompt_text = gr.Textbox(label="ユーザー向けのプロンプト", lines=4, max_lines=10, visible=True, show_copy_button=True, value="以下のSQLが何をしているか、非技術的なユーザー向けに1〜3文で説明してください。専門用語はできるだけ避けてください。")
+                            with gr.Accordion(label="分析用Prompt", open=False):
+                                with gr.Row():
+                                    with gr.Column(scale=5):
+                                        dev_prompt_text = gr.Textbox(label="開発者向けのプロンプト", lines=4, max_lines=10, visible=True, show_copy_button=True, value="以下のSQLを技術的観点で短く要約してください。目的、主要テーブル/結合、主なフィルタ、出力の概要を含めてください。")
+                                    with gr.Column(scale=5):
+                                        user_prompt_text = gr.Textbox(label="ユーザー向けのプロンプト", lines=4, max_lines=10, visible=True, show_copy_button=True, value="以下のSQLが何をしているか、非技術的なユーザー向けに1～3文で説明してください。専門用語はできるだけ避けてください。")
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("SQL構造分析用Prompt", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        dev_structure_prompt_text = gr.Textbox(
+                                            show_label=False,
+                                            value=_SQL_STRUCTURE_ANALYSIS_PROMPT,
+                                            lines=10,
+                                            max_lines=20,
+                                            interactive=True,
+                                            show_copy_button=True,
+                                            container=False,
+                                            autoscroll=False
+                                        )
                             with gr.Row():
                                 with gr.Column(scale=5):
                                     with gr.Row():
@@ -2543,6 +2442,31 @@ def build_selectai_tab(pool):
                             logger.error(f"_load_terminology error: {e}")
                             return {}
                     
+                    def _load_rules() -> list:
+                        """ルールを読み込む.
+                        
+                        Returns:
+                            list: ルール文字列のリスト
+                        """
+                        try:
+                            p = Path("uploads") / "rules.xlsx"
+                            if not p.exists():
+                                return []
+                            df = pd.read_excel(str(p))
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            r_col = cols_map.get("RULE")
+                            if not r_col:
+                                return []
+                            rules = []
+                            for _, row in df.iterrows():
+                                rule = str(row[r_col]).strip()
+                                if rule and rule.lower() != "nan":
+                                    rules.append(rule)
+                            return rules
+                        except Exception as e:
+                            logger.error(f"_load_rules error: {e}")
+                            return []
+                    
                     def _dev_rewrite_query(model_name, profile_name, original_query, use_glossary, use_schema):
                         """開発者向けクエリ書き換え処理.
                         
@@ -2581,28 +2505,42 @@ def build_selectai_tab(pool):
                             
                             step1_result = str(original_query).strip()
                             
-                            # 第1ステップ: 用語集で分析・置換（ONの場合のみ）
+                            # 第1ステップ: ルールと用語集で分析・置換（ONの場合のみ）
                             if use_glossary:
-                                yield gr.Markdown(visible=True, value="⏳ 第1ステップ: 用語集で分析・置換中..."), gr.Textbox(value="", autoscroll=False)
+                                yield gr.Markdown(visible=True, value="⏳ 第1ステップ: ルール・用語集で分析・置換中..."), gr.Textbox(value="", autoscroll=False)
                                 
+                                # ルールを必ず読み込む
+                                rules = _load_rules()
                                 terms = _load_terminology()
-                                if terms:
-                                    # 用語集を使ってLLMで分析
-                                    terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
-                                    step1_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集は「A（TERM）→B（定義・推奨表現）」の最適化指針です。本ステップでは正方向の最適化を行い、元の質問に含まれるA側の用語をB側の推奨表現へ明確化・正規化してください。
+                                
+                                # ルールと用語集の両方が空の場合は警告
+                                if not rules and not terms:
+                                    yield gr.Markdown(visible=True, value="⚠️ upload/rules.xlsx と upload/terms.xlsx の両方が空です"), gr.Textbox(value=step1_result, autoscroll=False)
+                                    if not use_schema:
+                                        return
+                                else:
+                                    # ルールと用語集を使ってLLMで分析
+                                    rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
+                                    terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()]) if terms else "（用語集なし）"
+                                    
+                                    step1_prompt = f"""あなたはデータベースクエリの専門家です。以下のルールと用語集を100%遵守して、元の質問を最適化してください。
 
-用語集:
+=== ルール（必ず遵守） ===
+{rules_text}
+
+=== 用語集（TERM → 推奨表現） ===
 {terms_text}
 
-元の質問:
+=== 元の質問 ===
 {original_query}
 
 指示:
-1. TERM（A側）が含まれる場合は、その定義・推奨表現（B側）に置換し、意味を明確化してください。
-2. 曖昧な表現は、対象・条件・期間などを可能な限り具体的な言い回しに整えてください。
-3. 質問の意図・条件・対象は維持し、不要な追加・削除は行わないでください。
-4. 数値・日付・範囲などの具体値は変更しないでください。
-5. 出力は修正後の質問文のみ。説明や前置きは不要です。
+1. 上記のルールを100%遵守してください（最優先）。
+2. 用語集のTERM（A側）が含まれる場合は、その定義・推奨表現（B側）に置換してください。
+3. 曖昧な表現は、対象・条件・期間などを可能な限り具体的な言い回しに整えてください。
+4. 質問の意図・条件・対象は維持し、不要な追加・削除は行わないでください。
+5. 数値・日付・範囲などの具体値は変更しないでください。
+6. 出力は修正後の質問文のみ。説明や前置きは不要です。
 
 修正後の質問:"""
                                     
@@ -2647,7 +2585,14 @@ def build_selectai_tab(pool):
                                 yield gr.Markdown(visible=True, value="⚠️ スキーマ情報が取得できませんでした"), gr.Textbox(value=step1_result)
                                 return
                             
-                            step2_prompt = f"""あなたはデータベースクエリの専門家です。以下のデータベーススキーマ情報を参照し、元の質問をデータベースがより正確に解釈できる自然言語へ変換してください。
+                            # ステップ2でもルールを読み込む
+                            rules = _load_rules()
+                            rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
+                            
+                            step2_prompt = f"""あなたはデータベースクエリの専門家です。以下のルールとデータベーススキーマ情報を参照し、元の質問をデータベースがより正確に解釈できる自然言語へ変換してください。
+
+=== ルール（必ず遵守） ===
+{rules_text}
 
 === 参考スキーマ情報 ===
 {schema_info}
@@ -2656,11 +2601,12 @@ def build_selectai_tab(pool):
 {step1_result}
 
 指示:
-1. 利用可能なテーブル名・カラム名・VIEW名を自然言語の中で明確にし、曖昧な用語はスキーマに合わせて具体化してください。
-2. 条件・期間・集計などが含まれる場合は、自然言語で明確に記述してください。
-3. 質問の元の意図を保ちつつ、データベースにとって解釈しやすい表現にしてください。
-4. SQLやコードは絶対に出力せず、自然言語のみを使用してください。
-5. 出力は変換後の自然言語の質問文のみとし、説明や前置きは不要です。
+1. 上記のルールを100%遵守してください（最優先）。
+2. 利用可能なテーブル名・カラム名・VIEW名を自然言語の中で明確にし、曖昧な用語はスキーマに合わせて具体化してください。
+3. 条件・期間・集計などが含まれる場合は、自然言語で明確に記述してください。
+4. 質問の元の意図を保ちつつ、データベースにとって解釈しやすい表現にしてください。
+5. SQLやコードは絶対に出力せず、自然言語のみを使用してください。
+6. 出力は変換後の自然言語の質問文のみとし、説明や前置きは不要です。
 
 変換後の自然言語:"""
                             
@@ -2700,6 +2646,13 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     def _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                        """SQLを生成する（リトライなし、エラー時は呼び出し元がハンドリング）.
+                        
+                        Yields:
+                            tuple: (status_message: str, generated_sql: str)
+                                - status_message: ステータスメッセージ("⏳ SQL生成中...", "✅ SQL生成完了", "❌ エラー: ..."など)
+                                - generated_sql: 生成されたSQL文字列(エラー時は空文字列)
+                        """
                         if enable_rewrite and rewritten_query and str(rewritten_query).strip():
                             s = str(rewritten_query).strip()
                         else:
@@ -2708,16 +2661,17 @@ def build_selectai_tab(pool):
                         inc = bool(include_extra)
                         final = s if not inc or not ep else (ep + "\n\n" + s)
                         if not profile or not str(profile).strip():
-                            yield gr.Markdown(visible=True, value="⚠️ Profileを選択してください"), gr.Textbox(value="", autoscroll=False)
+                            yield "⚠️ Profileを選択してください", ""
                             return
                         if not final:
-                            yield gr.Markdown(visible=True, value="⚠️ 質問を入力してください"), gr.Textbox(value="", autoscroll=False)
+                            yield "⚠️ 質問を入力してください", ""
                             return
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
+                        
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ SQL生成中..."), gr.Textbox(value="", autoscroll=False)
+                            yield "⏳ SQL生成中...", ""
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     try:
@@ -2761,15 +2715,9 @@ def build_selectai_tab(pool):
                                                         err_msg = inner_msg
                                         except Exception as _inner_err:
                                             logger.error(f"inner error parse failed: {_inner_err}")
-                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {err_msg}"), gr.Textbox(value="", autoscroll=False)
-                                        show_text = ""
+                                        yield f"❌ エラー: {err_msg}", ""
                                         return
-                                    # try:
-                                    #     cursor.execute(showsql_stmt)
-                                    # except Exception as e:
-                                    #     yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
-                                    #     return
-                                    # _ = _get_sql_id_for_text(showsql_stmt)
+                                    
                                     def _extract_sql(text: str) -> str:
                                         if not text:
                                             return ""
@@ -2805,25 +2753,193 @@ def build_selectai_tab(pool):
                                             if m:
                                                 generated_sql = m.group(0).strip()
                                                 break
+                                    
+                                    if not generated_sql:
+                                        yield "❌ エラー: SQL生成に失敗しました（空の結果）", ""
+                                        return
+                                    
                                     gen_sql_display = generated_sql
-                                    if gen_sql_display and not gen_sql_display.endswith(";"):
-                                        gen_sql_display = gen_sql_display
-                                    yield gr.Markdown(visible=True, value="✅ SQL生成完了"), gr.Textbox(value=gen_sql_display)
+                                    yield "✅ SQL生成完了", gen_sql_display
+                                    return
                         except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
+                            logger.error(f"_common_step_generate error: {e}")
+                            yield f"❌ エラー: {e}", ""
+                            return
+
+                    def _step_generate_and_run_common(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, elem_id="selectai_dev_chat_result_df", include_feedback=True):
+                        """SQL生成と実行を統合し、実行エラー時にSQL生成から再試行する.
+                        
+                        Args:
+                            profile: プロファイル名
+                            prompt: ユーザー入力の質問
+                            extra_prompt: 追加プロンプト
+                            include_extra: 追加プロンプトを含めるか
+                            enable_rewrite: クエリ書き換えを有効にするか
+                            rewritten_query: 書き換えられたクエリ
+                            elem_id: Dataframeのelem_id
+                            include_feedback: feedback_sqlを出力に含めるか
+                        
+                        Yields:
+                            tuple: include_feedback=Trueの場合(status_md, generated_sql, result_df, result_style, feedback_sql)
+                                   include_feedback=Falseの場合(status_md, generated_sql, result_df, result_style)
+                        """
+                        def _extract_gradio_value(obj):
+                            """Gradioオブジェクトから値を抽出する."""
+                            if isinstance(obj, str):
+                                return obj
+                            # Gradioコンポーネントの value 属性に直接アクセス
+                            if hasattr(obj, 'value'):
+                                return str(obj.value or "")
+                            elif isinstance(obj, dict):
+                                # dict 形式の Gradio オブジェクト
+                                if 'value' in obj:
+                                    return str(obj['value'] or "")
+                            elif hasattr(obj, '__dict__'):
+                                obj_dict = obj.__dict__
+                                if 'value' in obj_dict:
+                                    return str(obj_dict['value'] or "")
+                            # フォールバック: str() で変換してみる
+                            try:
+                                return str(obj or "")
+                            except:
+                                return ""
+                        
+                        # 最大3回のリトライ(SQL生成 + 実行の全プロセス)
+                        max_retries = 3
+                        logger.info(f"SQL生成・実行開始: max_retries={max_retries}")
+                        for retry_count in range(max_retries):
+                            logger.info(f"--- リトライ {retry_count + 1}/{max_retries} 開始 ---")
+                            try:
+                                # ステップ1: SQL生成
+                                generated_sql = ""
+                                sql_gen_status = None
+                                
+                                # SQL生成プロセス
+                                for status_msg, sql_value in _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                                    generated_sql = sql_value
+                                    sql_gen_status = status_msg
+                                    # 生成中のステータスを表示
+                                    if include_feedback:
+                                        yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=generated_sql, autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value=""), gr.Textbox(value="")
+                                    else:
+                                        yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=generated_sql, autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
+                                
+                                # ステータスからエラーチェック
+                                status_text = sql_gen_status
+                                
+                                # SQL生成に失敗した場合
+                                if "❌" in status_text:
+                                    if retry_count < max_retries - 1:
+                                        logger.warning(f"SQL生成失敗、再試行します (試行 {retry_count + 1}/{max_retries})")
+                                        continue
+                                    else:
+                                        # 最終試行でも失敗
+                                        if include_feedback:
+                                            yield gr.Markdown(visible=True, value=sql_gen_status), gr.Textbox(value=generated_sql), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value=""), gr.Textbox(value="")
+                                        else:
+                                            yield gr.Markdown(visible=True, value=sql_gen_status), gr.Textbox(value=generated_sql, autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
+                                        return
+                                
+                                # ステップ2: SQL実行
+                                sql_execution_failed = False
+                                logger.info(f"SQL実行開始: generated_sql={generated_sql[:100] if generated_sql else '(空)'}...")
+                                
+                                for exec_status_msg, result_df, col_widths in _run_sql_common(generated_sql, elem_id):
+                                    # Gradioオブジェクトを構築
+                                    exec_status_md = gr.Markdown(visible=True, value=exec_status_msg)
+                                    if result_df is not None and len(result_df) > 0:
+                                        exec_df = gr.Dataframe(
+                                            visible=True,
+                                            value=result_df,
+                                            label=f"実行結果（件数: {len(result_df)}）",
+                                            interactive=False,
+                                            wrap=True,
+                                            elem_id=elem_id,
+                                        )
+                                        # スタイルの構築
+                                        style_value = ""
+                                        if col_widths:
+                                            rules = []
+                                            rules.append(f"#{elem_id} {{ width: 100% !important; }}")
+                                            rules.append(f"#{elem_id} .wrap {{ overflow-x: auto !important; }}")
+                                            rules.append(f"#{elem_id} table {{ table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }}")
+                                            for idx, pct in enumerate(col_widths, start=1):
+                                                rules.append(
+                                                    f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
+                                                )
+                                            style_value = "<style>" + "\n".join(rules) + "</style>"
+                                        exec_style = gr.HTML(visible=bool(style_value), value=style_value)
+                                    else:
+                                        exec_df = gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id)
+                                        exec_style = gr.HTML(visible=False, value="")
+                                    
+                                    # 実行結果を表示
+                                    if include_feedback:
+                                        yield exec_status_md, gr.Textbox(value=generated_sql), exec_df, exec_style, gr.Textbox(value=generated_sql)
+                                    else:
+                                        yield exec_status_md, gr.Textbox(value=generated_sql, autoscroll=False), exec_df, exec_style
+                                    
+                                    # 実行エラーチェック（値を直接使用）
+                                    logger.info(f"SQL実行ステータス: {exec_status_msg}")
+                                    if "❌" in exec_status_msg:
+                                        sql_execution_failed = True
+                                        logger.warning(f"SQL実行エラー検出: {exec_status_msg}")
+                                
+                                # SQL実行に失敗した場合、SQL生成から再試行
+                                if sql_execution_failed:
+                                    if retry_count < max_retries - 1:
+                                        logger.warning(f"SQL実行失敗、SQL生成から再試行します (試行 {retry_count + 1}/{max_retries})")
+                                        logger.info(f"retry_count={retry_count}, max_retries={max_retries}, 次の試行を開始します")
+                                        continue
+                                    else:
+                                        # 最終試行でも失敗した場合、そのまま終了(既にエラー表示済み)
+                                        logger.error(f"SQL実行失敗、最大リトライ回数({max_retries})に達しました")
+                                        return
+                                else:
+                                    # 成功したので終了
+                                    return
+                            
+                            except Exception as e:
+                                logger.error(f"SQL生成・実行で予期しないエラー (試行 {retry_count + 1}/{max_retries}): {e}")
+                                if retry_count < max_retries - 1:
+                                    continue
+                                else:
+                                    if include_feedback:
+                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(エラー)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value=""), gr.Textbox(value="")
+                                    else:
+                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(エラー)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
+                                    return
+
+                    def _dev_step_generate_and_run(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                        """開発者向けSQL生成と実行を統合し、実行エラー時にSQL生成から再試行する."""
+                        yield from _step_generate_and_run_common(
+                            profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
+                            elem_id="selectai_dev_chat_result_df", include_feedback=True
+                        )
 
                     def _dev_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
-                        yield from _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query)
+                        """開発者向けSQL生成（値からGradioオブジェクトを構築）."""
+                        for status_msg, sql_value in _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                            yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=sql_value, autoscroll=False)
 
                     def _run_sql_common(sql_text, elem_id):
+                        """SQLを実行する（リトライなし、エラー時は呼び出し元がハンドリング）.
+                        
+                        Yields:
+                            tuple: (status_message: str, result_df: pd.DataFrame or None, col_widths: list or None)
+                                - status_message: ステータスメッセージ
+                                - result_df: 結果DataFrame（エラー時はNone）
+                                - col_widths: カラム幅リスト（Noneの場合あり）
+                        """
+                        s = str(sql_text or "").strip()
+                        if not s or not re.match(r"^\s*(select|with)\b", s, flags=re.IGNORECASE):
+                            yield "✅ 表示完了（データなし）", None, None
+                            return
+                        
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
+                            yield "⏳ 実行中...", None, None
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
-                                    s = str(sql_text or "").strip()
-                                    if not s or not re.match(r"^\s*(select|with)\b", s, flags=re.IGNORECASE):
-                                        yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
-                                        return
                                     run_sql = s
                                     if run_sql.endswith(";"):
                                         run_sql = run_sql[:-1]
@@ -2853,39 +2969,49 @@ def build_selectai_tab(pool):
                                             diff = 100 - sum(col_widths)
                                             if diff != 0 and len(col_widths) > 0:
                                                 col_widths[0] = max(5, col_widths[0] + diff)
-                                        df_component = gr.Dataframe(
-                                            visible=True,
-                                            value=df,
-                                            label=f"実行結果（件数: {len(df)}）",
-                                            interactive=False,
-                                            wrap=True,
-                                            elem_id=elem_id,
-                                        )
-                                        style_value = ""
-                                        if col_widths:
-                                            rules = []
-                                            rules.append(f"#{elem_id} { '{' } width: 100% !important; { '}' }")
-                                            rules.append(f"#{elem_id} .wrap { '{' } overflow-x: auto !important; { '}' }")
-                                            rules.append(f"#{elem_id} table { '{' } table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; { '}' }")
-                                            for idx, pct in enumerate(col_widths, start=1):
-                                                rules.append(
-                                                    f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) { '{' } width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; { '}' }"
-                                                )
-                                            style_value = "<style>" + "\n".join(rules) + "</style>"
-                                        style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                                        yield gr.Markdown(visible=True, value="✅ 取得完了"), df_component, style_component
+                                        yield "✅ 取得完了", df, col_widths
                                         return
-                                    yield gr.Markdown(visible=True, value="✅ 表示完了（データなし）"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
+                                    yield "✅ 表示完了（データなし）", pd.DataFrame(), None
+                                    return
                         except Exception as e:
                             logger.error(f"_run_sql_common error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（エラー）", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
+                            yield f"❌ エラー: {e}", None, None
+                            return
 
                     def _dev_step_run_sql(generated_sql, status_text=None):
+                        """開発者向けSQL実行（値からGradioオブジェクトを構築）."""
                         if status_text and "❌" in str(status_text):
                             return
-                        yield from _run_sql_common(generated_sql, "selectai_dev_chat_result_df")
+                        elem_id = "selectai_dev_chat_result_df"
+                        for status_msg, result_df, col_widths in _run_sql_common(generated_sql, elem_id):
+                            status_md = gr.Markdown(visible=True, value=status_msg)
+                            if result_df is not None and len(result_df) > 0:
+                                df_component = gr.Dataframe(
+                                    visible=True,
+                                    value=result_df,
+                                    label=f"実行結果（件数: {len(result_df)}）",
+                                    interactive=False,
+                                    wrap=True,
+                                    elem_id=elem_id,
+                                )
+                                style_value = ""
+                                if col_widths:
+                                    rules = []
+                                    rules.append(f"#{elem_id} {{ width: 100% !important; }}")
+                                    rules.append(f"#{elem_id} .wrap {{ overflow-x: auto !important; }}")
+                                    rules.append(f"#{elem_id} table {{ table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }}")
+                                    for idx, pct in enumerate(col_widths, start=1):
+                                        rules.append(
+                                            f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
+                                        )
+                                    style_value = "<style>" + "\n".join(rules) + "</style>"
+                                style_component = gr.HTML(visible=bool(style_value), value=style_value)
+                            else:
+                                df_component = gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id)
+                                style_component = gr.HTML(visible=False, value="")
+                            yield status_md, df_component, style_component
 
-                    async def _dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt):
+                    async def _dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt, structure_prompt):
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
                             region = get_oci_region()
@@ -2907,8 +3033,9 @@ def build_selectai_tab(pool):
                                     compartment_id=compartment_id,
                                 )
 
-                            # グローバルプロンプトを使用
-                            prompt = _SQL_STRUCTURE_ANALYSIS_PROMPT + "SQL:\n```sql\n" + s + "\n```"
+                            # カスタムプロンプトを使用（空の場合はグローバルプロンプトを使用）
+                            base_prompt = str(structure_prompt or "").strip() or _SQL_STRUCTURE_ANALYSIS_PROMPT
+                            prompt = base_prompt + "SQL:\n```sql\n" + s + "\n```"
 
                             messages = [
                                 {
@@ -2964,7 +3091,7 @@ def build_selectai_tab(pool):
                             logger.error(f"_dev_ai_analyze_async error: {e}")
                             return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
 
-                    def _dev_ai_analyze(model_name, sql_text, dev_prompt, user_prompt):
+                    def _dev_ai_analyze(model_name, sql_text, dev_prompt, user_prompt, structure_prompt):
                         import asyncio
                         # 必須入力項目のチェック
                         if not model_name or not str(model_name).strip():
@@ -2978,7 +3105,7 @@ def build_selectai_tab(pool):
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            result = loop.run_until_complete(_dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt))
+                            result = loop.run_until_complete(_dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt, structure_prompt))
                             yield result
                         finally:
                             loop.close()
@@ -3134,22 +3261,14 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}"), gr.Textbox(value=plsql)
 
                     dev_chat_execute_btn.click(
-                        fn=_dev_step_generate,
+                        fn=_dev_step_generate_and_run,
                         inputs=[dev_profile_select, dev_prompt_input, dev_extra_prompt, dev_include_extra_prompt, dev_enable_query_rewrite, dev_rewritten_query],
-                        outputs=[dev_chat_status_md, dev_generated_sql_text],
-                    ).then(
-                        fn=_dev_step_run_sql,
-                        inputs=[dev_generated_sql_text, dev_chat_status_md],
-                        outputs=[dev_chat_status_md, dev_chat_result_df, dev_chat_result_style],
-                    ).then(
-                        fn=lambda x: gr.Textbox(value=str(x or "")),
-                        inputs=[dev_generated_sql_text],
-                        outputs=[dev_feedback_response_text]
+                        outputs=[dev_chat_status_md, dev_generated_sql_text, dev_chat_result_df, dev_chat_result_style, dev_feedback_response_text],
                     )
 
                     dev_ai_analyze_btn.click(
                         fn=_dev_ai_analyze,
-                        inputs=[dev_analysis_model_input, dev_generated_sql_text, dev_prompt_text, user_prompt_text],
+                        inputs=[dev_analysis_model_input, dev_generated_sql_text, dev_prompt_text, user_prompt_text, dev_structure_prompt_text],
                         outputs=[dev_ai_analyze_status, dev_sql_structure_text, dev_sql_summary_text, user_sql_summary_text],
                     )
 
@@ -3169,6 +3288,609 @@ def build_selectai_tab(pool):
                         fn=_dev_rewrite_query,
                         inputs=[dev_rewrite_model_select, dev_profile_select, dev_prompt_input, dev_rewrite_use_glossary, dev_rewrite_use_schema],
                         outputs=[dev_rewrite_status, dev_rewritten_query],
+                    )
+
+                with gr.TabItem(label="SQL分析→質問 逆生成") as reverse_tab:
+                    with gr.Accordion(label="1. SQL入力", open=True):
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("対象SQL*", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rev_sql_input = gr.Textbox(show_label=False, lines=8, max_lines=15, show_copy_button=True, container=False, autoscroll=False)
+
+                    with gr.Accordion(label="SQL構造分析", open=True):
+                        with gr.Accordion(label="分析用Prompt", open=False):
+                            with gr.Row():
+                                with gr.Column(scale=1):
+                                    gr.Markdown("Prompt内容", elem_classes="input-label")
+                                with gr.Column(scale=5):
+                                    rev_analysis_prompt_input = gr.Textbox(
+                                        show_label=False,
+                                        value=_SQL_STRUCTURE_ANALYSIS_PROMPT,
+                                        lines=10,
+                                        max_lines=20,
+                                        interactive=True,
+                                        show_copy_button=True,
+                                        container=False,
+                                        autoscroll=False
+                                    )
+                        with gr.Row():
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("モデル*", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        rev_analysis_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        rev_analysis_btn = gr.Button("AI分析（時間がかかる場合があります）", variant="primary")
+                        with gr.Row():
+                            rev_analysis_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("結果*", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rev_sql_structure_output = gr.Textbox(label=" ", show_label=True, lines=15, max_lines=20, interactive=True, show_copy_button=True, container=True, autoscroll=False)
+
+                    with gr.Accordion(label="2. スキーマ情報取得", open=True):
+                        with gr.Row():
+                            with gr.Column(scale=5):
+                                # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                _rev_initial_choices = _load_profiles_from_json()
+                                if not _rev_initial_choices:
+                                    _rev_initial_choices = [("", "")]
+                                rev_profile_select = gr.Dropdown(
+                                    show_label=False,
+                                    choices=_rev_initial_choices,
+                                    value=(
+                                        _rev_initial_choices[0][1]
+                                        if (_rev_initial_choices and isinstance(_rev_initial_choices[0], tuple))
+                                        else (_rev_initial_choices[0] if _rev_initial_choices else "")
+                                    ),
+                                    interactive=True,
+                                    container=False
+                                )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        rev_context_meta_btn = gr.Button("スキーマ情報を取得（時間がかかる場合があります）", variant="primary")
+                        with gr.Row():
+                            rev_context_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("スキーマ情報*", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rev_context_text = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False, container=True)
+
+                    with gr.Accordion(label="3. 質問生成", open=True):
+                        with gr.Row():
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("モデル*", elem_classes="input-label")
+                                    with gr.Column(scale=5):
+                                        rev_model_input = gr.Dropdown(
+                                            show_label=False,
+                                            choices=[
+                                                "xai.grok-code-fast-1",
+                                                "xai.grok-3",
+                                                "xai.grok-3-fast",
+                                                "xai.grok-4",
+                                                "xai.grok-4-fast-non-reasoning",
+                                                "meta.llama-4-scout-17b-16e-instruct",
+                                                "gpt-4o",
+                                                "gpt-5.1",
+                                            ],
+                                            value="xai.grok-code-fast-1",
+                                            interactive=True,
+                                            container=False,
+                                        )
+                            with gr.Column(scale=5):
+                                with gr.Row():
+                                    with gr.Column(scale=1):
+                                        gr.Markdown("")
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("用語集を利用", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rev_use_glossary = gr.Checkbox(label="", value=False, container=False)
+                        with gr.Row():
+                            rev_generate_btn = gr.Button("質問を生成", variant="primary")
+                        with gr.Row():
+                            rev_generate_status_md = gr.Markdown(visible=False)
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("推奨質問", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rev_question_output = gr.Textbox(
+                                    label=" ",
+                                    show_label=True,
+                                    lines=4,
+                                    max_lines=10,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                    container=True,
+                                    autoscroll=False,
+                                )
+
+                    def _rev_build_context_text(profile_name):
+                        try:
+                            s = _get_profile_context_ddl_from_json(profile_name)
+                            if str(s).strip():
+                                return s
+                            tables, views = _get_profile_objects_from_json(profile_name)
+                            chunks = []
+                            for name in tables:
+                                if not name:
+                                    continue
+                                try:
+                                    _, ddl_t = get_table_details(pool, name)
+                                except Exception:
+                                    ddl_t = ""
+                                if ddl_t:
+                                    chunks.append(str(ddl_t).strip())
+                            for name in views:
+                                if not name:
+                                    continue
+                                try:
+                                    _, ddl_v = get_view_details(pool, name)
+                                except Exception:
+                                    ddl_v = ""
+                                if ddl_v:
+                                    chunks.append(str(ddl_v).strip())
+                            return "\n\n".join([c for c in chunks if c]) or ""
+                        except Exception as e:
+                            logger.error(f"_rev_build_context error: {e}")
+                            return f"❌ エラー: {e}"
+
+                    def _rev_build_context(profile_name):
+                        try:
+                            txt = _rev_build_context_text(profile_name)
+                            return gr.Textbox(value=txt, autoscroll=False)
+                        except Exception as e:
+                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
+
+                    def _on_profile_change_set_context_stream(p):
+                        try:
+                            yield gr.Markdown(visible=True, value="⏳ スキーマ情報取得中..."), gr.Textbox(value="", interactive=True, autoscroll=False)
+                            txt = _rev_build_context_text(p)
+                            status_text = "✅ 取得完了" if str(txt).strip() else "✅ 取得完了（スキーマ情報なし）"
+                            yield gr.Markdown(visible=True, value=status_text), gr.Textbox(value=txt, interactive=True, autoscroll=False)
+                        except Exception as e:
+                            logger.error(f"_on_profile_change_set_context_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="", interactive=True, autoscroll=False)
+
+                    async def _rev_generate_async(model_name, sql_structure_text, context_text, sql_text, use_glossary):
+                        """SQL→質問逆生成処理.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_structure_text: SQL構造分析結果
+                            context_text: スキーマやDDLのコンテキスト
+                            sql_text: 対象SQL
+                            use_glossary: 用語集を利用するか
+                        
+                        Returns:
+                            gr.Textbox: 生成された質問文
+                        """
+                        try:
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
+                            ctx_comp = str(context_text or "")
+                            
+                            # コメントを除去
+                            s = remove_comments(str(sql_text or "").strip())
+                            
+                            # SQL構造分析の情報を利用
+                            sql_structure = str(sql_structure_text or "").strip()
+                            
+                            prompt = (
+                                "Convert the SQL structure analysis from physical names to business terms (COMMENT).\n"
+                                "GOAL: Output must contain 100% of SQL information using business terms to enable exact SQL reconstruction.\n"
+                                "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
+                                
+                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                
+                                "### 📋 SELECT句\n"
+                                "- [DISTINCT] (if present)\n"
+                                "- [テーブル業務用語](alias).[列業務用語] [AS alias]\n"
+                                "- aggregate_function([テーブル業務用語](alias).[列業務用語]) [AS alias]\n"
+                                "- expression [AS alias]\n"
+                                "- (サブクエリ-N) AS alias\n"
+                                "- * (if SELECT *)\n\n"
+                                
+                                "### 📁 FROM句\n"
+                                "- [テーブル業務用語] alias\n"
+                                "- (サブクエリ-N) alias (if inline view)\n\n"
+                                
+                                "### 🔗 JOIN句\n"
+                                "- **[JOIN_TYPE]**: [テーブルA業務用語](aliasA) JOIN [テーブルB業務用語](aliasB)\n"
+                                "  - ON: [テーブルA業務用語](aliasA).[列A業務用語] = [テーブルB業務用語](aliasB).[列B業務用語]\n"
+                                "  - ON: condition2 (if multiple conditions)\n"
+                                "  - USING: ([列業務用語]) (if USING clause)\n\n"
+                                
+                                "### 🔍 WHERE句\n"
+                                "- [テーブル業務用語](alias).[列業務用語] operator value\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] operator value\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IN (サブクエリ-N)\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] = (サブクエリ-N)\n"
+                                "- AND/OR EXISTS (サブクエリ-N)\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] BETWEEN value1 AND value2\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] LIKE 'pattern'\n"
+                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IS [NOT] NULL\n\n"
+                                
+                                "### 📦 GROUP BY句\n"
+                                "- [テーブル業務用語](alias).[列業務用語1]\n"
+                                "- [テーブル業務用語](alias).[列業務用語2]\n\n"
+                                
+                                "### 🎯 HAVING句\n"
+                                "- aggregate_function([テーブル業務用語](alias).[列業務用語]) operator value\n"
+                                "- AND/OR aggregate_function([列業務用語]) operator (サブクエリ-N)\n\n"
+                                
+                                "### 📊 ORDER BY句\n"
+                                "- [テーブル業務用語](alias).[列業務用語1] ASC/DESC [NULLS FIRST/LAST]\n"
+                                "- [テーブル業務用語](alias).[列業務用語2] ASC/DESC\n\n"
+                                
+                                "### 📏 LIMIT/OFFSET句\n"
+                                "- LIMIT: n / FETCH FIRST n ROWS ONLY\n"
+                                "- OFFSET: m / OFFSET m ROWS\n\n"
+                                
+                                "### 📝 WITH句(CTE)\n"
+                                "- **cte_name**:\n"
+                                "  - SELECT: [DISTINCT] [列業務用語1], [列業務用語2], aggregate_func([列業務用語]) AS alias, (サブクエリ-N) AS alias\n"
+                                "  - FROM: [テーブル業務用語](alias)\n"
+                                "  - JOIN: **[JOIN_TYPE]** [テーブル業務用語](alias) ON condition\n"
+                                "  - WHERE: condition1 AND/OR condition2\n"
+                                "  - GROUP BY: [列業務用語1], [列業務用語2]\n"
+                                "  - HAVING: aggregate_condition\n"
+                                "  - ORDER BY: [列業務用語] ASC/DESC\n\n"
+                                
+                                "### 🔎 サブクエリ\n"
+                                "- **サブクエリ-N** [Location: SELECT/FROM/WHERE/HAVING in main/CTE]:\n"
+                                "  - SELECT: [DISTINCT] columns/expressions\n"
+                                "  - FROM: [テーブル業務用語](alias)\n"
+                                "  - JOIN: **[JOIN_TYPE]** [テーブル業務用語](alias) ON condition\n"
+                                "  - WHERE: conditions\n"
+                                "  - **NESTED-N-M**: (nested subquery with same structure)\n\n"
+                                
+                                "### 🔀 SET演算\n"
+                                "- **[UNION/UNION ALL/INTERSECT/MINUS/EXCEPT]**:\n"
+                                "  - Query1: (expand structure)\n"
+                                "  - Query2: (expand structure)\n\n"
+                                
+                                "---\n\n"
+                                
+                                "CRITICAL RULES for 100% SQL Reconstruction:\n"
+                                "- Replace physical table/column names with business terms from COMMENT\n"
+                                "- Preserve alias exactly as in original SQL\n"
+                                "- Format: [テーブル業務用語](alias).[列業務用語]\n"
+                                "- MUST preserve ALL literal values exactly: strings with quotes, numbers, date literals\n"
+                                "- MUST preserve ALL operators exactly: =, >, <, >=, <=, <>, !=, LIKE, IN, BETWEEN, IS NULL\n"
+                                "- MUST preserve function calls with EXACT parameters: SUBSTR(col,4,6) ≠ SUBSTR(col,1,6)\n"
+                                "- MUST preserve CASE expression structure completely with WHEN/THEN/ELSE\n"
+                                "- MUST preserve nested function structure: TO_NUMBER(TO_CHAR(TO_DATE(...)))\n"
+                                "- MUST preserve AND/OR/NOT logical structure exactly\n"
+                                "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id): list in FROM, show condition in WHERE\n"
+                                "- サブクエリ: Number sequentially (サブクエリ-1, サブクエリ-2...) and expand completely\n"
+                                "- For nested subqueries: label as NESTED-X-Y and expand\n"
+                                "- If section is empty/not present, omit that section entirely\n\n"
+                                
+                                "Example 1 (Simple):\n"
+                                "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ORDERS o ON u.id = o.user_id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
+                                
+                                "Output:\n"
+                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                
+                                "### 📋 SELECT句\n"
+                                "- *\n\n"
+                                
+                                "### 📁 FROM句\n"
+                                "- [ユーザマスタ] u\n\n"
+                                
+                                "### 🔗 JOIN句\n"
+                                "- **INNER JOIN**: [ユーザマスタ](u) JOIN [注文明細](o)\n"
+                                "  - ON: [ユーザマスタ](u).[ユーザID] = [注文明細](o).[ユーザID]\n\n"
+                                
+                                "### 🔍 WHERE句\n"
+                                "- [ユーザマスタ](u).[ステータス] = 'ACTIVE'\n\n"
+                                
+                                "### 📊 ORDER BY句\n"
+                                "- [ユーザマスタ](u).[作成日時] DESC\n\n"
+                                
+                                "Example 2 (Complex with implicit JOIN and correlated subquery):\n"
+                                "SQL: SELECT u.id, u.name, o.total FROM USERS u, ORDERS o WHERE u.id = o.user_id AND o.order_date = (SELECT MAX(o2.order_date) FROM ORDERS o2 WHERE o2.user_id = u.id) ORDER BY u.id\n\n"
+                                
+                                "Output:\n"
+                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                
+                                "### 📋 SELECT句\n"
+                                "- [ユーザマスタ](u).[ユーザID]\n"
+                                "- [ユーザマスタ](u).[氏名]\n"
+                                "- [注文明細](o).[合計金額]\n\n"
+                                
+                                "### 📁 FROM句\n"
+                                "- [ユーザマスタ] u\n"
+                                "- [注文明細] o\n\n"
+                                
+                                "### 🔍 WHERE句\n"
+                                "- [ユーザマスタ](u).[ユーザID] = [注文明細](o).[ユーザID]\n"
+                                "- AND [注文明細](o).[注文日] = (サブクエリ-1)\n\n"
+                                
+                                "### 📊 ORDER BY句\n"
+                                "- [ユーザマスタ](u).[ユーザID] ASC\n\n"
+                                
+                                "### 🔎 サブクエリ\n"
+                                "- **サブクエリ-1** [Location: WHERE in main query]:\n"
+                                "  - SELECT: MAX([注文明細](o2).[注文日])\n"
+                                "  - FROM: [注文明細] o2\n"
+                                "  - WHERE: [注文明細](o2).[ユーザID] = [ユーザマスタ](u).[ユーザID]\n\n"
+                                
+                                "===SQL構造分析===\n" + (sql_structure if sql_structure else "(未分析)") + "\n\n"
+                                "===データベース定義===\n" + str(ctx_comp or "") + "\n\n"
+                                "===対象SQL===\n```sql\n" + s + "\n```"
+                            )
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                            
+                            messages = [
+                                {
+                                    "role": "system", 
+                                    "content": "You are a Text-to-SQL reverse engineer. Generate STRUCTURED natural language specifications that preserve 100% of SQL semantics for exact reconstruction. Output the specified format ONLY."
+                                },
+                                {"role": "user", "content": prompt},
+                            ]
+                            resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
+                            out_text = ""
+                            if getattr(resp, "choices", None):
+                                msg = resp.choices[0].message
+                                out_text = msg.content if hasattr(msg, "content") else ""
+                            import re as _re
+                            out_text = _re.sub(r"^```.*?\n|\n```$", "", str(out_text or ""), flags=_re.DOTALL).strip()
+                            
+                            # 用語集を利用する場合は逆処理を適用
+                            if use_glossary:
+                                terms = _load_terminology()
+                                # ルールを必ず読み込む
+                                rules = _load_rules()
+                                if terms or rules:
+                                    # ルールと用語集を使ってLLMで書き換え（逆処理）
+                                    rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
+                                    terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()]) if terms else "（用語集なし）"
+                                    glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下のルールと用語集に基づいて、元の質問を正規化してください。
+
+=== ルール（必ず遵守） ===
+{rules_text}
+
+=== 用語集（通常「A（TERM）→B（定義・推奨表現）」の最適化指針） ===
+{terms_text}
+
+=== 元の質問 ===
+{out_text}
+
+指示:
+1. 上記のルールを100%遵守してください（最優先）。
+2. 本タスクでは逆最適化を行います。定義や推奨表現、別名、略称などB側に該当する語句は対応する正式用語（A/TERM）に置換してください。
+3. 意図・条件・対象は維持し、語彙のみを正規化してください。
+4. 数値・日付・範囲などの具体値は変更しないでください。
+5. 出力は正規化後の質問文のみ。説明や前置きは不要です。
+
+正規化後の質問:"""
+                                    
+                                    messages = [{"role": "user", "content": glossary_prompt}]
+                                    glossary_resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                    if glossary_resp.choices and len(glossary_resp.choices) > 0:
+                                        glossary_result = glossary_resp.choices[0].message.content.strip()
+                                        # 元の質問と用語集適用後の質問を\n\nで連結
+                                        out_text = str(out_text) + "\n\n" + glossary_result
+                            
+                            return gr.Textbox(value=out_text, autoscroll=False)
+                        except Exception as e:
+                            logger.error(f"_rev_generate_async error: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
+
+                    def _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary):
+                        """SQL→質問逆生成のラッパー関数.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_structure_text: SQL構造分析結果
+                            context_text: スキーマやDDLのコンテキスト
+                            sql_text: 対象SQL
+                            use_glossary: 用語集を利用するか
+                        
+                        Returns:
+                            gr.Textbox: 生成された質問文
+                        """
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            return loop.run_until_complete(_rev_generate_async(model_name, sql_structure_text, context_text, sql_text, use_glossary))
+                        finally:
+                            loop.close()
+
+                    def _rev_generate_stream(model_name, sql_structure_text, context_text, sql_text, use_glossary):
+                        try:
+                            ctx = str(context_text or "").strip()
+                            sql = str(sql_text or "").strip()
+                            missing = []
+                            if not ctx:
+                                missing.append("スキーマ情報")
+                            if not sql:
+                                missing.append("対象SQL")
+                            if missing:
+                                msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False, autoscroll=False)
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False, autoscroll=False)
+                            out = _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary)
+                            yield gr.Markdown(visible=True, value="✅ 生成完了"), out
+                        except Exception as e:
+                            logger.error(f"_rev_generate_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False, autoscroll=False)
+
+                    async def _rev_ai_analyze_async(model_name, sql_text, analysis_prompt):
+                        """逆生成タブ用のAI分析処理.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_text: 対象SQL
+                            analysis_prompt: SQL構造分析用のカスタムプロンプト
+                        
+                        Returns:
+                            tuple: (status_md, structure_output)
+                        """
+                        try:
+                            from utils.chat_util import get_oci_region, get_compartment_id
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
+                            
+                            s = str(sql_text or "").strip()
+                            if not s:
+                                return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value="", autoscroll=False)
+                            
+                            # カスタムプロンプトを使用（空の場合はグローバルプロンプトを使用）
+                            base_prompt = str(analysis_prompt or "").strip() or _SQL_STRUCTURE_ANALYSIS_PROMPT
+                            prompt = base_prompt + "SQL:\n```sql\n" + s + "\n```"
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                            
+                            messages = [
+                                {
+                                    "role": "system", 
+                                    "content": "You are a SQL parser. Output ONLY the requested format. No explanations."
+                                },
+                                {
+                                    "role": "user", 
+                                    "content": prompt
+                                },
+                            ]
+                            
+                            resp = await client.chat.completions.create(model=model_name, messages=messages)
+                            sql_structure_md = ""
+                            if getattr(resp, "choices", None):
+                                msg = resp.choices[0].message
+                                out = msg.content if hasattr(msg, "content") else ""
+                                sql_structure_md = str(out or "").strip()
+                                # マークダウンコードブロックを削除
+                                sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
+                                sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
+                                sql_structure_md = sql_structure_md.strip()
+                            
+                            if not sql_structure_md:
+                                sql_structure_md = "## 📊 SQL構造分析\n\n情報を抽出できませんでした。"
+                            
+                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=sql_structure_md, autoscroll=False)
+                        except Exception as e:
+                            logger.error(f"_rev_ai_analyze_async error: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
+
+                    def _rev_ai_analyze(model_name, sql_text, analysis_prompt):
+                        """逆生成タブ用のAI分析ラッパー関数.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_text: 対象SQL
+                            analysis_prompt: SQL構造分析用のカスタムプロンプト
+                        
+                        Returns:
+                            tuple: (status_md, structure_output)
+                        """
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            return loop.run_until_complete(_rev_ai_analyze_async(model_name, sql_text, analysis_prompt))
+                        finally:
+                            loop.close()
+
+                    def _rev_ai_analyze_stream(model_name, sql_text, analysis_prompt):
+                        """逆生成タブ用のAI分析ストリーム関数.
+                        
+                        Args:
+                            model_name: 使用するLLMモデル
+                            sql_text: 対象SQL
+                            analysis_prompt: SQL構造分析用のカスタムプロンプト
+                        
+                        Yields:
+                            tuple: (status_md, structure_output)
+                        """
+                        try:
+                            if not model_name or not str(model_name).strip():
+                                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="", autoscroll=False)
+                                return
+                            if not sql_text or not str(sql_text).strip():
+                                yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを入力してください"), gr.Textbox(value="", autoscroll=False)
+                                return
+                            yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="## 📊 SQL構造分析\n\n解析中...", autoscroll=False)
+                            result = _rev_ai_analyze(model_name, sql_text, analysis_prompt)
+                            yield result
+                        except Exception as e:
+                            logger.error(f"_rev_ai_analyze_stream error: {e}")
+                            yield gr.Markdown(visible=True, value=f"❌ 分析に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
+
+                    def _on_profile_change_set_context(p):
+                        return _rev_build_context(p)
+
+                    rev_analysis_btn.click(
+                        fn=_rev_ai_analyze_stream,
+                        inputs=[rev_analysis_model_input, rev_sql_input, rev_analysis_prompt_input],
+                        outputs=[rev_analysis_status_md, rev_sql_structure_output],
+                    )
+
+                    rev_context_meta_btn.click(
+                        fn=_on_profile_change_set_context_stream,
+                        inputs=[rev_profile_select],
+                        outputs=[rev_context_status_md, rev_context_text],
+                    )
+
+                    rev_generate_btn.click(
+                        fn=_rev_generate_stream,
+                        inputs=[rev_model_input, rev_sql_structure_output, rev_context_text, rev_sql_input, rev_use_glossary],
+                        outputs=[rev_generate_status_md, rev_question_output],
                     )
 
                 with gr.TabItem(label="フィードバック管理") as feedback_tab:
@@ -4883,581 +5605,251 @@ def build_selectai_tab(pool):
                         outputs=[syn_result_status_md, syn_result_df, syn_result_style],
                     )
 
-                with gr.TabItem(label="SQL分析→質問 逆生成") as reverse_tab:
-                    with gr.Accordion(label="1. 入力", open=True):
+                with gr.TabItem(label="用語集管理"):
+                    with gr.Accordion(label="0. 用語集の概要", open=False):
+                        gr.Markdown(
+                            """
+                            目的: 組織で使う用語を一元管理し、チャット/分析で参照できるようにします。
+
+                            手順:
+                            - 用語集Excelをダウンロードし、`TERM` と `DEFINITION` の2列を記入します。
+                            - 用語集Excelをアップロードすると、`uploads/terms.xlsx` に保存されます。
+                            - 「用語集をプレビュー」で内容と件数を確認します。
+
+                            注意:
+                            - 列名は必ず `TERM`, `DEFINITION` を使用してください。
+                            - 文字列以外の値は保存時に文字列化されます。
+                            - 個人情報や機密情報は含めないでください。
+                            """
+                        )
+                    with gr.Accordion(label="1. 用語集", open=True):
+                        # 用語集Excelのテンプレートファイルを事前作成し、そのままダウンロード可能にする
+                        up_dir = Path("uploads")
+                        up_dir.mkdir(parents=True, exist_ok=True)
+                        _p = up_dir / "terms.xlsx"
+                        if not _p.exists():
+                            _df = pd.DataFrame(columns=["TERM", "DEFINITION"])
+                            with pd.ExcelWriter(_p) as _writer:
+                                _df.to_excel(_writer, sheet_name="terms", index=False)
+    
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("対象SQL*", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                rev_sql_input = gr.Textbox(show_label=False, lines=8, max_lines=15, show_copy_button=True, container=False, autoscroll=False)
-
-                    with gr.Accordion(label="SQL構造分析", open=True):
-                        with gr.Row():
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("モデル*", elem_classes="input-label")
-                                    with gr.Column(scale=5):
-                                        rev_analysis_model_input = gr.Dropdown(
-                                            show_label=False,
-                                            choices=[
-                                                "xai.grok-code-fast-1",
-                                                "xai.grok-3",
-                                                "xai.grok-3-fast",
-                                                "xai.grok-4",
-                                                "xai.grok-4-fast-non-reasoning",
-                                                "meta.llama-4-scout-17b-16e-instruct",
-                                                "gpt-4o",
-                                                "gpt-5.1",
-                                            ],
-                                            value="xai.grok-code-fast-1",
-                                            interactive=True,
-                                            container=False,
-                                        )
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        rev_analysis_btn = gr.Button("AI分析（時間がかかる場合があります）", variant="primary")
-                        with gr.Row():
-                            rev_analysis_status_md = gr.Markdown(visible=False)
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("結果", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                rev_sql_structure_output = gr.Textbox(label=" ", show_label=True, lines=15, max_lines=20, interactive=True, show_copy_button=True, container=True, autoscroll=False)
-
-                    with gr.Accordion(label="2. 参照コンテキスト", open=True):
-                        with gr.Row():
-                            with gr.Column(scale=5):
-                                # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
-                                _rev_initial_choices = _load_profiles_from_json()
-                                if not _rev_initial_choices:
-                                    _rev_initial_choices = [("", "")]
-                                rev_profile_select = gr.Dropdown(
-                                    show_label=False,
-                                    choices=_rev_initial_choices,
-                                    value=(
-                                        _rev_initial_choices[0][1]
-                                        if (_rev_initial_choices and isinstance(_rev_initial_choices[0], tuple))
-                                        else (_rev_initial_choices[0] if _rev_initial_choices else "")
-                                    ),
-                                    interactive=True,
-                                    container=False
-                                )
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        rev_context_meta_btn = gr.Button("メタ情報を取得（時間がかかる場合があります）", variant="primary")
-                        with gr.Row():
-                            rev_context_status_md = gr.Markdown(visible=False)
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("送信するメタ情報*", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                rev_context_text = gr.Textbox(show_label=False, lines=15, max_lines=15, interactive=True, show_copy_button=True, autoscroll=False, container=True)
-
-                    with gr.Accordion(label="3. 生成", open=True):
-                        with gr.Row():
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("モデル*", elem_classes="input-label")
-                                    with gr.Column(scale=5):
-                                        rev_model_input = gr.Dropdown(
-                                            show_label=False,
-                                            choices=[
-                                                "xai.grok-code-fast-1",
-                                                "xai.grok-3",
-                                                "xai.grok-3-fast",
-                                                "xai.grok-4",
-                                                "xai.grok-4-fast-non-reasoning",
-                                                "meta.llama-4-scout-17b-16e-instruct",
-                                                "gpt-4o",
-                                                "gpt-5.1",
-                                            ],
-                                            value="xai.grok-code-fast-1",
-                                            interactive=True,
-                                            container=False,
-                                        )
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("")
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("用語集を利用", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                rev_use_glossary = gr.Checkbox(label="", value=False, container=False)
-                        with gr.Row():
-                            rev_generate_btn = gr.Button("自然言語を生成", variant="primary")
-                        with gr.Row():
-                            rev_generate_status_md = gr.Markdown(visible=False)
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                gr.Markdown("推奨質問(日本語)", elem_classes="input-label")
-                            with gr.Column(scale=5):
-                                rev_question_output = gr.Textbox(
-                                    label=" ",
-                                    show_label=True,
-                                    lines=4,
-                                    max_lines=10,
-                                    interactive=False,
-                                    show_copy_button=True,
-                                    container=True,
-                                    autoscroll=False,
-                                )
-
-                    def _rev_build_context_text(profile_name):
-                        try:
-                            s = _get_profile_context_ddl_from_json(profile_name)
-                            if str(s).strip():
-                                return s
-                            tables, views = _get_profile_objects_from_json(profile_name)
-                            chunks = []
-                            for name in tables:
-                                if not name:
-                                    continue
-                                try:
-                                    _, ddl_t = get_table_details(pool, name)
-                                except Exception:
-                                    ddl_t = ""
-                                if ddl_t:
-                                    chunks.append(str(ddl_t).strip())
-                            for name in views:
-                                if not name:
-                                    continue
-                                try:
-                                    _, ddl_v = get_view_details(pool, name)
-                                except Exception:
-                                    ddl_v = ""
-                                if ddl_v:
-                                    chunks.append(str(ddl_v).strip())
-                            return "\n\n".join([c for c in chunks if c]) or ""
-                        except Exception as e:
-                            logger.error(f"_rev_build_context error: {e}")
-                            return f"❌ エラー: {e}"
-
-                    def _rev_build_context(profile_name):
-                        try:
-                            txt = _rev_build_context_text(profile_name)
-                            return gr.Textbox(value=txt, autoscroll=False)
-                        except Exception as e:
-                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
-
-                    def _on_profile_change_set_context_stream(p):
-                        try:
-                            yield gr.Markdown(visible=True, value="⏳ メタ情報取得中..."), gr.Textbox(value="", interactive=True, autoscroll=False)
-                            txt = _rev_build_context_text(p)
-                            status_text = "✅ 取得完了" if str(txt).strip() else "✅ 取得完了（メタ情報なし）"
-                            yield gr.Markdown(visible=True, value=status_text), gr.Textbox(value=txt, interactive=True, autoscroll=False)
-                        except Exception as e:
-                            logger.error(f"_on_profile_change_set_context_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Textbox(value="", interactive=True, autoscroll=False)
-
-                    async def _rev_generate_async(model_name, sql_structure_text, context_text, sql_text, use_glossary):
-                        """SQL→質問逆生成処理.
-                        
-                        Args:
-                            model_name: 使用するLLMモデル
-                            sql_structure_text: SQL構造分析結果
-                            context_text: スキーマやDDLのコンテキスト
-                            sql_text: 対象SQL
-                            use_glossary: 用語集を利用するか
-                        
-                        Returns:
-                            gr.Textbox: 生成された質問文
-                        """
-                        try:
-                            from utils.chat_util import get_oci_region, get_compartment_id
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
-                            ctx_comp = str(context_text or "")
+                                gr.Markdown("ℹ️ ファイルをドロップすると自動的にアップロードされます")
                             
-                            # コメントを除去
-                            s = remove_comments(str(sql_text or "").strip())
-                            
-                            # SQL構造分析の情報を利用
-                            sql_structure = str(sql_structure_text or "").strip()
-                            
-                            prompt = (
-                                "Convert the SQL structure analysis from physical names to business terms (COMMENT).\n"
-                                "GOAL: Output must contain 100% of SQL information using business terms to enable exact SQL reconstruction.\n"
-                                "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
-                                
-                                "## 📋 SQL論理構造 (業務用語版)\n\n"
-                                
-                                "### 📋 SELECT句\n"
-                                "- [DISTINCT] (if present)\n"
-                                "- [テーブル業務用語](alias).[列業務用語] [AS alias]\n"
-                                "- aggregate_function([テーブル業務用語](alias).[列業務用語]) [AS alias]\n"
-                                "- expression [AS alias]\n"
-                                "- (サブクエリ-N) AS alias\n"
-                                "- * (if SELECT *)\n\n"
-                                
-                                "### 📁 FROM句\n"
-                                "- [テーブル業務用語] AS alias\n"
-                                "- (サブクエリ-N) AS alias (if inline view)\n\n"
-                                
-                                "### 🔗 JOIN句\n"
-                                "- **[JOIN_TYPE]**: [テーブルA業務用語](aliasA) JOIN [テーブルB業務用語](aliasB)\n"
-                                "  - ON: [テーブルA業務用語](aliasA).[列A業務用語] = [テーブルB業務用語](aliasB).[列B業務用語]\n"
-                                "  - ON: condition2 (if multiple conditions)\n"
-                                "  - USING: ([列業務用語]) (if USING clause)\n\n"
-                                
-                                "### 🔍 WHERE句\n"
-                                "- [テーブル業務用語](alias).[列業務用語] operator value\n"
-                                "- AND/OR [テーブル業務用語](alias).[列業務用語] operator value\n"
-                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IN (サブクエリ-N)\n"
-                                "- AND/OR [テーブル業務用語](alias).[列業務用語] = (サブクエリ-N)\n"
-                                "- AND/OR EXISTS (サブクエリ-N)\n"
-                                "- AND/OR [テーブル業務用語](alias).[列業務用語] BETWEEN value1 AND value2\n"
-                                "- AND/OR [テーブル業務用語](alias).[列業務用語] LIKE 'pattern'\n"
-                                "- AND/OR [テーブル業務用語](alias).[列業務用語] IS [NOT] NULL\n\n"
-                                
-                                "### 📦 GROUP BY句\n"
-                                "- [テーブル業務用語](alias).[列業務用語1]\n"
-                                "- [テーブル業務用語](alias).[列業務用語2]\n\n"
-                                
-                                "### 🎯 HAVING句\n"
-                                "- aggregate_function([テーブル業務用語](alias).[列業務用語]) operator value\n"
-                                "- AND/OR aggregate_function([列業務用語]) operator (サブクエリ-N)\n\n"
-                                
-                                "### 📊 ORDER BY句\n"
-                                "- [テーブル業務用語](alias).[列業務用語1] ASC/DESC [NULLS FIRST/LAST]\n"
-                                "- [テーブル業務用語](alias).[列業務用語2] ASC/DESC\n\n"
-                                
-                                "### 📏 LIMIT/OFFSET句\n"
-                                "- LIMIT: n / FETCH FIRST n ROWS ONLY\n"
-                                "- OFFSET: m / OFFSET m ROWS\n\n"
-                                
-                                "### 📝 WITH句(CTE)\n"
-                                "- **cte_name**:\n"
-                                "  - SELECT: [DISTINCT] [列業務用語1], [列業務用語2], aggregate_func([列業務用語]) AS alias, (サブクエリ-N) AS alias\n"
-                                "  - FROM: [テーブル業務用語](alias)\n"
-                                "  - JOIN: **[JOIN_TYPE]** [テーブル業務用語](alias) ON condition\n"
-                                "  - WHERE: condition1 AND/OR condition2\n"
-                                "  - GROUP BY: [列業務用語1], [列業務用語2]\n"
-                                "  - HAVING: aggregate_condition\n"
-                                "  - ORDER BY: [列業務用語] ASC/DESC\n\n"
-                                
-                                "### 🔎 サブクエリ\n"
-                                "- **サブクエリ-N** [Location: SELECT/FROM/WHERE/HAVING in main/CTE]:\n"
-                                "  - SELECT: [DISTINCT] columns/expressions\n"
-                                "  - FROM: [テーブル業務用語](alias)\n"
-                                "  - JOIN: **[JOIN_TYPE]** [テーブル業務用語](alias) ON condition\n"
-                                "  - WHERE: conditions\n"
-                                "  - **NESTED-N-M**: (nested subquery with same structure)\n\n"
-                                
-                                "### 🔀 SET演算\n"
-                                "- **[UNION/UNION ALL/INTERSECT/MINUS/EXCEPT]**:\n"
-                                "  - Query1: (expand structure)\n"
-                                "  - Query2: (expand structure)\n\n"
-                                
-                                "---\n\n"
-                                
-                                "CRITICAL RULES for 100% SQL Reconstruction:\n"
-                                "- Replace physical table/column names with business terms from COMMENT\n"
-                                "- Preserve alias exactly as in original SQL\n"
-                                "- Format: [テーブル業務用語](alias).[列業務用語]\n"
-                                "- MUST preserve ALL literal values exactly: strings with quotes, numbers, date literals\n"
-                                "- MUST preserve ALL operators exactly: =, >, <, >=, <=, <>, !=, LIKE, IN, BETWEEN, IS NULL\n"
-                                "- MUST preserve function calls with EXACT parameters: SUBSTR(col,4,6) ≠ SUBSTR(col,1,6)\n"
-                                "- MUST preserve CASE expression structure completely with WHEN/THEN/ELSE\n"
-                                "- MUST preserve nested function structure: TO_NUMBER(TO_CHAR(TO_DATE(...)))\n"
-                                "- MUST preserve AND/OR/NOT logical structure exactly\n"
-                                "- For implicit JOIN (FROM t1, t2 WHERE t1.id=t2.id): list in FROM, show condition in WHERE\n"
-                                "- サブクエリ: Number sequentially (サブクエリ-1, サブクエリ-2...) and expand completely\n"
-                                "- For nested subqueries: label as NESTED-X-Y and expand\n"
-                                "- If section is empty/not present, omit that section entirely\n\n"
-                                
-                                "Example 1 (Simple):\n"
-                                "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ORDERS o ON u.id = o.user_id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
-                                
-                                "Output:\n"
-                                "## 📋 SQL論理構造 (業務用語版)\n\n"
-                                
-                                "### 📋 SELECT句\n"
-                                "- *\n\n"
-                                
-                                "### 📁 FROM句\n"
-                                "- [ユーザマスタ] AS u\n\n"
-                                
-                                "### 🔗 JOIN句\n"
-                                "- **INNER JOIN**: [ユーザマスタ](u) JOIN [注文明細](o)\n"
-                                "  - ON: [ユーザマスタ](u).[ユーザID] = [注文明細](o).[ユーザID]\n\n"
-                                
-                                "### 🔍 WHERE句\n"
-                                "- [ユーザマスタ](u).[ステータス] = 'ACTIVE'\n\n"
-                                
-                                "### 📊 ORDER BY句\n"
-                                "- [ユーザマスタ](u).[作成日時] DESC\n\n"
-                                
-                                "Example 2 (Complex with implicit JOIN and correlated subquery):\n"
-                                "SQL: SELECT u.id, u.name, o.total FROM USERS u, ORDERS o WHERE u.id = o.user_id AND o.order_date = (SELECT MAX(o2.order_date) FROM ORDERS o2 WHERE o2.user_id = u.id) ORDER BY u.id\n\n"
-                                
-                                "Output:\n"
-                                "## 📋 SQL論理構造 (業務用語版)\n\n"
-                                
-                                "### 📋 SELECT句\n"
-                                "- [ユーザマスタ](u).[ユーザID]\n"
-                                "- [ユーザマスタ](u).[氏名]\n"
-                                "- [注文明細](o).[合計金額]\n\n"
-                                
-                                "### 📁 FROM句\n"
-                                "- [ユーザマスタ] AS u\n"
-                                "- [注文明細] AS o\n\n"
-                                
-                                "### 🔍 WHERE句\n"
-                                "- [ユーザマスタ](u).[ユーザID] = [注文明細](o).[ユーザID]\n"
-                                "- AND [注文明細](o).[注文日] = (サブクエリ-1)\n\n"
-                                
-                                "### 📊 ORDER BY句\n"
-                                "- [ユーザマスタ](u).[ユーザID] ASC\n\n"
-                                
-                                "### 🔎 サブクエリ\n"
-                                "- **サブクエリ-1** [Location: WHERE in main query]:\n"
-                                "  - SELECT: MAX([注文明細](o2).[注文日])\n"
-                                "  - FROM: [注文明細] AS o2\n"
-                                "  - WHERE: [注文明細](o2).[ユーザID] = [ユーザマスタ](u).[ユーザID]\n\n"
-                                
-                                "===SQL構造分析===\n" + (sql_structure if sql_structure else "(未分析)") + "\n\n"
-                                "===データベース定義===\n" + str(ctx_comp or "") + "\n\n"
-                                "===対象SQL===\n```sql\n" + s + "\n```"
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("用語集Excelをアップロード*", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                term_upload_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath", container=True)
+                        with gr.Row():
+                            term_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False, autoscroll=False)
+                        with gr.Row():
+                            with gr.Column():
+                                gr.DownloadButton(label="用語集Excelをダウンロード", value=str(_p), variant="secondary")
+                            with gr.Column():
+                                term_preview_btn = gr.Button("用語集をプレビュー", variant="primary")
+                        with gr.Row():
+                            term_preview_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            term_preview_df = gr.Dataframe(
+                                label="用語集プレビュー（件数: 0）",
+                                interactive=False,
+                                wrap=True,
+                                visible=False,
+                                value=pd.DataFrame(columns=["TERM", "DEFINITION"]),
                             )
-                            
-                            if str(model_name).startswith("gpt-"):
-                                from openai import AsyncOpenAI
-                                client = AsyncOpenAI()
-                            else:
-                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                                client = AsyncOciOpenAI(
-                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                    auth=OciUserPrincipalAuth(),
-                                    compartment_id=compartment_id,
-                                )
-                            
-                            messages = [
-                                {
-                                    "role": "system", 
-                                    "content": "You are a Text-to-SQL reverse engineer. Generate STRUCTURED natural language specifications that preserve 100% of SQL semantics for exact reconstruction. Output the specified format ONLY."
-                                },
-                                {"role": "user", "content": prompt},
-                            ]
-                            resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
-                            out_text = ""
-                            if getattr(resp, "choices", None):
-                                msg = resp.choices[0].message
-                                out_text = msg.content if hasattr(msg, "content") else ""
-                            import re as _re
-                            out_text = _re.sub(r"^```.*?\n|\n```$", "", str(out_text or ""), flags=_re.DOTALL).strip()
-                            
-                            # 用語集を利用する場合は逆処理を適用
-                            if use_glossary:
-                                terms = _load_terminology()
-                                if terms:
-                                    # 用語集を使ってLLMで書き換え（逆処理）
-                                    terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()])
-                                    glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集は通常「A（TERM）→B（定義・推奨表現）」の最適化指針です。本タスクでは逆最適化を行い、元の質問に含まれるB側の表現をA側の正式用語（TERM）へ正規化してください。
 
-用語集:
-{terms_text}
-
-元の質問:
-{out_text}
-
-指示:
-1. 定義や推奨表現、別名、略称などB側に該当する語句は対応する正式用語（A/TERM）に置換してください。
-2. 意図・条件・対象は維持し、語彙のみを正規化してください。
-3. 数値・日付・範囲などの具体値は変更しないでください。
-4. 出力は正規化後の質問文のみ。説明や前置きは不要です。
-
-正規化後の質問:"""
-                                    
-                                    messages = [{"role": "user", "content": glossary_prompt}]
-                                    glossary_resp = await client.chat.completions.create(model=model_name, messages=messages)
-                                    if glossary_resp.choices and len(glossary_resp.choices) > 0:
-                                        glossary_result = glossary_resp.choices[0].message.content.strip()
-                                        # 元の質問と用語集適用後の質問を\n\nで連結
-                                        out_text = str(out_text) + "\n\n" + glossary_result
-                            
-                            return gr.Textbox(value=out_text, autoscroll=False)
+                    def _term_list():
+                        try:
+                            p = Path("uploads") / "terms.xlsx"
+                            if not p.exists():
+                                return pd.DataFrame(columns=["TERM", "DEFINITION"])
+                            df = pd.read_excel(str(p))
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            t_col = cols_map.get("TERM")
+                            d_col = cols_map.get("DEFINITION")
+                            if not t_col or not d_col:
+                                return pd.DataFrame(columns=["TERM", "DEFINITION"])
+                            out = pd.DataFrame({
+                                "TERM": df[t_col].astype(str),
+                                "DEFINITION": df[d_col].astype(str),
+                            })
+                            return out
                         except Exception as e:
-                            logger.error(f"_rev_generate_async error: {e}")
-                            import traceback
-                            logger.error(traceback.format_exc())
-                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
+                            logger.error(f"用語集一覧の取得に失敗しました: {e}")
+                            return pd.DataFrame(columns=["TERM", "DEFINITION"])
 
-                    def _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary):
-                        """SQL→質問逆生成のラッパー関数.
-                        
-                        Args:
-                            model_name: 使用するLLMモデル
-                            sql_structure_text: SQL構造分析結果
-                            context_text: スキーマやDDLのコンテキスト
-                            sql_text: 対象SQL
-                            use_glossary: 用語集を利用するか
-                        
-                        Returns:
-                            gr.Textbox: 生成された質問文
-                        """
-                        import asyncio
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                    def _term_refresh():
                         try:
-                            return loop.run_until_complete(_rev_generate_async(model_name, sql_structure_text, context_text, sql_text, use_glossary))
-                        finally:
-                            loop.close()
-
-                    def _rev_generate_stream(model_name, sql_structure_text, context_text, sql_text, use_glossary):
-                        try:
-                            ctx = str(context_text or "").strip()
-                            sql = str(sql_text or "").strip()
-                            missing = []
-                            if not ctx:
-                                missing.append("送信するメタ情報")
-                            if not sql:
-                                missing.append("対象SQL")
-                            if missing:
-                                msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
-                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False, autoscroll=False)
+                            yield gr.Markdown(visible=True, value="⏳ 用語集を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
+                            df = _term_list()
+                            if df is None or df.empty:
+                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["TERM", "DEFINITION"]), label="用語集プレビュー（件数: 0）")
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False, autoscroll=False)
-                            out = _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary)
-                            yield gr.Markdown(visible=True, value="✅ 生成完了"), out
+                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=df, label=f"用語集プレビュー（件数: {len(df)}）")
                         except Exception as e:
-                            logger.error(f"_rev_generate_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False, autoscroll=False)
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
 
-                    async def _rev_ai_analyze_async(model_name, sql_text):
-                        """逆生成タブ用のAI分析処理.
-                        
-                        Args:
-                            model_name: 使用するLLMモデル
-                            sql_text: 対象SQL
-                        
-                        Returns:
-                            tuple: (status_md, structure_output)
-                        """
+                    def _term_upload_excel(file_path):
                         try:
-                            from utils.chat_util import get_oci_region, get_compartment_id
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
-                            
-                            s = str(sql_text or "").strip()
-                            if not s:
-                                return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value="", autoscroll=False)
-                            
-                            # グローバルプロンプトを使用
-                            prompt = _SQL_STRUCTURE_ANALYSIS_PROMPT + "SQL:\n```sql\n" + s + "\n```"
-                            
-                            if str(model_name).startswith("gpt-"):
-                                from openai import AsyncOpenAI
-                                client = AsyncOpenAI()
-                            else:
-                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                                client = AsyncOciOpenAI(
-                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                    auth=OciUserPrincipalAuth(),
-                                    compartment_id=compartment_id,
-                                )
-                            
-                            messages = [
-                                {
-                                    "role": "system", 
-                                    "content": "You are a SQL parser. Output ONLY the requested format. No explanations."
-                                },
-                                {
-                                    "role": "user", 
-                                    "content": prompt
-                                },
-                            ]
-                            
-                            resp = await client.chat.completions.create(model=model_name, messages=messages)
-                            sql_structure_md = ""
-                            if getattr(resp, "choices", None):
-                                msg = resp.choices[0].message
-                                out = msg.content if hasattr(msg, "content") else ""
-                                sql_structure_md = str(out or "").strip()
-                                # マークダウンコードブロックを削除
-                                sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
-                                sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
-                                sql_structure_md = sql_structure_md.strip()
-                            
-                            if not sql_structure_md:
-                                sql_structure_md = "## 📊 SQL構造分析\n\n情報を抽出できませんでした。"
-                            
-                            return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=sql_structure_md, autoscroll=False)
+                            if not file_path:
+                                return gr.Textbox(visible=True, value="ファイルを選択してください", autoscroll=False)
+                            try:
+                                df = pd.read_excel(str(file_path))
+                            except Exception:
+                                return gr.Textbox(visible=True, value="Excel読み込みに失敗しました", autoscroll=False)
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            required = {"TERM", "DEFINITION"}
+                            if not required.issubset(set(cols_map.keys())):
+                                return gr.Textbox(visible=True, value="列名は TERM, DESCRIPTION が必要です", autoscroll=False)
+                            out_df = pd.DataFrame({
+                                "TERM": df[cols_map["TERM"]],
+                                "DEFINITION": df[cols_map["DEFINITION"]],
+                            })
+                            up_dir = Path("uploads")
+                            up_dir.mkdir(parents=True, exist_ok=True)
+                            dest = up_dir / "terms.xlsx"
+                            if dest.exists():
+                                dest.unlink()
+                            with pd.ExcelWriter(dest) as writer:
+                                out_df.to_excel(writer, sheet_name="terms", index=False)
+                            return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件", autoscroll=False)
                         except Exception as e:
-                            logger.error(f"_rev_ai_analyze_async error: {e}")
-                            import traceback
-                            logger.error(traceback.format_exc())
-                            return gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
+                            logger.error(f"用語集Excelアップロードに失敗しました: {e}")
+                            return gr.Textbox(visible=True, value=f"❌ エラー: {e}", autoscroll=False)
 
-                    def _rev_ai_analyze(model_name, sql_text):
-                        """逆生成タブ用のAI分析ラッパー関数.
-                        
-                        Args:
-                            model_name: 使用するLLMモデル
-                            sql_text: 対象SQL
-                        
-                        Returns:
-                            tuple: (status_md, structure_output)
-                        """
-                        import asyncio
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        try:
-                            return loop.run_until_complete(_rev_ai_analyze_async(model_name, sql_text))
-                        finally:
-                            loop.close()
-
-                    def _rev_ai_analyze_stream(model_name, sql_text):
-                        """逆生成タブ用のAI分析ストリーム関数.
-                        
-                        Args:
-                            model_name: 使用するLLMモデル
-                            sql_text: 対象SQL
-                        
-                        Yields:
-                            tuple: (status_md, structure_output)
-                        """
-                        try:
-                            if not model_name or not str(model_name).strip():
-                                yield gr.Markdown(visible=True, value="⚠️ モデルを選択してください"), gr.Textbox(value="", autoscroll=False)
-                                return
-                            if not sql_text or not str(sql_text).strip():
-                                yield gr.Markdown(visible=True, value="⚠️ SQLが空です。先にSQLを入力してください"), gr.Textbox(value="", autoscroll=False)
-                                return
-                            yield gr.Markdown(visible=True, value="⏳ AI分析を実行中..."), gr.Textbox(value="## 📊 SQL構造分析\n\n解析中...", autoscroll=False)
-                            result = _rev_ai_analyze(model_name, sql_text)
-                            yield result
-                        except Exception as e:
-                            logger.error(f"_rev_ai_analyze_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 分析に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
-
-                    def _on_profile_change_set_context(p):
-                        return _rev_build_context(p)
-
-                    rev_analysis_btn.click(
-                        fn=_rev_ai_analyze_stream,
-                        inputs=[rev_analysis_model_input, rev_sql_input],
-                        outputs=[rev_analysis_status_md, rev_sql_structure_output],
+                    term_preview_btn.click(
+                        fn=_term_refresh,
+                        outputs=[term_preview_status, term_preview_df],
                     )
 
-                    rev_context_meta_btn.click(
-                        fn=_on_profile_change_set_context_stream,
-                        inputs=[rev_profile_select],
-                        outputs=[rev_context_status_md, rev_context_text],
+                    # ダウンロードはボタン自体で実行（クリックハンドラ不要）
+                    term_upload_file.change(
+                        fn=_term_upload_excel,
+                        inputs=[term_upload_file],
+                        outputs=[term_upload_result],
                     )
 
-                    rev_generate_btn.click(
-                        fn=_rev_generate_stream,
-                        inputs=[rev_model_input, rev_sql_structure_output, rev_context_text, rev_sql_input, rev_use_glossary],
-                        outputs=[rev_generate_status_md, rev_question_output],
+                with gr.TabItem(label="ルール管理"):
+                    with gr.Accordion(label="0. ルールの概要", open=False):
+                        gr.Markdown(
+                            """
+                            目的: 組織で使うルールを一元管理し、チャット/分析で参照できるようにします。
+
+                            手順:
+                            - ルールExcelをダウンロードし、`RULE` の1列を記入します。
+                            - ルールExcelをアップロードすると、`uploads/rules.xlsx` に保存されます。
+                            - 「ルールをプレビュー」で内容と件数を確認します。
+
+                            注意:
+                            - 列名は必ず `RULE` を使用してください。
+                            - 文字列以外の値は保存時に文字列化されます。
+                            - 個人情報や機密情報は含めないでください。
+                            """
+                        )
+                    with gr.Accordion(label="1. ルール", open=True):
+                        # ルールExcelのテンプレートファイルを事前作成し、そのままダウンロード可能にする
+                        up_dir_rule = Path("uploads")
+                        up_dir_rule.mkdir(parents=True, exist_ok=True)
+                        _p_rule = up_dir_rule / "rules.xlsx"
+                        if not _p_rule.exists():
+                            _df_rule = pd.DataFrame(columns=["RULE"])
+                            with pd.ExcelWriter(_p_rule) as _writer:
+                                _df_rule.to_excel(_writer, sheet_name="rules", index=False)
+    
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("ℹ️ ファイルをドロップすると自動的にアップロードされます")
+                            
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("ルールExcelをアップロード*", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rule_upload_file = gr.File(show_label=False, file_types=[".xlsx"], type="filepath", container=True)
+                        with gr.Row():
+                            rule_upload_result = gr.Textbox(label="アップロード結果", interactive=False, visible=False, autoscroll=False)
+                        with gr.Row():
+                            with gr.Column():
+                                gr.DownloadButton(label="ルールExcelをダウンロード", value=str(_p_rule), variant="secondary")
+                            with gr.Column():
+                                rule_preview_btn = gr.Button("ルールをプレビュー", variant="primary")
+                        with gr.Row():
+                            rule_preview_status = gr.Markdown(visible=False)
+                        with gr.Row():
+                            rule_preview_df = gr.Dataframe(
+                                label="ルールプレビュー（件数: 0）",
+                                interactive=False,
+                                wrap=True,
+                                visible=False,
+                                value=pd.DataFrame(columns=["RULE"]),
+                            )
+
+                    def _rule_list():
+                        try:
+                            p = Path("uploads") / "rules.xlsx"
+                            if not p.exists():
+                                return pd.DataFrame(columns=["RULE"])
+                            df = pd.read_excel(str(p))
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            r_col = cols_map.get("RULE")
+                            if not r_col:
+                                return pd.DataFrame(columns=["RULE"])
+                            out = pd.DataFrame({
+                                "RULE": df[r_col].astype(str),
+                            })
+                            return out
+                        except Exception as e:
+                            logger.error(f"ルール一覧の取得に失敗しました: {e}")
+                            return pd.DataFrame(columns=["RULE"])
+
+                    def _rule_refresh():
+                        try:
+                            yield gr.Markdown(visible=True, value="⏳ ルールを取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
+                            df = _rule_list()
+                            if df is None or df.empty:
+                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["RULE"]), label="ルールプレビュー（件数: 0）")
+                                return
+                            yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=df, label=f"ルールプレビュー（件数: {len(df)}）")
+                        except Exception as e:
+                            yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame())
+
+                    def _rule_upload_excel(file_path):
+                        try:
+                            if not file_path:
+                                return gr.Textbox(visible=True, value="ファイルを選択してください", autoscroll=False)
+                            try:
+                                df = pd.read_excel(str(file_path))
+                            except Exception:
+                                return gr.Textbox(visible=True, value="Excel読み込みに失敗しました", autoscroll=False)
+                            cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            required = {"RULE"}
+                            if not required.issubset(set(cols_map.keys())):
+                                return gr.Textbox(visible=True, value="列名は RULE が必要です", autoscroll=False)
+                            out_df = pd.DataFrame({
+                                "RULE": df[cols_map["RULE"]],
+                            })
+                            up_dir = Path("uploads")
+                            up_dir.mkdir(parents=True, exist_ok=True)
+                            dest = up_dir / "rules.xlsx"
+                            if dest.exists():
+                                dest.unlink()
+                            with pd.ExcelWriter(dest) as writer:
+                                out_df.to_excel(writer, sheet_name="rules", index=False)
+                            return gr.Textbox(visible=True, value=f"✅ アップロード完了: {len(out_df)} 件", autoscroll=False)
+                        except Exception as e:
+                            logger.error(f"ルールExcelアップロードに失敗しました: {e}")
+                            return gr.Textbox(visible=True, value=f"❌ エラー: {e}", autoscroll=False)
+
+                    rule_preview_btn.click(
+                        fn=_rule_refresh,
+                        outputs=[rule_preview_status, rule_preview_df],
+                    )
+
+                    # ダウンロードはボタン自体で実行（クリックハンドラ不要）
+                    rule_upload_file.change(
+                        fn=_rule_upload_excel,
+                        inputs=[rule_upload_file],
+                        outputs=[rule_upload_result],
                     )
 
         with gr.TabItem(label="ユーザー機能"):
@@ -5539,12 +5931,12 @@ def build_selectai_tab(pool):
                                                 gr.Markdown("")
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("ステップ1: 用語集を利用", elem_classes="input-label")
+                                        gr.Markdown("用語集を利用", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         rewrite_use_glossary = gr.Checkbox(label="", value=True, container=False)
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        gr.Markdown("ステップ2: スキーマ情報を利用", elem_classes="input-label")
+                                        gr.Markdown("スキーマ情報を利用", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         rewrite_use_schema = gr.Checkbox(label="", value=False, container=False)
                                 with gr.Row():
@@ -5627,12 +6019,49 @@ def build_selectai_tab(pool):
                 build_sql_learning_tab(pool)
 
             def _user_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
-                yield from _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query)
+                """ユーザー向けSQL生成（値からGradioオブジェクトを構築）."""
+                for status_msg, sql_value in _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                    yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=sql_value, autoscroll=False)
+
+            def _user_step_generate_and_run(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                """ユーザー向けSQL生成と実行を統合し、実行エラー時にSQL生成から再試行する."""
+                yield from _step_generate_and_run_common(
+                    profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
+                    elem_id="selectai_chat_result_df", include_feedback=False
+                )
 
             def _user_step_run_sql(sql_text, status_text=None):
+                """ユーザー向けSQL実行（値からGradioオブジェクトを構築）."""
                 if status_text and "❌" in str(status_text):
                     return
-                yield from _run_sql_common(sql_text, "selectai_chat_result_df")
+                elem_id = "selectai_chat_result_df"
+                for status_msg, result_df, col_widths in _run_sql_common(sql_text, elem_id):
+                    status_md = gr.Markdown(visible=True, value=status_msg)
+                    if result_df is not None and len(result_df) > 0:
+                        df_component = gr.Dataframe(
+                            visible=True,
+                            value=result_df,
+                            label=f"実行結果（件数: {len(result_df)}）",
+                            interactive=False,
+                            wrap=True,
+                            elem_id=elem_id,
+                        )
+                        style_value = ""
+                        if col_widths:
+                            rules = []
+                            rules.append(f"#{elem_id} {{ width: 100% !important; }}")
+                            rules.append(f"#{elem_id} .wrap {{ overflow-x: auto !important; }}")
+                            rules.append(f"#{elem_id} table {{ table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }}")
+                            for idx, pct in enumerate(col_widths, start=1):
+                                rules.append(
+                                    f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
+                                )
+                            style_value = "<style>" + "\n".join(rules) + "</style>"
+                        style_component = gr.HTML(visible=bool(style_value), value=style_value)
+                    else:
+                        df_component = gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id)
+                        style_component = gr.HTML(visible=False, value="")
+                    yield status_md, df_component, style_component
 
             def _on_chat_clear():
                 ch = _profile_names() or [("", "")]
@@ -5663,13 +6092,9 @@ def build_selectai_tab(pool):
                     return gr.Dropdown(choices=ch, value=ch[0][1])
 
             chat_execute_btn.click(
-                fn=_user_step_generate,
+                fn=_user_step_generate_and_run,
                 inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt, enable_query_rewrite, rewritten_query],
-                outputs=[chat_status_md, generated_sql_text],
-            ).then(
-                fn=_user_step_run_sql,
-                inputs=[generated_sql_text, chat_status_md],
-                outputs=[chat_status_md, chat_result_df, chat_result_style],
+                outputs=[chat_status_md, generated_sql_text, chat_result_df, chat_result_style],
             )
 
             chat_clear_btn.click(
