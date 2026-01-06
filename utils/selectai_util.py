@@ -3904,34 +3904,26 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="1. フィードバック一覧", open=True):
                         with gr.Row():
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("Profile", elem_classes="input-label")
-                                    with gr.Column(scale=5):
-                                        # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
-                                        _global_initial_choices = _global_profile_names()
-                                        if not _global_initial_choices:
-                                            _global_initial_choices = [("", "")]
-                                        global_profile_select = gr.Dropdown(
-                                            show_label=False,
-                                            choices=_global_initial_choices,
-                                            value=(
-                                                _global_initial_choices[0][1]
-                                                if (_global_initial_choices and isinstance(_global_initial_choices[0], tuple))
-                                                else (_global_initial_choices[0] if _global_initial_choices else "")
-                                            ),
-                                            interactive=True,
-                                            container=False,
-                                        )
-                            with gr.Column(scale=5):
-                                with gr.Row():
-                                    with gr.Column(scale=1):
-                                        gr.Markdown("")
-                        with gr.Row():
                             gr.Markdown(visible=True, value="ℹ️ Profile選択後は『最新エントリを取得』をクリックしてください")
                         with gr.Row():
-                            global_feedback_index_refresh_btn = gr.Button("最新エントリを取得", variant="primary")
+                            with gr.Column(scale=5):
+                                # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
+                                _global_initial_choices = _global_profile_names()
+                                if not _global_initial_choices:
+                                    _global_initial_choices = [("", "")]
+                                global_profile_select = gr.Dropdown(
+                                    show_label=False,
+                                    choices=_global_initial_choices,
+                                    value=(
+                                        _global_initial_choices[0][1]
+                                        if (_global_initial_choices and isinstance(_global_initial_choices[0], tuple))
+                                        else (_global_initial_choices[0] if _global_initial_choices else "")
+                                    ),
+                                    interactive=True,
+                                    container=False,
+                                )
+                            with gr.Column(scale=5):
+                                global_feedback_index_refresh_btn = gr.Button("最新エントリを取得", variant="primary")
                         with gr.Row():
                             global_feedback_index_refresh_status = gr.Markdown(visible=False)
                         # Removed: global_feedback_index_info, use global_feedback_index_refresh_status for status
