@@ -71,7 +71,7 @@ def load_openai_settings():
 
 
 def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
-    """OCI設定ファイルを更新する.
+    """OCI設定ファイルを登録する.
     
     Args:
         user_ocid: ユーザーOCID
@@ -159,13 +159,13 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
         os.chmod(key_file_path, 0o600)
         
         load_dotenv(oci_config_path)
-        logger.info("OCI設定ファイルを正常に更新しました")
+        logger.info("OCI設定ファイルを正常に登録しました")
 
-        return gr.Markdown(visible=True, value="✅ OCI設定ファイルを更新しました")
+        return gr.Markdown(visible=True, value="✅ OCI設定ファイルを登録しました")
     except Exception as e:
         logger.error(f"Error updating OCI config: {e}")
         logger.exception("Full traceback:")
-        return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルの更新に失敗しました: {e}")
+        return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルの登録に失敗しました: {e}")
 
 
 def create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool=None):
@@ -468,7 +468,7 @@ def build_oci_genai_tab(pool):
                 with gr.Column():
                     tab_create_oci_clear_button = gr.ClearButton(value="クリア")
                 with gr.Column():
-                    tab_update_oci_config_button = gr.Button(value="OCI設定ファイルを更新", variant="primary")
+                    tab_update_oci_config_button = gr.Button(value="OCI設定ファイルを登録", variant="primary")
 
             with gr.Row():
                 with gr.Column():
