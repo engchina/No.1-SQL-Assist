@@ -1749,7 +1749,6 @@ def build_management_tab(pool):
                             show_copy_button=True,
                             container=False,
                             autoscroll=False,
-                            visible=False,
                         )
                 
                 with gr.Row():
