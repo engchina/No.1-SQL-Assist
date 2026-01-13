@@ -1154,7 +1154,8 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         region_input = gr.Dropdown(
                                             show_label=False,
-                                            choices=["ap-osaka-1", "us-chicago-1"],
+                                            # choices=["ap-osaka-1", "us-chicago-1"],
+                                            choices=["us-chicago-1"],
                                             value="us-chicago-1",
                                             interactive=True,
                                             container=False,
@@ -3904,7 +3905,7 @@ def build_selectai_tab(pool):
 
                     with gr.Accordion(label="1. フィードバック一覧", open=True):
                         with gr.Row():
-                            gr.Markdown(visible=True, value="ℹ️ Profile選択後は『最新エントリを取得』をクリックしてください")
+                            gr.Markdown(visible=True, value="ℹ️ Profile（カテゴリ）選択後は『最新エントリを取得』をクリックしてください")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
@@ -5137,7 +5138,7 @@ def build_selectai_tab(pool):
                 with gr.TabItem(label="合成データ生成") as synthetic_tab:
                     with gr.Accordion(label="1. 対象選択", open=True):
                         with gr.Row():
-                            gr.Markdown(visible=True, value="ℹ️ Profileと対象テーブルを選択し、生成開始を押下してください")
+                            gr.Markdown(visible=True, value="ℹ️ Profile（カテゴリ）と対象テーブルを選択し、生成開始を押下してください")
                         with gr.Row():
                             with gr.Column(scale=5):
                                 # プロフィール選択肢を取得し、空の場合は空文字列を含むリストを設定
