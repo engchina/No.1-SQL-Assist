@@ -70,19 +70,6 @@ def load_openai_settings():
         return "", ""
 
 
-def check_existing_pem_file():
-    """既存のPEMファイルの状態を確認する.
-    
-    Returns:
-        tuple: (exists: bool, message: str)
-    """
-    key_file_path = Path(OCI_KEY_FILE_PATH)
-    if key_file_path.exists():
-        return True, "✅ 既存のPEMファイルが設定されています（新規アップロードがなければこのファイルを使用します）"
-    else:
-        return False, "⚠️ PEMファイルをアップロードしてください"
-
-
 def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
     """OCI設定ファイルを登録する.
     
@@ -90,11 +77,11 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
         user_ocid: ユーザーOCID
         tenancy_ocid: テナンシーOCID
         fingerprint: APIキーのフィンガープリント
-        private_key_file: プライベートキーファイル（Gradio File型、Noneの場合は既存ファイルを使用）
+        private_key_file: プライベートキーファイル（Gradio File型）
         region: OCIリージョン
         
     Returns:
-        tuple: (status_md, pem_status_md)
+        gr.Markdown: 更新結果メッセージ
     """
     has_error = False
     error_messages = []
@@ -111,6 +98,10 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
         has_error = True
         error_messages.append("Fingerprint")
         logger.error("Fingerprintが未入力です")
+    if not private_key_file or (hasattr(private_key_file, 'name') and not private_key_file.name):
+        has_error = True
+        error_messages.append("Private Key")
+        logger.error("Private Keyが未入力です")
     if not region:
         has_error = True
         error_messages.append("Region")
@@ -118,8 +109,7 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
 
     if has_error:
         missing_fields = "、".join(error_messages)
-        exists, msg = check_existing_pem_file()
-        return gr.Markdown(visible=True, value=f"❌ 入力不足です: {missing_fields}が未入力です"), gr.Markdown(visible=True, value=msg)
+        return gr.Markdown(visible=True, value=f"❌ 入力不足です: {missing_fields}が未入力です")
 
     user_ocid = str(user_ocid).strip()
     tenancy_ocid = str(tenancy_ocid).strip()
@@ -127,6 +117,10 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
     region = str(region).strip()
 
     try:
+        # プライベートキーファイルの存在確認
+        if not hasattr(private_key_file, 'name') or not private_key_file.name:
+            return gr.Markdown(visible=True, value="❌ プライベートキーファイルが選択されていません")
+            
         base_dir = Path(__file__).resolve().parent.parent
         oci_dir = Path("/root/.oci")
         oci_dir.mkdir(parents=True, exist_ok=True)
@@ -149,8 +143,7 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
         # 設定ファイルが存在することを確認
         if not Path(oci_config_path).exists():
             logger.error(f"OCI設定ファイルが見つかりません: {oci_config_path}")
-            exists, msg = check_existing_pem_file()
-            return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルが見つかりません: {oci_config_path}"), gr.Markdown(visible=True, value=msg)
+            return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルが見つかりません: {oci_config_path}")
             
         key_file_path = OCI_KEY_FILE_PATH
 
@@ -160,34 +153,19 @@ def update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, re
         set_key(oci_config_path, "fingerprint", fingerprint, quote_mode="never")
         set_key(oci_config_path, "key_file", key_file_path, quote_mode="never")
         
-        # PEMファイル処理: 新規アップロードがあれば使用、なければ既存を保持
-        pem_action_msg = ""
-        if private_key_file and hasattr(private_key_file, 'name') and private_key_file.name:
-            # 新しいPEMファイルがアップロードされた
-            shutil.copy(private_key_file.name, key_file_path)
-            os.chmod(key_file_path, 0o600)
-            pem_action_msg = "新しいPEMファイルを保存しました"
-            logger.info("新しいPEMファイルを保存しました")
-        else:
-            # 既存のPEMファイルを使用
-            if Path(key_file_path).exists():
-                pem_action_msg = "既存のPEMファイルを使用しています"
-                logger.info("既存のPEMファイルを使用しています")
-            else:
-                # 既存ファイルもなく、新規アップロードもない
-                exists, msg = check_existing_pem_file()
-                return gr.Markdown(visible=True, value="❌ PEMファイルが見つかりません。アップロードしてください"), gr.Markdown(visible=True, value=msg)
+        # プライベートキーファイルをコピー
+        shutil.copy(private_key_file.name, key_file_path)
+        # パーミッション設定（セキュリティのため）
+        os.chmod(key_file_path, 0o600)
         
         load_dotenv(oci_config_path)
         logger.info("OCI設定ファイルを正常に登録しました")
 
-        exists, msg = check_existing_pem_file()
-        return gr.Markdown(visible=True, value=f"✅ OCI設定を保存しました（{pem_action_msg}）"), gr.Markdown(visible=True, value=msg)
+        return gr.Markdown(visible=True, value="✅ OCI設定ファイルを登録しました")
     except Exception as e:
         logger.error(f"Error updating OCI config: {e}")
         logger.exception("Full traceback:")
-        exists, msg = check_existing_pem_file()
-        return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルの登録に失敗しました: {e}"), gr.Markdown(visible=True, value=msg)
+        return gr.Markdown(visible=True, value=f"❌ OCI設定ファイルの登録に失敗しました: {e}")
 
 
 def create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool=None):
@@ -405,77 +383,6 @@ END;"""
     return gr.Textbox(value=test_query_vector, autoscroll=False)
 
 
-def test_oci_connection(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
-    """OCI設定をテストする（保存せずに接続確認）.
-    
-    Args:
-        user_ocid: ユーザーOCID
-        tenancy_ocid: テナンシーOCID
-        fingerprint: APIキーのフィンガープリント
-        private_key_file: プライベートキーファイル（Gradio File型、Noneの場合は既存ファイルを使用）
-        region: OCIリージョン
-        
-    Returns:
-        tuple: (status_md, pem_status_md)
-    """
-    has_error = False
-    error_messages = []
-    
-    if not user_ocid:
-        has_error = True
-        error_messages.append("User OCID")
-    if not tenancy_ocid:
-        has_error = True
-        error_messages.append("Tenancy OCID")
-    if not fingerprint:
-        has_error = True
-        error_messages.append("Fingerprint")
-    if not region:
-        has_error = True
-        error_messages.append("Region")
-
-    if has_error:
-        missing_fields = "、".join(error_messages)
-        exists, msg = check_existing_pem_file()
-        return gr.Markdown(visible=True, value=f"❌ 入力不足です: {missing_fields}が未入力です"), gr.Markdown(visible=True, value=msg)
-
-    try:
-        # PEMファイルの取得
-        key_file_path = None
-        if private_key_file and hasattr(private_key_file, 'name') and private_key_file.name:
-            # 新規アップロードされたファイルを使用
-            key_file_path = private_key_file.name
-            logger.info("テスト: 新規アップロードされたPEMファイルを使用")
-        elif Path(OCI_KEY_FILE_PATH).exists():
-            # 既存ファイルを使用
-            key_file_path = OCI_KEY_FILE_PATH
-            logger.info("テスト: 既存のPEMファイルを使用")
-        else:
-            exists, msg = check_existing_pem_file()
-            return gr.Markdown(visible=True, value="❌ PEMファイルが見つかりません"), gr.Markdown(visible=True, value=msg)
-        
-        # OCI設定を作成してテスト
-        config = {
-            "user": str(user_ocid).strip(),
-            "tenancy": str(tenancy_ocid).strip(),
-            "fingerprint": str(fingerprint).strip(),
-            "key_file": key_file_path,
-            "region": str(region).strip(),
-        }
-        
-        # OCI Identity Clientでテスト接続
-        identity_client = oci.identity.IdentityClient(config)
-        identity_client.get_user(user_id=config["user"])
-        
-        logger.info("OCI接続テスト成功")
-        exists, msg = check_existing_pem_file()
-        return gr.Markdown(visible=True, value="✅ 接続テスト成功！設定は正しいです"), gr.Markdown(visible=True, value=msg)
-    except Exception as e:
-        logger.error(f"OCI接続テストエラー: {e}")
-        exists, msg = check_existing_pem_file()
-        return gr.Markdown(visible=True, value=f"❌ 接続テスト失敗: {e}"), gr.Markdown(visible=True, value=msg)
-
-
 def build_oci_genai_tab(pool):
     """OCI GenAI設定タブのUIを構築する.
 
@@ -491,14 +398,6 @@ def build_oci_genai_tab(pool):
         return create_oci_db_credential(user_ocid, tenancy_ocid, fingerprint, private_key_file, region, pool)
     def update_oci_config_wrapper(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
         return update_oci_config(user_ocid, tenancy_ocid, fingerprint, private_key_file, region)
-    def test_oci_connection_wrapper(user_ocid, tenancy_ocid, fingerprint, private_key_file, region):
-        return test_oci_connection(user_ocid, tenancy_ocid, fingerprint, private_key_file, region)
-    def load_pem_status():
-        exists, msg = check_existing_pem_file()
-        return gr.Markdown(visible=True, value=msg)
-    def clear_uploaded_file():
-        exists, msg = check_existing_pem_file()
-        return None, gr.Markdown(visible=True, value=msg)
     
     # UIコンポーネントの構築
     with gr.Accordion(label="", open=True):
@@ -538,20 +437,14 @@ def build_oci_genai_tab(pool):
 
             with gr.Row():
                 with gr.Column(scale=1):
-                     gr.Markdown("Private Key Content*", elem_classes="input-label")
+                     gr.Markdown("Private Key*", elem_classes="input-label")
                 with gr.Column(scale=5):
                     tab_create_oci_cred_private_key_file = gr.File(
                         show_label=False,
-                        file_types=[".pem", ".key"],
+                        file_types=[".pem"],
                         type="filepath",
                         interactive=True,
                     )
-            
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Markdown("")
-                with gr.Column(scale=5):
-                    tab_pem_file_status_md = gr.Markdown(visible=False)
 
             with gr.Row():
                 with gr.Column(scale=5):
@@ -573,37 +466,22 @@ def build_oci_genai_tab(pool):
 
             with gr.Row():
                 with gr.Column():
-                    tab_create_oci_clear_button = gr.Button(value="アップロードクリア")
+                    tab_create_oci_clear_button = gr.ClearButton(value="クリア")
                 with gr.Column():
-                    tab_test_oci_connection_button = gr.Button(value="接続テスト")
-                with gr.Column():
-                    tab_update_oci_config_button = gr.Button(value="設定を保存", variant="primary")
+                    tab_update_oci_config_button = gr.Button(value="OCI設定ファイルを登録", variant="primary")
 
             with gr.Row():
                 with gr.Column():
                     tab_create_oci_config_status_md = gr.Markdown(visible=False)
 
         # イベントハンドラーの設定
-        tab_create_oci_clear_button.click(
-            clear_uploaded_file,
-            outputs=[tab_create_oci_cred_private_key_file, tab_pem_file_status_md],
-        )
-        
-        tab_create_oci_cred_private_key_file.change(
-            load_pem_status,
-            outputs=[tab_pem_file_status_md],
-        )
-        
-        tab_test_oci_connection_button.click(
-            test_oci_connection_wrapper,
-            inputs=[
+        tab_create_oci_clear_button.add(
+            components=[
                 tab_create_oci_cred_user_ocid_text,
                 tab_create_oci_cred_tenancy_ocid_text,
                 tab_create_oci_cred_fingerprint_text,
                 tab_create_oci_cred_private_key_file,
-                tab_create_oci_cred_region_text,
-            ],
-            outputs=[tab_create_oci_config_status_md, tab_pem_file_status_md],
+            ]
         )
 
         tab_update_oci_config_button.click(
@@ -615,22 +493,8 @@ def build_oci_genai_tab(pool):
                 tab_create_oci_cred_private_key_file,
                 tab_create_oci_cred_region_text,
             ],
-            outputs=[tab_create_oci_config_status_md, tab_pem_file_status_md],
+            outputs=[tab_create_oci_config_status_md],
         )
-    
-    # 初期ロード時にPEMファイルのステータスを表示
-    with gr.Accordion(label="", open=True, visible=False) as init_accordion:
-        init_load = gr.Button(value="Init", visible=False)
-    
-    init_load.click(
-        load_pem_status,
-        outputs=[tab_pem_file_status_md],
-    )
-    # ページロード時に自動実行
-    init_accordion.load(
-        load_pem_status,
-        outputs=[tab_pem_file_status_md],
-    )
 
 
 def build_oci_embedding_test_tab(pool):
