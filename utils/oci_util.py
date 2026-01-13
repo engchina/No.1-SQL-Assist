@@ -453,7 +453,8 @@ def build_oci_genai_tab(pool):
                             gr.Markdown("Region*", elem_classes="input-label")
                         with gr.Column(scale=5):
                             tab_create_oci_cred_region_text = gr.Dropdown(
-                                choices=["ap-osaka-1", "us-chicago-1"],
+                                # choices=["ap-osaka-1", "us-chicago-1"],
+                                choices=["us-chicago-1"],
                                 show_label=False,
                                 interactive=True,
                                 value="us-chicago-1",
