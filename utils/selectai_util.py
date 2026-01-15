@@ -2447,7 +2447,7 @@ def build_selectai_tab(pool):
                             logger.error(f"_load_terminology error: {e}")
                             return {}
                     
-                    def _load_rules() -> list:
+                    def _load_rules(profile_category: str = "") -> list:
                         """ルールを読み込む.
                         
                         Returns:
@@ -2459,14 +2459,22 @@ def build_selectai_tab(pool):
                                 return []
                             df = pd.read_excel(str(p))
                             cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            c_col = cols_map.get("CATEGORY")
                             r_col = cols_map.get("RULE")
                             if not r_col:
                                 return []
+                            target_category = str(profile_category or "").strip()
                             rules = []
                             for _, row in df.iterrows():
+                                cat = "共通"
+                                if c_col:
+                                    cat = str(row[c_col]).strip()
+                                if not cat or cat.lower() == "nan":
+                                    cat = "共通"
                                 rule = str(row[r_col]).strip()
                                 if rule and rule.lower() != "nan":
-                                    rules.append(rule)
+                                    if cat == "共通" or (target_category and cat == target_category):
+                                        rules.append(rule)
                             return rules
                         except Exception as e:
                             logger.error(f"_load_rules error: {e}")
@@ -2642,26 +2650,29 @@ def build_selectai_tab(pool):
                                 - status_message: ステータスメッセージ("⏳ SQL生成中...", "✅ SQL生成完了", "❌ エラー: ..."など)
                                 - generated_sql: 生成されたSQL文字列(エラー時は空文字列)
                         """
-                        if enable_rewrite and rewritten_query and str(rewritten_query).strip():
-                            s = str(rewritten_query).strip()
-                        else:
-                            s = str(prompt or "").strip()
-                        ep = str(extra_prompt or "").strip()
-                        inc = bool(include_extra)
-                        final = s if not inc or not ep else (ep + "\n\n" + s)
-                        
-                        # ルールを読み込んで質問の末尾に追記（ユーザー要望）
-                        rules = _load_rules()
-                        if rules:
-                            rules_text = "\n\n".join([f"{r}" for r in rules])
-                            final += f"\n\n=== Rules ===\n{rules_text}"
-
                         if not profile or not str(profile).strip():
                             yield "⚠️ Profileを選択してください", ""
                             return
-                        if not final:
+                        if enable_rewrite and rewritten_query and str(rewritten_query).strip():
+                            base_question = str(rewritten_query).strip()
+                        else:
+                            base_question = str(prompt or "").strip()
+                        if not base_question:
                             yield "⚠️ 質問を入力してください", ""
                             return
+                        ep = str(extra_prompt or "").strip()
+                        inc = bool(include_extra)
+                        final = base_question if not inc or not ep else (ep + "\n\n" + base_question)
+                        
+                        prof, _tables, _views, profile_category = _resolve_profile_name_from_json(pool, str(profile or ""))
+                        if not prof or not str(prof).strip():
+                            yield "⚠️ Profileを選択してください", ""
+                            return
+
+                        rules = _load_rules(profile_category)
+                        if rules:
+                            rules_text = "\n\n".join([f"{r}" for r in rules])
+                            final += f"\n\n=== Rules ===\n{rules_text}"
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
@@ -2671,7 +2682,6 @@ def build_selectai_tab(pool):
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
                                     try:
-                                        prof, _tables, _views, _bd = _resolve_profile_name_from_json(pool, str(profile or ""))
                                         cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(profile_name => :name); END;", name=prof)
                                     except Exception as e:
                                         logger.error(f"set profile error: {e}")
@@ -5709,12 +5719,12 @@ def build_selectai_tab(pool):
                             目的: 組織で使うルールを一元管理し、チャット/分析で参照できるようにします。
 
                             手順:
-                            - ルールExcelをダウンロードし、`RULE` の1列を記入します。
+                            - ルールExcelをダウンロードし、`CATEGORY` と `RULE` の2列を記入します。
                             - ルールExcelをアップロードすると、`uploads/rules.xlsx` に保存されます。
                             - 「ルールをプレビュー」で内容と件数を確認します。
 
                             注意:
-                            - 列名は必ず `RULE` を使用してください。
+                            - 列名は必ず `CATEGORY`, `RULE` を使用してください。
                             - 文字列以外の値は保存時に文字列化されます。
                             - 個人情報や機密情報は含めないでください。
                             """
@@ -5725,7 +5735,7 @@ def build_selectai_tab(pool):
                         up_dir_rule.mkdir(parents=True, exist_ok=True)
                         _p_rule = up_dir_rule / "rules.xlsx"
                         if not _p_rule.exists():
-                            _df_rule = pd.DataFrame(columns=["RULE"])
+                            _df_rule = pd.DataFrame(columns=["CATEGORY", "RULE"])
                             with pd.ExcelWriter(_p_rule) as _writer:
                                 _df_rule.to_excel(_writer, sheet_name="rules", index=False)
     
@@ -5753,33 +5763,39 @@ def build_selectai_tab(pool):
                                 interactive=False,
                                 wrap=True,
                                 visible=False,
-                                value=pd.DataFrame(columns=["RULE"]),
+                                value=pd.DataFrame(columns=["CATEGORY", "RULE"]),
                             )
 
                     def _rule_list():
                         try:
                             p = Path("uploads") / "rules.xlsx"
                             if not p.exists():
-                                return pd.DataFrame(columns=["RULE"])
+                                return pd.DataFrame(columns=["CATEGORY", "RULE"])
                             df = pd.read_excel(str(p))
                             cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                            c_col = cols_map.get("CATEGORY")
                             r_col = cols_map.get("RULE")
                             if not r_col:
-                                return pd.DataFrame(columns=["RULE"])
+                                return pd.DataFrame(columns=["CATEGORY", "RULE"])
+                            if c_col:
+                                categories = df[c_col].astype(str)
+                            else:
+                                categories = pd.Series(["共通"] * len(df))
                             out = pd.DataFrame({
+                                "CATEGORY": categories.astype(str),
                                 "RULE": df[r_col].astype(str),
                             })
                             return out
                         except Exception as e:
                             logger.error(f"ルール一覧の取得に失敗しました: {e}")
-                            return pd.DataFrame(columns=["RULE"])
+                            return pd.DataFrame(columns=["CATEGORY", "RULE"])
 
                     def _rule_refresh():
                         try:
                             yield gr.Markdown(visible=True, value="⏳ ルールを取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame())
                             df = _rule_list()
                             if df is None or df.empty:
-                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["RULE"]), label="ルールプレビュー（件数: 0）")
+                                yield gr.Markdown(visible=True, value="✅ 取得完了（データなし）"), gr.Dataframe(visible=True, value=pd.DataFrame(columns=["CATEGORY", "RULE"]), label="ルールプレビュー（件数: 0）")
                                 return
                             yield gr.Markdown(visible=True, value="✅ 取得完了"), gr.Dataframe(visible=True, value=df, label=f"ルールプレビュー（件数: {len(df)}）")
                         except Exception as e:
@@ -5794,10 +5810,16 @@ def build_selectai_tab(pool):
                             except Exception:
                                 return gr.Textbox(visible=True, value="Excel読み込みに失敗しました", autoscroll=False)
                             cols_map = {str(c).upper(): c for c in df.columns.tolist()}
-                            required = {"RULE"}
+                            required = {"CATEGORY", "RULE"}
                             if not required.issubset(set(cols_map.keys())):
-                                return gr.Textbox(visible=True, value="列名は RULE が必要です", autoscroll=False)
+                                if "RULE" in cols_map and "CATEGORY" not in cols_map:
+                                    df[cols_map["RULE"]] = df[cols_map["RULE"]]
+                                    df["CATEGORY"] = "共通"
+                                    cols_map = {str(c).upper(): c for c in df.columns.tolist()}
+                                else:
+                                    return gr.Textbox(visible=True, value="列名は CATEGORY, RULE が必要です", autoscroll=False)
                             out_df = pd.DataFrame({
+                                "CATEGORY": df[cols_map.get("CATEGORY", "CATEGORY")],
                                 "RULE": df[cols_map["RULE"]],
                             })
                             up_dir = Path("uploads")
