@@ -2389,9 +2389,11 @@ def build_selectai_tab(pool):
                                 if not obj_name:
                                     continue
                                 try:
-                                    table_df = get_table_details(pool, obj_name)
+                                    table_df, table_ddl = get_table_details(pool, obj_name)
                                     if table_df is not None and not table_df.empty:
                                         schema_parts.append(f"\n--- テーブル: {obj_name} ---")
+                                        if table_ddl:
+                                            schema_parts.append(f"\n{table_ddl}\n")
                                         for _, row in table_df.iterrows():
                                             col_name = row.get("Column Name", "")
                                             col_type = row.get("Data Type", "")
@@ -2401,9 +2403,11 @@ def build_selectai_tab(pool):
                                 except Exception as e:
                                     logger.error(f"Failed to get table details for {obj_name}: {e}")
                                 try:
-                                    view_df, _ = get_view_details(pool, obj_name)
+                                    view_df, view_ddl = get_view_details(pool, obj_name)
                                     if view_df is not None and not view_df.empty:
                                         schema_parts.append(f"\n--- VIEW: {obj_name} ---")
+                                        if view_ddl:
+                                            schema_parts.append(f"\n{view_ddl}\n")
                                         for _, row in view_df.iterrows():
                                             col_name = row.get("Column Name", "")
                                             col_type = row.get("Data Type", "")
@@ -2506,28 +2510,22 @@ def build_selectai_tab(pool):
                             
                             step1_result = str(original_query).strip()
                             
-                            # 第1ステップ: ルールと用語集で分析・置換（ONの場合のみ）
+                            # 第1ステップ: 用語集で分析・置換（ONの場合のみ）
                             if use_glossary:
-                                yield gr.Markdown(visible=True, value="⏳ 第1ステップ: ルール・用語集で分析・置換中..."), gr.Textbox(value="", autoscroll=False)
+                                yield gr.Markdown(visible=True, value="⏳ 第1ステップ: 用語集で分析・置換中..."), gr.Textbox(value="", autoscroll=False)
                                 
-                                # ルールを必ず読み込む
-                                rules = _load_rules()
                                 terms = _load_terminology()
                                 
-                                # ルールと用語集の両方が空の場合は警告
-                                if not rules and not terms:
-                                    yield gr.Markdown(visible=True, value="⚠️ upload/rules.xlsx と upload/terms.xlsx の両方が空です"), gr.Textbox(value=step1_result, autoscroll=False)
+                                # 用語集が空の場合は警告
+                                if not terms:
+                                    yield gr.Markdown(visible=True, value="⚠️ upload/terms.xlsx が空です"), gr.Textbox(value=step1_result, autoscroll=False)
                                     if not use_schema:
                                         return
                                 else:
-                                    # ルールと用語集を使ってLLMで分析
-                                    rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
+                                    # 用語集を使ってLLMで分析
                                     terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()]) if terms else "（用語集なし）"
                                     
-                                    step1_prompt = f"""あなたはデータベースクエリの専門家です。以下のルールと用語集を100%遵守して、元の質問を最適化してください。
-
-=== ルール（必ず遵守） ===
-{rules_text}
+                                    step1_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集に基づいて、元の質問を最適化してください。
 
 === 用語集（TERM → 推奨表現） ===
 {terms_text}
@@ -2536,12 +2534,11 @@ def build_selectai_tab(pool):
 {original_query}
 
 指示:
-1. 上記のルールを100%遵守してください（最優先）。
-2. 用語集のTERM（A側）が含まれる場合は、その定義・推奨表現（B側）に置換してください。
-3. 曖昧な表現は、対象・条件・期間などを可能な限り具体的な言い回しに整えてください。
-4. 質問の意図・条件・対象は維持し、不要な追加・削除は行わないでください。
-5. 数値・日付・範囲などの具体値は変更しないでください。
-6. 出力は修正後の質問文のみ。説明や前置きは不要です。
+1. 用語集のTERM（A側）が含まれる場合は、その定義・推奨表現（B側）に置換してください。
+2. 曖昧な表現は、対象・条件・期間などを可能な限り具体的な言い回しに整えてください。
+3. 質問の意図・条件・対象は維持し、不要な追加・削除は行わないでください。
+4. 数値・日付・範囲などの具体値は変更しないでください。
+5. 出力は修正後の質問文のみ。説明や前置きは不要です。
 
 修正後の質問:"""
                                     
@@ -2585,29 +2582,21 @@ def build_selectai_tab(pool):
                             if not schema_info:
                                 yield gr.Markdown(visible=True, value="⚠️ スキーマ情報が取得できませんでした"), gr.Textbox(value=step1_result)
                                 return
-                            
-                            # ステップ2でもルールを読み込む
-                            rules = _load_rules()
-                            rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
-                            
-                            step2_prompt = f"""あなたはデータベースクエリの専門家です。以下のルールとデータベーススキーマ情報を参照し、元の質問をデータベースがより正確に解釈できる自然言語へ変換してください。
 
-=== ルール（必ず遵守） ===
-{rules_text}
+                            step2_prompt = f"""あなたはデータベースクエリの専門家です。以下のデータベーススキーマ情報を参照し、元の質問をデータベースがより正確に解釈できる自然言語へ変換してください。
 
 === 参考スキーマ情報 ===
 {schema_info}
 
 === 元の質問 ===
-{step1_result}
+{original_query}
 
 指示:
-1. 上記のルールを100%遵守してください（最優先）。
-2. 利用可能なテーブル名・カラム名・VIEW名を自然言語の中で明確にし、曖昧な用語はスキーマに合わせて具体化してください。
-3. 条件・期間・集計などが含まれる場合は、自然言語で明確に記述してください。
-4. 質問の元の意図を保ちつつ、データベースにとって解釈しやすい表現にしてください。
-5. SQLやコードは絶対に出力せず、自然言語のみを使用してください。
-6. 出力は変換後の自然言語の質問文のみとし、説明や前置きは不要です。
+1. 利用可能なテーブル名・カラム名・VIEW名を自然言語の中で明確にし、曖昧な用語はスキーマに合わせて具体化してください。
+2. 条件・期間・集計などが含まれる場合は、自然言語で明確に記述してください。
+3. 質問の元の意図を保ちつつ、データベースにとって解釈しやすい表現にしてください。
+4. SQLやコードは絶対に出力せず、自然言語のみを使用してください。
+5. 出力は変換後の自然言語の質問文のみとし、説明や前置きは不要です。
 
 変換後の自然言語:"""
                             
@@ -2636,7 +2625,6 @@ def build_selectai_tab(pool):
                                     final_result = step1_result
                             finally:
                                 loop.close()
-
                             
                             yield gr.Markdown(visible=True, value="✅ 書き換え完了"), gr.Textbox(value=final_result)
                             
@@ -2661,6 +2649,13 @@ def build_selectai_tab(pool):
                         ep = str(extra_prompt or "").strip()
                         inc = bool(include_extra)
                         final = s if not inc or not ep else (ep + "\n\n" + s)
+                        
+                        # ルールを読み込んで質問の末尾に追記（ユーザー要望）
+                        rules = _load_rules()
+                        if rules:
+                            rules_text = "\n\n".join([f"{r}" for r in rules])
+                            final += f"\n\n=== Rules ===\n{rules_text}"
+
                         if not profile or not str(profile).strip():
                             yield "⚠️ Profileを選択してください", ""
                             return
@@ -3460,13 +3455,6 @@ def build_selectai_tab(pool):
                             logger.error(f"_rev_build_context error: {e}")
                             return f"❌ エラー: {e}"
 
-                    def _rev_build_context(profile_name):
-                        try:
-                            txt = _rev_build_context_text(profile_name)
-                            return gr.Textbox(value=txt, autoscroll=False)
-                        except Exception as e:
-                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
-
                     def _on_profile_change_set_context_stream(p):
                         try:
                             yield gr.Markdown(visible=True, value="⏳ スキーマ情報取得中..."), gr.Textbox(value="", interactive=True, autoscroll=False)
@@ -3679,16 +3667,11 @@ def build_selectai_tab(pool):
                             # 用語集を利用する場合は逆処理を適用
                             if use_glossary:
                                 terms = _load_terminology()
-                                # ルールを必ず読み込む
-                                rules = _load_rules()
-                                if terms or rules:
-                                    # ルールと用語集を使ってLLMで書き換え（逆処理）
-                                    rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
+                                if terms:
+                                    # 用語集を使ってLLMで書き換え（逆処理）
+                                    # rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
                                     terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()]) if terms else "（用語集なし）"
-                                    glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下のルールと用語集に基づいて、元の質問を正規化してください。
-
-=== ルール（必ず遵守） ===
-{rules_text}
+                                    glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集に基づいて、元の質問を正規化してください。
 
 === 用語集（通常「A（TERM）→B（定義・推奨表現）」の最適化指針） ===
 {terms_text}
@@ -3697,8 +3680,7 @@ def build_selectai_tab(pool):
 {out_text}
 
 指示:
-1. 上記のルールを100%遵守してください（最優先）。
-2. 本タスクでは逆最適化を行います。定義や推奨表現、別名、略称などB側に該当する語句は対応する正式用語（A/TERM）に置換してください。
+1. 本タスクでは逆最適化を行います。定義や推奨表現、別名、略称などB側に該当する語句は対応する正式用語（A/TERM）に置換してください。
 3. 意図・条件・対象は維持し、語彙のみを正規化してください。
 4. 数値・日付・範囲などの具体値は変更しないでください。
 5. 出力は正規化後の質問文のみ。説明や前置きは不要です。
@@ -3872,9 +3854,6 @@ def build_selectai_tab(pool):
                         except Exception as e:
                             logger.error(f"_rev_ai_analyze_stream error: {e}")
                             yield gr.Markdown(visible=True, value=f"❌ 分析に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
-
-                    def _on_profile_change_set_context(p):
-                        return _rev_build_context(p)
 
                     rev_analysis_btn.click(
                         fn=_rev_ai_analyze_stream,
