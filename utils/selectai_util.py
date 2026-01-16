@@ -1486,7 +1486,7 @@ def build_selectai_tab(pool):
                         
                         yield gr.Markdown(visible=True, value=msg)
 
-                profile_refresh_btn.click(
+                profile_refresh_event = profile_refresh_btn.click(
                     fn=refresh_profiles,
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
                 )
@@ -1521,7 +1521,7 @@ def build_selectai_tab(pool):
                         logger.error(f"_update_profile_handler error: {e}")
                         yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), edited_name, gr.Textbox(value=category), gr.Textbox(value="", autoscroll=False), original_name
 
-                profile_delete_btn.click(
+                profile_delete_event = profile_delete_btn.click(
                     fn=_delete_profile_handler,
                     inputs=[selected_profile_name],
                     outputs=[profile_action_status, selected_profile_name, category_text, profile_json_text],
@@ -1530,7 +1530,7 @@ def build_selectai_tab(pool):
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
                 )
 
-                profile_update_btn.click(
+                profile_update_event = profile_update_btn.click(
                     fn=_update_profile_handler,
                     inputs=[selected_profile_original_name, selected_profile_name, category_text],
                     outputs=[profile_action_status, selected_profile_name, category_text, profile_json_text, selected_profile_original_name],
@@ -1555,7 +1555,7 @@ def build_selectai_tab(pool):
                     outputs=[refresh_status, tables_input, views_input],
                 )
 
-                build_btn.click(
+                profile_build_event = build_btn.click(
                     fn=build_profile,
                     inputs=[
                         profile_name,
@@ -6125,6 +6125,55 @@ def build_selectai_tab(pool):
             if current_value in choices:
                 return gr.Dropdown(choices=choices, value=current_value)
             return gr.Dropdown(choices=choices, value=choices[0])
+
+        def _update_all_profile_dropdowns(dev_value, global_value, syn_value, rev_value, user_value):
+            choices = _load_profiles_from_json() or [("", "")]
+
+            def _update(current_value):
+                if choices and isinstance(choices[0], tuple):
+                    values = [c[1] for c in choices]
+                    if current_value in values:
+                        return gr.Dropdown(choices=choices, value=current_value)
+                    return gr.Dropdown(choices=choices, value=values[0] if values else "")
+                if not choices:
+                    local_choices = [""]
+                else:
+                    local_choices = choices
+                if current_value in local_choices:
+                    return gr.Dropdown(choices=local_choices, value=current_value)
+                return gr.Dropdown(choices=local_choices, value=local_choices[0])
+
+            return (
+                _update(dev_value),
+                _update(global_value),
+                _update(syn_value),
+                _update(rev_value),
+                _update(user_value),
+            )
+
+        profile_refresh_event.then(
+            fn=_update_all_profile_dropdowns,
+            inputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+            outputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+        )
+
+        profile_delete_event.then(
+            fn=_update_all_profile_dropdowns,
+            inputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+            outputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+        )
+
+        profile_update_event.then(
+            fn=_update_all_profile_dropdowns,
+            inputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+            outputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+        )
+
+        profile_build_event.then(
+            fn=_update_all_profile_dropdowns,
+            inputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+            outputs=[dev_profile_select, global_profile_select, syn_profile_select, rev_profile_select, profile_select],
+        )
 
         # チャット・分析タブ
         dev_chat_tab.select(
