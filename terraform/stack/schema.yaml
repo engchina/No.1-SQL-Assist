@@ -1,8 +1,8 @@
 ## Copyright © 2020, Oracle and/or its affiliates.
 ## All rights reserved. The Universal Permissive License (UPL), Version 1.0 as shown at http://oss.oracle.com/licenses/upl
 
-title: "Deploy RAG Evaluation Tool on Oracle Cloud Infrastructure Compute instance"
-stackDescription: "Deploy RAG Evaluation Tool on Oracle Cloud Infrastructure Compute instance"
+title: "Deploy No.1-SQL-Assist on Oracle Cloud Infrastructure Compute instance"
+stackDescription: "Deploy No.1-SQL-Assist, a tool to help developers easily generate SQL queries and deepen their understanding of SQL, on Oracle Cloud Infrastructure Compute instance"
 schemaVersion: 1.1.0
 version: "20220422"
 locale: "en"

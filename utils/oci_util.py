@@ -1055,25 +1055,7 @@ def build_oracle_ai_database_tab(pool=None):
                     # Walletをダウンロード・展開
                     if _download_and_extract_wallet(region_code, adb_ocid):
                         wallet_status = "\n✅ Walletファイルをダウンロードしました"
-                                
-                        # oracledb.init_oracle_clientを再実行
-                        # 注: init_oracle_client()は1プロセスで1度のみ呼び出し可能
-                        # 既に初期化済みの場合はアプリケーション再起動が必要
-                        try:
-                            import platform
-                            if platform.system() == "Linux":
-                                config_dir = str(network_admin_dir)
-                                logger.info(f"Re-initializing Oracle client with config_dir={config_dir}")
-                                oracledb.init_oracle_client(lib_dir=oracle_client_lib_dir, config_dir=config_dir)
-                                wallet_status += "\n✅ Oracle Clientを再初期化しました"
-                        except Exception as init_error:
-                            error_msg = str(init_error)
-                            if "DPY-2017" in error_msg or "already called" in error_msg:
-                                logger.info(f"Oracle client already initialized: {init_error}")
-                                wallet_status += "\n✅ Oracle Clientは既に初期化済みです。Walletファイルは配置されました。"
-                            else:
-                                logger.warning(f"Oracle client re-initialization warning: {init_error}")
-                                wallet_status += f"\n⚠️ Oracle Client再初期化の警告: {init_error}"
+                        wallet_status += "\n✅ Oracle Clientは起動時に初期化済みです。Walletファイルが配置されました。"
                     else:
                         wallet_status = "\n❌ Walletファイルのダウンロードに失敗しました"
                         yield gr.Markdown(visible=True, value=f"❌ Walletダウンロードエラー{wallet_status}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
