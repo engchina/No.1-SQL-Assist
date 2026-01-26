@@ -221,7 +221,8 @@ END;"""
                 try:
                     cursor.execute("BEGIN dbms_vector.drop_credential('OCI_CRED'); END;")
                 except DatabaseError as e:
-                    logger.error(f"Drop credential failed: {e}")
+                    # クレデンシャルが存在しない場合のエラーは想定内
+                    logger.info(f"Drop credential skipped (credential may not exist): {e}")
 
                 oci_cred = {
                     "user_ocid": str(user_ocid).strip(),
@@ -818,7 +819,8 @@ END;""",
                 try:
                     cursor.execute("BEGIN dbms_vector.drop_credential('OCI_CRED'); END;")
                 except DatabaseError as e:
-                    logger.error(f"Drop credential failed: {e}")
+                    # クレデンシャルが存在しない場合のエラーは想定内
+                    logger.info(f"Drop credential skipped (credential may not exist): {e}")
                 oci_cred = {
                     "user_ocid": str(user_ocid).strip(),
                     "tenancy_ocid": str(tenancy_ocid).strip(),
@@ -922,11 +924,11 @@ def build_oracle_ai_database_tab(pool=None):
                     with gr.Column(scale=5):
                         gr.Markdown("")
         with gr.Row():
-            fetch_btn = gr.Button(value="ADB一覧を取得", variant="primary")
+            fetch_btn = gr.Button(value="ADB情報を取得", variant="primary")
         with gr.Row():
             adb_status_md = gr.Markdown(visible=False)
         with gr.Row():
-            adb_list_df = gr.Dataframe(label="ADB一覧（件数: 0）", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
+            adb_list_df = gr.Dataframe(label="ADB情報(件数: 0)", interactive=False, wrap=True, visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]))
         with gr.Row():
             start_btn = gr.Button(value="起動", interactive=False, variant="primary")
             stop_btn = gr.Button(value="停止", interactive=False, variant="primary")
@@ -946,38 +948,158 @@ def build_oracle_ai_database_tab(pool=None):
                 logger.error(f"_state_to_val error: {e}")
             return {}
 
-        def _fetch(region):
-            comp = os.environ.get("OCI_COMPARTMENT_OCID", "")
-            match_name = os.environ.get("ADB_NAME", "")
-            region_code = region
-            if not comp:
-                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
-                yield gr.Markdown(visible=True, value="❌ OCI_COMPARTMENT_OCIDが見つかりません"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
-                return
+        def _check_wallet_files(network_admin_dir):
+            """Walletファイルの存在を確認する.
+                    
+            Args:
+                network_admin_dir: network/adminディレクトリのパス
+                        
+            Returns:
+                bool: すべての必須ファイルが存在する場合True
+            """
+            required_files = [
+                "cwallet.sso",
+                "ewallet.p12",
+                "ewallet.pem",
+                "keystore.jks",
+                "ojdbc.properties",
+                "sqlnet.ora",
+                "tnsnames.ora",
+                "truststore.jks"
+            ]
+            network_admin_path = Path(network_admin_dir)
+            if not network_admin_path.exists():
+                return False
+            for file_name in required_files:
+                if not (network_admin_path / file_name).exists():
+                    return False
+            return True
+        
+        def _download_and_extract_wallet(region, adb_ocid, wallet_password="WalletPassword123"):
+            """ADB Walletをダウンロードして展開する.
+                    
+            Args:
+                region: OCIリージョン
+                adb_ocid: ADB OCID
+                wallet_password: Walletパスワード
+                        
+            Returns:
+                bool: 成功した場合True
+            """
+            import zipfile
+            import tempfile
+                    
             try:
-                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
-                items = _list_adb(region_code, comp)
-                rows = []
-                mp = {}
-                for it in items:
-                    st = it.lifecycle_state
-                    if str(st).upper() == "TERMINATED":
-                        continue
-                    name = it.display_name
-                    if match_name and str(name or "").strip().lower() != str(match_name).strip().lower():
-                        continue
-                    oid = it.id
-                    rows.append([name, st, oid])
-                    mp[oid] = {"name": name, "state": st}
-                df = pd.DataFrame(rows, columns=["表示名", "状態", "OCID"]) if rows else pd.DataFrame(columns=["表示名", "状態", "OCID"]) 
-                status_lines = []
-                status_text = "✅ 取得完了（データなし）" if len(rows) == 0 else "✅ 取得完了"
-                status_md = status_text + "\n" + "\n".join(status_lines)
-                yield gr.Markdown(visible=True, value=status_md), gr.Dataframe(visible=True, value=df, label=f"ADB一覧（件数: {len(df)}）"), mp, ""
+                cfg = _oci_config_with_region(region)
+                client = oci.database.DatabaseClient(cfg)
+                        
+                # Walletをダウンロード
+                logger.info(f"Downloading wallet for ADB: {adb_ocid}")
+                wallet_details = oci.database.models.GenerateAutonomousDatabaseWalletDetails(
+                    password=wallet_password
+                )
+                wallet_response = client.generate_autonomous_database_wallet(
+                    autonomous_database_id=adb_ocid,
+                    generate_autonomous_database_wallet_details=wallet_details
+                )
+                        
+                # /tmpに保存
+                wallet_zip_path = "/tmp/wallet.zip"
+                with open(wallet_zip_path, "wb") as f:
+                    for chunk in wallet_response.data.raw.stream(1024 * 1024, decode_content=False):
+                        f.write(chunk)
+                logger.info(f"Wallet downloaded to {wallet_zip_path}")
+                        
+                # ORACLE_CLIENT_LIB_DIR/network/adminに展開
+                oracle_client_lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")
+                network_admin_dir = Path(oracle_client_lib_dir) / "network" / "admin"
+                network_admin_dir.mkdir(parents=True, exist_ok=True)
+                        
+                with zipfile.ZipFile(wallet_zip_path, "r") as zip_ref:
+                    zip_ref.extractall(network_admin_dir)
+                logger.info(f"Wallet extracted to {network_admin_dir}")
+                        
+                # 展開後のファイルを確認
+                extracted_files = list(network_admin_dir.glob("*"))
+                logger.info(f"Extracted files: {[f.name for f in extracted_files]}")
+                        
+                return True
+            except Exception as e:
+                logger.error(f"Wallet download/extract error: {e}")
+                return False
+        
+        def _fetch(region):
+            """ADB OCIDを使用してADB情報を取得し、必要に応じてWalletをダウンロードする."""
+            adb_ocid = os.environ.get("ADB_OCID", "")
+            region_code = region
+                    
+            if not adb_ocid or not adb_ocid.strip():
+                yield gr.Markdown(visible=True, value="⏳ ADB情報を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
+                yield gr.Markdown(visible=True, value="❌ ADB_OCIDが見つかりません"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
+                return
+                        
+            try:
+                yield gr.Markdown(visible=True, value="⏳ ADB情報を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
+                        
+                # Walletファイルの存在確認
+                oracle_client_lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")
+                network_admin_dir = Path(oracle_client_lib_dir) / "network" / "admin"
+                wallet_exists = _check_wallet_files(network_admin_dir)
+                        
+                wallet_status = ""
+                if not wallet_exists:
+                    logger.info("Wallet files not found, downloading...")
+                    wallet_status = "\n⏳ Walletファイルが見つかりません。ダウンロード中..."
+                    yield gr.Markdown(visible=True, value=f"⏳ ADB情報を取得中...{wallet_status}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
+                            
+                    # Walletをダウンロード・展開
+                    if _download_and_extract_wallet(region_code, adb_ocid):
+                        wallet_status = "\n✅ Walletファイルをダウンロードしました"
+                                
+                        # oracledb.init_oracle_clientを再実行
+                        # 注: init_oracle_client()は1プロセスで1度のみ呼び出し可能
+                        # 既に初期化済みの場合はアプリケーション再起動が必要
+                        try:
+                            import platform
+                            if platform.system() == "Linux":
+                                config_dir = str(network_admin_dir)
+                                logger.info(f"Re-initializing Oracle client with config_dir={config_dir}")
+                                oracledb.init_oracle_client(lib_dir=oracle_client_lib_dir, config_dir=config_dir)
+                                wallet_status += "\n✅ Oracle Clientを再初期化しました"
+                        except Exception as init_error:
+                            error_msg = str(init_error)
+                            if "DPY-2017" in error_msg or "already called" in error_msg:
+                                logger.info(f"Oracle client already initialized: {init_error}")
+                                wallet_status += "\n✅ Oracle Clientは既に初期化済みです。Walletファイルは配置されました。"
+                            else:
+                                logger.warning(f"Oracle client re-initialization warning: {init_error}")
+                                wallet_status += f"\n⚠️ Oracle Client再初期化の警告: {init_error}"
+                    else:
+                        wallet_status = "\n❌ Walletファイルのダウンロードに失敗しました"
+                        yield gr.Markdown(visible=True, value=f"❌ Walletダウンロードエラー{wallet_status}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
+                        return
+                else:
+                    wallet_status = "\n✅ Walletファイルは既に存在します"
+                        
+                # ADB情報を取得
+                cfg = _oci_config_with_region(region_code)
+                client = oci.database.DatabaseClient(cfg)
+                adb = _get_adb(client, adb_ocid)
+                        
+                name = adb.display_name
+                st = adb.lifecycle_state
+                oid = adb.id
+                        
+                rows = [[name, st, oid]]
+                mp = {oid: {"name": name, "state": st}}
+                df = pd.DataFrame(rows, columns=["表示名", "状態", "OCID"])
+                        
+                status_text = f"✅ 取得完了{wallet_status}"
+                yield gr.Markdown(visible=True, value=status_text), gr.Dataframe(visible=True, value=df, label=f"ADB情報(件数: {len(df)})"), mp, oid
             except Exception as e:
                 logger.error(f"_fetch error: {e}")
-                yield gr.Markdown(visible=True, value="⏳ ADB一覧を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
-                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB一覧（件数: 0）"), {}, ""
+                yield gr.Markdown(visible=True, value="⏳ ADB情報を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
+                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
 
         def _on_row_select(evt: gr.SelectData, current_df, mp):
             try:
@@ -1037,9 +1159,9 @@ def build_oracle_ai_database_tab(pool=None):
             region_code = region
             mpv = _state_to_val(mp)
             if not selected_id:
-                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
                 return
-            yield gr.Markdown(visible=True, value="⏳ 起動をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+            yield gr.Markdown(visible=True, value="⏳ 起動をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
             try:
                 _start_adb(region_code, selected_id)
                 st = "STARTING"
@@ -1049,19 +1171,19 @@ def build_oracle_ai_database_tab(pool=None):
                     mpv[selected_id] = {"name": selected_id, "state": st}
                 can_start = False
                 can_stop = True
-                msg = "⏳ 起動リクエストを送信しました。数分後に『ADB一覧を取得』で最新状態を確認してください"
-                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+                msg = "⏳ 起動リクエストを送信しました。数分後に『ADB情報を取得』で最新状態を確認してください"
+                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
             except Exception as e:
                 logger.error(f"_start エラー: {e}")
-                yield gr.Markdown(visible=True, value=f"❌ 起動エラー: {e}"), gr.Button(interactive=True), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+                yield gr.Markdown(visible=True, value=f"❌ 起動エラー: {e}"), gr.Button(interactive=True), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
 
         def _stop(region, selected_id, mp):
             region_code = region
             mpv = _state_to_val(mp)
             if not selected_id:
-                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+                yield gr.Markdown(visible=True, value="❌ ADBが選択されていません"), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
                 return
-            yield gr.Markdown(visible=True, value="⏳ 停止をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+            yield gr.Markdown(visible=True, value="⏳ 停止をリクエスト中..."), gr.Button(interactive=False), gr.Button(interactive=False), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
             try:
                 try:
                     if pool is not None:
@@ -1079,11 +1201,11 @@ def build_oracle_ai_database_tab(pool=None):
                     mpv[selected_id] = {"name": selected_id, "state": st}
                 can_start = False
                 can_stop = False
-                msg = "⏳ 停止リクエストを送信しました。数分後に『ADB一覧を取得』で最新状態を確認してください"
-                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+                msg = "⏳ 停止リクエストを送信しました。数分後に『ADB情報を取得』で最新状態を確認してください"
+                yield gr.Markdown(visible=True, value=msg), gr.Button(interactive=can_start), gr.Button(interactive=can_stop), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
             except Exception as e:
                 logger.error(f"_stop エラー: {e}")
-                yield gr.Markdown(visible=True, value=f"❌ 停止エラー: {e}"), gr.Button(interactive=False), gr.Button(interactive=True), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB一覧（件数: {len(mpv)}）")
+                yield gr.Markdown(visible=True, value=f"❌ 停止エラー: {e}"), gr.Button(interactive=False), gr.Button(interactive=True), mpv, gr.Dataframe(visible=True, value=_mp_to_df(mpv), label=f"ADB情報(件数: {len(mpv)})")
 
         fetch_btn.click(
             _fetch,
