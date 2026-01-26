@@ -20,3 +20,55 @@ resource "oci_database_autonomous_database" "generated_database_autonomous_datab
   license_model                                  = var.license_model
   ncharacter_set                                 = "AL16UTF16"
 }
+
+# ウォレットをダウンロード
+resource "oci_database_autonomous_database_wallet" "generated_autonomous_data_warehouse_wallet" {
+  autonomous_database_id = oci_database_autonomous_database.generated_database_autonomous_database.id
+  password               = var.adb_password
+  base64_encode_content  = "true"
+}
+
+# ウォレットZIPをローカルに保存（base64デコードしてバイナリで書き込み）
+resource "local_file" "wallet_zip" {
+  content_base64 = oci_database_autonomous_database_wallet.generated_autonomous_data_warehouse_wallet.content
+  filename       = "${path.module}/wallet_full.zip"
+}
+
+# 外部データソースでウォレットから個別ファイルを抽出（不要ファイル除外）
+data "external" "wallet_files" {
+  depends_on = [local_file.wallet_zip]
+  program = ["bash", "-c", <<-EOT
+    set -e
+    WORK_DIR="${path.module}"
+    cd "$WORK_DIR"
+    
+    # 一時ディレクトリを作成
+    rm -rf wallet_extracted
+    mkdir -p wallet_extracted
+    
+    # ZIPを展開
+    unzip -q wallet_full.zip -d wallet_extracted
+    
+    # 不要ファイルを削除（README、Java関連ファイル）
+    rm -f wallet_extracted/README
+    rm -f wallet_extracted/keystore.jks
+    rm -f wallet_extracted/truststore.jks
+    rm -f wallet_extracted/ojdbc.properties
+    rm -f wallet_extracted/ewallet.pem
+    
+    # 小さいZIPを作成
+    cd wallet_extracted
+    zip -q ../wallet_small.zip *
+    cd ..
+    
+    # 小さいZIPをbase64エンコード
+    WALLET_CONTENT=$(base64 -w 0 wallet_small.zip)
+    
+    # JSONとして出力
+    echo "{\"wallet_content\":\"$WALLET_CONTENT\"}"
+    
+    # クリーンアップ
+    rm -rf wallet_extracted wallet_full.zip wallet_small.zip
+  EOT
+  ]
+}

@@ -139,6 +139,33 @@ fi
 # Set Oracle Client Library Directory
 sed -i "s|ORACLE_CLIENT_LIB_DIR=.*|ORACLE_CLIENT_LIB_DIR=${INSTANTCLIENT_DIR}|g" .env
 
+# Setup wallet
+echo "ウォレットをセットアップ中..."
+if [ -f "/u01/aipoc/props/wallet.zip" ]; then
+    echo "ウォレットを展開中..."
+    mkdir -p /u01/aipoc/props/wallet
+    unzip -o /u01/aipoc/props/wallet.zip -d /u01/aipoc/props/wallet
+    
+    echo "sqlnet.oraを設定中..."
+    sed -i 's|DIRECTORY="?\+/network/admin" *|DIRECTORY="/u01/aipoc/props/wallet"|g' /u01/aipoc/props/wallet/sqlnet.ora
+    
+    export TNS_ADMIN=/u01/aipoc/props/wallet
+    echo "TNS_ADMIN=$TNS_ADMIN"
+    
+    # Write to profile if not already present
+    if ! grep -q "TNS_ADMIN=/u01/aipoc/props/wallet" /etc/profile; then
+        echo "export TNS_ADMIN=/u01/aipoc/props/wallet" >> /etc/profile
+    fi
+    
+    echo "ウォレットファイルリスト:"
+    ls -la $TNS_ADMIN
+    
+    echo "sqlnet.ora内容:"
+    cat $TNS_ADMIN/sqlnet.ora
+else
+    echo "警告: /u01/aipoc/props/wallet.zip が見つかりません！"
+fi
+
 # Application setup
 echo "アプリケーションを設定中..."
 EXTERNAL_IP=$(curl -s -m 10 http://whatismyip.akamai.com/ || echo "")

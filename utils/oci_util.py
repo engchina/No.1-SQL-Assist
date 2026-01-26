@@ -948,11 +948,11 @@ def build_oracle_ai_database_tab(pool=None):
                 logger.error(f"_state_to_val error: {e}")
             return {}
 
-        def _check_wallet_files(network_admin_dir):
+        def _check_wallet_files(wallet_dir):
             """Walletファイルの存在を確認する.
                     
             Args:
-                network_admin_dir: network/adminディレクトリのパス
+                wallet_dir: walletディレクトリのパス
                         
             Returns:
                 bool: すべての必須ファイルが存在する場合True
@@ -960,18 +960,14 @@ def build_oracle_ai_database_tab(pool=None):
             required_files = [
                 "cwallet.sso",
                 "ewallet.p12",
-                "ewallet.pem",
-                "keystore.jks",
-                "ojdbc.properties",
                 "sqlnet.ora",
                 "tnsnames.ora",
-                "truststore.jks"
             ]
-            network_admin_path = Path(network_admin_dir)
-            if not network_admin_path.exists():
+            wallet_path = Path(wallet_dir)
+            if not wallet_path.exists():
                 return False
             for file_name in required_files:
-                if not (network_admin_path / file_name).exists():
+                if not (wallet_path / file_name).exists():
                     return False
             return True
         
@@ -1010,17 +1006,17 @@ def build_oracle_ai_database_tab(pool=None):
                         f.write(chunk)
                 logger.info(f"Wallet downloaded to {wallet_zip_path}")
                         
-                # ORACLE_CLIENT_LIB_DIR/network/adminに展開
-                oracle_client_lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")
-                network_admin_dir = Path(oracle_client_lib_dir) / "network" / "admin"
-                network_admin_dir.mkdir(parents=True, exist_ok=True)
+                # TNS_ADMINディレクトリに展開
+                wallet_dir = os.environ.get("TNS_ADMIN", "/u01/aipoc/props/wallet")
+                wallet_path = Path(wallet_dir)
+                wallet_path.mkdir(parents=True, exist_ok=True)
                         
                 with zipfile.ZipFile(wallet_zip_path, "r") as zip_ref:
-                    zip_ref.extractall(network_admin_dir)
-                logger.info(f"Wallet extracted to {network_admin_dir}")
+                    zip_ref.extractall(wallet_path)
+                logger.info(f"Wallet extracted to {wallet_path}")
                         
                 # 展開後のファイルを確認
-                extracted_files = list(network_admin_dir.glob("*"))
+                extracted_files = list(wallet_path.glob("*"))
                 logger.info(f"Extracted files: {[f.name for f in extracted_files]}")
                         
                 return True
@@ -1042,9 +1038,8 @@ def build_oracle_ai_database_tab(pool=None):
                 yield gr.Markdown(visible=True, value="⏳ ADB情報を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
                         
                 # Walletファイルの存在確認
-                oracle_client_lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")
-                network_admin_dir = Path(oracle_client_lib_dir) / "network" / "admin"
-                wallet_exists = _check_wallet_files(network_admin_dir)
+                wallet_dir = os.environ.get("TNS_ADMIN", "/u01/aipoc/props/wallet")
+                wallet_exists = _check_wallet_files(wallet_dir)
                         
                 wallet_status = ""
                 if not wallet_exists:

@@ -35,6 +35,11 @@ write_files:
   - path: "/u01/aipoc/props/adb_ocid.txt"
     permissions: "0644"
     content: ${adb_ocid}
+  - path: "/u01/aipoc/props/wallet.zip"
+    permissions: "0644"
+    encoding: "base64"
+    content: |
+      ${wallet_content}
 runcmd:
   - apt install -y git unzip gcc build-essential libmagic-dev libgl1-mesa-dev pandoc dos2unix netfilter-persistent
   - iptables -I INPUT 6 -m state --state NEW -p tcp --dport 8080 -j ACCEPT

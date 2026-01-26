@@ -40,17 +40,17 @@ logger.info("Environment variables loaded")
 # Initialize Oracle client for Linux
 if platform.system() == "Linux":
     lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")
-    config_dir = os.environ.get("TNS_ADMIN")
+    config_dir = os.environ.get("TNS_ADMIN", "/u01/aipoc/props/wallet")
     
-    # TNS_ADMINが設定されていない場合、デフォルトのウォレットディレクトリを設定
-    if not config_dir:
-        from pathlib import Path
-        config_dir = str(Path(lib_dir) / "network" / "admin")
-        # ディレクトリが存在しない場合は作成
-        Path(config_dir).mkdir(parents=True, exist_ok=True)
-        # 環境変数にも設定（後続の処理で参照される場合のため）
-        os.environ["TNS_ADMIN"] = config_dir
-        logger.info(f"TNS_ADMIN not set, using default: {config_dir}")
+    # TNS_ADMINで指定されたディレクトリが存在しない場合は作成
+    from pathlib import Path
+    config_path = Path(config_dir)
+    if not config_path.exists():
+        config_path.mkdir(parents=True, exist_ok=True)
+        logger.warning(f"TNS_ADMIN directory created: {config_dir}")
+    
+    # 環境変数にも設定（後続の処理で参照される場合のため）
+    os.environ["TNS_ADMIN"] = config_dir
     
     logger.info(f"Initializing Oracle client lib_dir={lib_dir}, config_dir={config_dir}")
     oracledb.init_oracle_client(lib_dir=lib_dir, config_dir=config_dir)
