@@ -39,7 +39,7 @@ logger.info("Environment variables loaded")
 
 # Initialize Oracle client for Linux
 if platform.system() == "Linux":
-    lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_8")
+    lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")
     config_dir = os.environ.get("TNS_ADMIN")
     if config_dir:
         logger.info(f"Initializing Oracle client lib_dir={lib_dir}, config_dir={config_dir}")
