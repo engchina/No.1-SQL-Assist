@@ -26,6 +26,7 @@ resource "oci_database_autonomous_database_wallet" "generated_autonomous_data_wa
   autonomous_database_id = oci_database_autonomous_database.generated_database_autonomous_database.id
   password               = var.adb_password
   base64_encode_content  = "true"
+  generate_type          = "SINGLE"
 }
 
 # ウォレットZIPをローカルに保存（base64デコードしてバイナリで書き込み）
@@ -43,22 +44,22 @@ data "external" "wallet_files" {
     cd "$WORK_DIR"
     
     # 一時ディレクトリを作成
-    rm -rf wallet_extracted
+    rm -rf wallet_extracted 2>/dev/null || true
     mkdir -p wallet_extracted
     
     # ZIPを展開
-    unzip -q wallet_full.zip -d wallet_extracted
+    unzip -q wallet_full.zip -d wallet_extracted 2>/dev/null
     
     # 不要ファイルを削除（README、Java関連ファイル）
-    rm -f wallet_extracted/README
-    rm -f wallet_extracted/keystore.jks
-    rm -f wallet_extracted/truststore.jks
-    rm -f wallet_extracted/ojdbc.properties
-    rm -f wallet_extracted/ewallet.pem
+    rm -f wallet_extracted/README 2>/dev/null || true
+    rm -f wallet_extracted/keystore.jks 2>/dev/null || true
+    rm -f wallet_extracted/truststore.jks 2>/dev/null || true
+    rm -f wallet_extracted/ojdbc.properties 2>/dev/null || true
+    rm -f wallet_extracted/ewallet.pem 2>/dev/null || true
     
     # 小さいZIPを作成
     cd wallet_extracted
-    zip -q ../wallet_small.zip *
+    zip -q ../wallet_small.zip * 2>/dev/null
     cd ..
     
     # 小さいZIPをbase64エンコード
@@ -68,7 +69,7 @@ data "external" "wallet_files" {
     echo "{\"wallet_content\":\"$WALLET_CONTENT\"}"
     
     # クリーンアップ
-    rm -rf wallet_extracted wallet_full.zip wallet_small.zip
+    rm -rf wallet_extracted wallet_full.zip wallet_small.zip 2>/dev/null || true
   EOT
   ]
 }
