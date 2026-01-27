@@ -5,7 +5,8 @@ Gradio UIコンポーネントを実装します。
 """
 
 import logging
-from typing import List
+import json
+from typing import List, Optional
 
 import gradio as gr
 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
@@ -13,6 +14,7 @@ from openai import AsyncOpenAI
 from dotenv import find_dotenv, get_key
 import asyncio
 import os
+import oci
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -20,6 +22,196 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
+_GEMINI_MODELS = {
+    "google.gemini-2.5-flash",
+    "google.gemini-2.5-pro",
+}
+
+
+def _extract_text_from_content(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        text = value.get("text")
+        if isinstance(text, str) and text:
+            return text
+        content = value.get("content")
+        if content is not None:
+            return _extract_text_from_content(content)
+        return ""
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            t = _extract_text_from_content(item)
+            if t:
+                parts.append(t)
+        return "".join(parts)
+    return ""
+
+
+def _extract_stream_delta_text(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return ""
+
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            delta = choice.get("delta")
+            if isinstance(delta, dict):
+                content = delta.get("content")
+                text = _extract_text_from_content(content)
+                if text:
+                    return text
+
+            message = choice.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                text = _extract_text_from_content(content)
+                if text:
+                    return text
+
+            content = choice.get("content")
+            text = _extract_text_from_content(content)
+            if text:
+                return text
+
+    message = payload.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        text = _extract_text_from_content(content)
+        if text:
+            return text
+
+    content = payload.get("content")
+    text = _extract_text_from_content(content)
+    if text:
+        return text
+
+    text = payload.get("text")
+    if isinstance(text, str) and text:
+        return text
+
+    return ""
+
+
+async def _stream_oci_genai_chat_gemini(
+    *,
+    region: str,
+    compartment_id: str,
+    model_id: str,
+    messages: List[dict],
+):
+    config = oci.config.from_file(file_location="/root/.oci/config")
+    config["region"] = region
+
+    endpoint = f"https://inference.generativeai.{region}.oci.oraclecloud.com"
+    client = oci.generative_ai_inference.GenerativeAiInferenceClient(
+        config=config,
+        service_endpoint=endpoint,
+    )
+
+    from oci.generative_ai_inference.models import (
+        AssistantMessage,
+        ChatDetails,
+        GenericChatRequest,
+        OnDemandServingMode,
+        SystemMessage,
+        TextContent,
+        UserMessage,
+    )
+
+    oci_messages = []
+    for msg in messages:
+        role = str(msg.get("role", "") or "").strip().lower()
+        content_text = str(msg.get("content", "") or "")
+        content = [TextContent(text=content_text)]
+        if role == "system":
+            oci_messages.append(SystemMessage(content=content))
+        elif role == "assistant":
+            oci_messages.append(AssistantMessage(content=content))
+        else:
+            oci_messages.append(UserMessage(content=content))
+
+    chat_request = GenericChatRequest(
+        api_format=GenericChatRequest.API_FORMAT_GENERIC,
+        messages=oci_messages,
+        is_stream=True,
+    )
+    chat_details = ChatDetails(
+        compartment_id=compartment_id,
+        serving_mode=OnDemandServingMode(model_id=model_id),
+        chat_request=chat_request,
+    )
+
+    q: asyncio.Queue[Optional[str]] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    exc: dict = {"value": None}
+
+    def _push(item: Optional[str]):
+        loop.call_soon_threadsafe(q.put_nowait, item)
+
+    def _run():
+        try:
+            resp = client.chat(chat_details)
+            data = getattr(resp, "data", None)
+            if hasattr(data, "events"):
+                logged_format = False
+                for event in data.events():
+                    event_data = getattr(event, "data", None)
+                    if not event_data:
+                        continue
+                    if event_data == "[DONE]":
+                        break
+                    event_data_str = str(event_data)
+                    chunk_text = ""
+                    try:
+                        payload = json.loads(event_data_str)
+                        chunk_text = _extract_stream_delta_text(payload)
+                        if not chunk_text and not logged_format:
+                            logger.info(
+                                "OCI GenAI stream event payload keys: %s",
+                                sorted(list(payload.keys()))
+                                if isinstance(payload, dict)
+                                else type(payload),
+                            )
+                            logged_format = True
+                    except Exception:
+                        chunk_text = event_data_str
+
+                    if isinstance(chunk_text, str):
+                        chunk_text = chunk_text.strip("\r\n")
+                    if chunk_text and chunk_text != "[DONE]":
+                        _push(chunk_text)
+            else:
+                response_text = ""
+                chat_response = getattr(data, "chat_response", None)
+                choices = getattr(chat_response, "choices", None)
+                if isinstance(choices, list) and choices:
+                    first = choices[0]
+                    msg = getattr(first, "message", None)
+                    content = getattr(msg, "content", None)
+                    if isinstance(content, str):
+                        response_text = content
+                if response_text:
+                    _push(response_text)
+        except Exception as e:
+            exc["value"] = e
+        finally:
+            _push(None)
+
+    bg_task = asyncio.create_task(asyncio.to_thread(_run))
+
+    while True:
+        item = await q.get()
+        if item is None:
+            break
+        yield item
+    await bg_task
+    if exc["value"] is not None:
+        raise exc["value"]
 
 
 def get_oci_region():
@@ -65,7 +257,9 @@ async def send_chat_message_async(
     """
     logger.info("=" * 50)
     logger.info(f"Sending chat message to model: {chat_model}")
-    logger.info(f"Message: {message[:100]}..." if len(message) > 100 else f"Message: {message}")
+    logger.info(
+        f"Message: {message[:100]}..." if len(message) > 100 else f"Message: {message}"
+    )
 
     if not message.strip():
         logger.error("メッセージが未入力です")
@@ -79,19 +273,19 @@ async def send_chat_message_async(
             # Get region and compartment ID
             region = get_oci_region()
             compartment_id = get_compartment_id()
-            
+
             if not region:
                 logger.error("OCI region not found")
                 logger.info("=" * 50)
                 yield history, message
                 return
-            
+
             if not compartment_id:
                 logger.error("Compartment ID not found")
                 logger.info("=" * 50)
                 yield history, message
                 return
-    
+
             logger.info(f"Using region: {region}")
             logger.info(f"Using compartment: {compartment_id[:20]}...")
 
@@ -99,7 +293,7 @@ async def send_chat_message_async(
         messages = []
         for msg in history:
             messages.append({"role": msg["role"], "content": msg["content"]})
-        
+
         # Add current message
         messages.append({"role": "user", "content": message})
 
@@ -111,20 +305,18 @@ async def send_chat_message_async(
         if chat_model.startswith("gpt-"):
             logger.info(f"Using OpenAI client for model: {chat_model}")
             client = AsyncOpenAI()
-            
+
             # Use standard Chat Completions API which is stable and widely supported
             # Responses API (v1/responses) is in preview and may not be available in all regions/accounts
             # causing 404 Not Found errors.
             logger.info("Calling OpenAI Chat Completions API...")
             stream = await client.chat.completions.create(
-                model=chat_model,
-                messages=messages,
-                stream=True
+                model=chat_model, messages=messages, stream=True
             )
-            
+
             # Collect streaming response
             response_text = ""
-            
+
             async for chunk in stream:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
@@ -133,7 +325,21 @@ async def send_chat_message_async(
                         # Update the last message in history with accumulated response
                         history[-1] = {"role": "assistant", "content": response_text}
                         yield history, ""
-            
+
+        elif chat_model in _GEMINI_MODELS:
+            logger.info("Calling OCI GenAI API with streaming (native SDK)...")
+
+            response_text = ""
+            async for delta in _stream_oci_genai_chat_gemini(
+                region=region,
+                compartment_id=compartment_id,
+                model_id=chat_model,
+                messages=messages,
+            ):
+                response_text += delta
+                history[-1] = {"role": "assistant", "content": response_text}
+                yield history, ""
+
         else:
             # Create OCI OpenAI client
             client = AsyncOciOpenAI(
@@ -141,19 +347,19 @@ async def send_chat_message_async(
                 auth=OciUserPrincipalAuth(),
                 compartment_id=compartment_id,
             )
-    
+
             logger.info("Calling OCI GenAI API with streaming...")
-            
+
             # Call the API with streaming
             stream = await client.chat.completions.create(
                 model=chat_model,
                 messages=messages,
                 stream=True,
             )
-    
+
             # Collect streaming response
             response_text = ""
-            
+
             async for chunk in stream:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
@@ -162,7 +368,7 @@ async def send_chat_message_async(
                         # Update the last message in history with accumulated response
                         history[-1] = {"role": "assistant", "content": response_text}
                         yield history, ""
-        
+
         if not response_text:
             logger.warning("Empty response from API")
             response_text = "応答を取得できませんでした。"
@@ -197,7 +403,7 @@ def send_chat_message(
     # Create new event loop for this thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
+
     try:
         async_gen = send_chat_message_async(message, history, chat_model)
         while True:
@@ -229,7 +435,10 @@ def build_oci_chat_test_tab(pool):
     Returns:
         gr.TabItem: Chat UIタブ
     """
-    with gr.Accordion(label="ℹ️ AI は不正確な情報を表示することがあるため、生成された回答を再確認するようにしてください。", open=True):
+    with gr.Accordion(
+        label="ℹ️ AI は不正確な情報を表示することがあるため、生成された回答を再確認するようにしてください。",
+        open=True,
+    ):
         with gr.Row():
             with gr.Column():
                 with gr.Row():
@@ -246,6 +455,8 @@ def build_oci_chat_test_tab(pool):
                                         "xai.grok-3-fast",
                                         "xai.grok-4",
                                         "xai.grok-4-fast-non-reasoning",
+                                        "google.gemini-2.5-flash",
+                                        "google.gemini-2.5-pro",
                                         "meta.llama-4-scout-17b-16e-instruct",
                                         "gpt-4o",
                                         "gpt-5.1",
@@ -265,7 +476,7 @@ def build_oci_chat_test_tab(pool):
                             height=400,
                             show_copy_button=True,
                             avatar_images=(None, None),
-                            type='messages',
+                            type="messages",
                         )
 
                 with gr.Row():
@@ -289,16 +500,29 @@ def build_oci_chat_test_tab(pool):
         def send_chat_with_status(message, history, chat_model):
             try:
                 from utils.chat_util import get_oci_region, get_compartment_id
+
                 if not str(message or "").strip():
                     # empty message
-                    yield gr.Markdown(visible=True, value="⚠️ メッセージを入力してください"), history, message
+                    yield (
+                        gr.Markdown(
+                            visible=True, value="⚠️ メッセージを入力してください"
+                        ),
+                        history,
+                        message,
+                    )
                     return
-                
+
                 if not chat_model.startswith("gpt-"):
                     region = get_oci_region()
                     compartment_id = get_compartment_id()
                     if not region or not compartment_id:
-                        yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), history, message
+                        yield (
+                            gr.Markdown(
+                                visible=True, value="❌ OCI設定が不足しています"
+                            ),
+                            history,
+                            message,
+                        )
                         return
 
                 yield gr.Markdown(visible=True, value="⏳ 送信中..."), history, message
@@ -309,7 +533,11 @@ def build_oci_chat_test_tab(pool):
                 yield gr.Markdown(visible=True, value="✅ 完了"), last_hist, last_msg
             except Exception as e:
                 logger.error(f"send_chat_with_status error: {e}")
-                yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), history, message
+                yield (
+                    gr.Markdown(visible=True, value=f"❌ エラー: {e}"),
+                    history,
+                    message,
+                )
 
         def clear_chat_with_status():
             h, m = clear_chat()
