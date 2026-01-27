@@ -152,7 +152,8 @@ def get_table_list(pool):
                     for tn, comment in rows:
                         try:
                             cursor.execute(f"SELECT COUNT(*) FROM ADMIN.{tn.upper()}")
-                            cnt = cursor.fetchone()[0]
+                            result = cursor.fetchone()
+                            cnt = result[0] if result else 0
                         except Exception:
                             cnt = 0
                         cm = comment.read() if hasattr(comment, "read") else comment
@@ -298,6 +299,11 @@ def drop_table(pool, table_name):
     if not table_name:
         logger.error("テーブル名が未指定です")
         return "❌ エラー: テーブル名が指定されていません"
+    
+    # テーブル名のバリデーション (SQLインジェクション防止)
+    if not re.match(r'^[A-Z0-9_$#]+$', table_name.upper()):
+        logger.error(f"無効なテーブル名: {table_name}")
+        return "❌ エラー: テーブル名に無効な文字が含まれています"
     
     try:
         with pool.acquire() as conn:
@@ -641,6 +647,11 @@ def drop_view(pool, view_name):
         logger.error("ビュー名が未指定です")
         return "❌ エラー: ビュー名が指定されていません"
     
+    # ビュー名のバリデーション (SQLインジェクション防止)
+    if not re.match(r'^[A-Z0-9_$#]+$', view_name.upper()):
+        logger.error(f"無効なビュー名: {view_name}")
+        return "❌ エラー: ビュー名に無効な文字が含まれています"
+    
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
@@ -810,6 +821,11 @@ def display_table_data(pool, table_name, limit, where_clause=""):
     """
     if not table_name:
         logger.error("テーブルまたはビューが未選択です")
+        return pd.DataFrame()
+    
+    # テーブル/ビュー名のバリデーション (SQLインジェクション防止)
+    if not re.match(r'^[A-Z0-9_$#]+$', table_name.upper()):
+        logger.error(f"無効なテーブル/ビュー名: {table_name}")
         return pd.DataFrame()
     
     try:
@@ -1340,6 +1356,8 @@ def build_management_tab(pool):
                                             "xai.grok-3-fast",
                                             "xai.grok-4",
                                             "xai.grok-4-fast-non-reasoning",
+                                            "google.gemini-2.5-flash",
+                                            "google.gemini-2.5-pro",
                                             "meta.llama-4-scout-17b-16e-instruct",
                                             "gpt-4o",
                                             "gpt-5.1",
@@ -1555,7 +1573,7 @@ def build_management_tab(pool):
                         {"role": "system", "content": "あなたはシニアDBエンジニアです。SQLと実行結果の故障診断に特化し、エラー原因と実行可能な修復策のみを簡潔に提示してください。不要な詳細は出力しないでください。"},
                         {"role": "user", "content": prompt},
                     ]
-
+                    
                     if model_name.startswith("gpt-"):
                         from openai import AsyncOpenAI
                         client = AsyncOpenAI()
@@ -1565,6 +1583,17 @@ def build_management_tab(pool):
                         if getattr(resp, "choices", None):
                             msg = resp.choices[0].message
                             text = msg.content if hasattr(msg, "content") else ""
+                    elif model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}:
+                        # Geminiモデルの場合はOCI Native SDKを使用
+                        from utils.chat_util import _stream_oci_genai_chat_gemini
+                        text = ""
+                        async for delta in _stream_oci_genai_chat_gemini(
+                            region=region,
+                            compartment_id=compartment_id,
+                            model_id=model_name,
+                            messages=messages,
+                        ):
+                            text += delta
                     else:
                         from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                         client = AsyncOciOpenAI(
@@ -1686,6 +1715,8 @@ def build_management_tab(pool):
                                         "xai.grok-3-fast",
                                         "xai.grok-4",
                                         "xai.grok-4-fast-non-reasoning",
+                                        "google.gemini-2.5-flash",
+                                        "google.gemini-2.5-pro",
                                         "meta.llama-4-scout-17b-16e-instruct",
                                         "gpt-4o",
                                         "gpt-5.1",
@@ -1774,11 +1805,13 @@ def build_management_tab(pool):
                                             "xai.grok-3-fast",
                                             "xai.grok-4",
                                             "xai.grok-4-fast-non-reasoning",
-                                        "meta.llama-4-scout-17b-16e-instruct",
-                                        "gpt-4o",
-                                        "gpt-5.1",
-                                    ],
-                                    value="xai.grok-code-fast-1",
+                                            "google.gemini-2.5-flash",
+                                            "google.gemini-2.5-pro",
+                                            "meta.llama-4-scout-17b-16e-instruct",
+                                            "gpt-4o",
+                                            "gpt-5.1",
+                                        ],
+                                        value="xai.grok-code-fast-1",
                                         interactive=True,
                                         container=False,
                                     )
@@ -1980,7 +2013,7 @@ def build_management_tab(pool):
                         {"role": "system", "content": "You are a SQL parser. Output ONLY the requested format. No explanations."},
                         {"role": "user", "content": prompt},
                     ]
-                    
+                                    
                     if model_name.startswith("gpt-"):
                         from openai import AsyncOpenAI
                         client = AsyncOpenAI()
@@ -1990,6 +2023,17 @@ def build_management_tab(pool):
                         if getattr(resp, "choices", None):
                             msg = resp.choices[0].message
                             out = msg.content if hasattr(msg, "content") else ""
+                    elif model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}:
+                        # Geminiモデルの場合はOCI Native SDKを使用
+                        from utils.chat_util import _stream_oci_genai_chat_gemini
+                        out = ""
+                        async for delta in _stream_oci_genai_chat_gemini(
+                            region=region,
+                            compartment_id=compartment_id,
+                            model_id=model_name,
+                            messages=messages,
+                        ):
+                            out += delta
                     else:
                         from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                         client = AsyncOciOpenAI(
@@ -2099,6 +2143,17 @@ def build_management_tab(pool):
                         if getattr(resp, "choices", None):
                             msg = resp.choices[0].message
                             text = msg.content if hasattr(msg, "content") else ""
+                    elif model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}:
+                        # Geminiモデルの場合はOCI Native SDKを使用
+                        from utils.chat_util import _stream_oci_genai_chat_gemini
+                        text = ""
+                        async for delta in _stream_oci_genai_chat_gemini(
+                            region=region,
+                            compartment_id=compartment_id,
+                            model_id=model_name,
+                            messages=messages,
+                        ):
+                            text += delta
                     else:
                         from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                         client = AsyncOciOpenAI(
@@ -2337,6 +2392,8 @@ def build_management_tab(pool):
                                             "xai.grok-3-fast",
                                             "xai.grok-4",
                                             "xai.grok-4-fast-non-reasoning",
+                                            "google.gemini-2.5-flash",
+                                            "google.gemini-2.5-pro",
                                             "meta.llama-4-scout-17b-16e-instruct",
                                             "gpt-4o",
                                             "gpt-5.1",
@@ -2529,6 +2586,17 @@ def build_management_tab(pool):
                         if getattr(resp, "choices", None):
                             msg = resp.choices[0].message
                             text = msg.content if hasattr(msg, "content") else ""
+                    elif model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}:
+                        # Geminiモデルの場合はOCI Native SDKを使用
+                        from utils.chat_util import _stream_oci_genai_chat_gemini
+                        text = ""
+                        async for delta in _stream_oci_genai_chat_gemini(
+                            region=region,
+                            compartment_id=compartment_id,
+                            model_id=model_name,
+                            messages=messages,
+                        ):
+                            text += delta
                     else:
                         from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                         client = AsyncOciOpenAI(

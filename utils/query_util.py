@@ -533,6 +533,8 @@ def build_query_tab(pool):
                                     "xai.grok-3-fast",
                                     "xai.grok-4",
                                     "xai.grok-4-fast-non-reasoning",
+                                    "google.gemini-2.5-flash",
+                                    "google.gemini-2.5-pro",
                                     "meta.llama-4-scout-17b-16e-instruct",
                                     "gpt-4o",
                                     "gpt-5.1",
@@ -595,6 +597,17 @@ def build_query_tab(pool):
                 if getattr(resp, "choices", None):
                     msg = resp.choices[0].message
                     text = msg.content if hasattr(msg, "content") else ""
+            elif model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}:
+                # Geminiモデルの場合はOCI Native SDKを使用
+                from utils.chat_util import _stream_oci_genai_chat_gemini
+                text = ""
+                async for delta in _stream_oci_genai_chat_gemini(
+                    region=region,
+                    compartment_id=compartment_id,
+                    model_id=model_name,
+                    messages=messages,
+                ):
+                    text += delta
             else:
                 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                 client = AsyncOciOpenAI(

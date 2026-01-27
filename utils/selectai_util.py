@@ -1154,8 +1154,8 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         region_input = gr.Dropdown(
                                             show_label=False,
-                                            # choices=["ap-osaka-1", "us-chicago-1"],
-                                            choices=["us-chicago-1"],
+                                            choices=["ap-osaka-1", "us-chicago-1"],
+                                            # choices=["us-chicago-1"],
                                             value="us-chicago-1",
                                             interactive=True,
                                             container=False,
@@ -1179,6 +1179,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "google.gemini-2.5-flash",
+                                                "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
                                                 "gpt-4o",
                                                 "gpt-5.1",
@@ -2113,6 +2115,8 @@ def build_selectai_tab(pool):
                                                         "xai.grok-3-fast",
                                                         "xai.grok-4",
                                                         "xai.grok-4-fast-non-reasoning",
+                                                        "google.gemini-2.5-flash",
+                                                        "google.gemini-2.5-pro",
                                                         "meta.llama-4-scout-17b-16e-instruct",
                                                         "gpt-4o",
                                                         "gpt-5.1",
@@ -2242,6 +2246,8 @@ def build_selectai_tab(pool):
                                                     "xai.grok-3-fast",
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
+                                                    "google.gemini-2.5-flash",
+                                                    "google.gemini-2.5-pro",
                                                     "meta.llama-4-scout-17b-16e-instruct",
                                                     "gpt-4o",
                                                     "gpt-5.1",
@@ -2494,7 +2500,6 @@ def build_selectai_tab(pool):
                             tuple: (status_md, rewritten_text)
                         """
                         from utils.chat_util import get_oci_region, get_compartment_id
-                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                         
                         try:
                             # 入力チェック
@@ -2505,11 +2510,18 @@ def build_selectai_tab(pool):
                                 yield gr.Markdown(visible=True, value="⚠️ 元の質問を入力してください"), gr.Textbox(value="", autoscroll=False)
                                 return
                             
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
-                                return
+                            # Geminiモデルの判定
+                            is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                            
+                            # OCI設定はGPT以外のモデルで必要
+                            region = None
+                            compartment_id = None
+                            if not str(model_name).startswith("gpt-"):
+                                region = get_oci_region()
+                                compartment_id = get_compartment_id()
+                                if not region or not compartment_id:
+                                    yield gr.Markdown(visible=True, value="❌ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
+                                    return
                             
                             # ステップ1/2が両方OFFの場合は警告して終了
                             if (not use_glossary) and (not use_schema):
@@ -2560,7 +2572,24 @@ def build_selectai_tab(pool):
                                             resp = loop.run_until_complete(
                                                 client.chat.completions.create(model=model_name, messages=messages)
                                             )
+                                            if resp.choices and len(resp.choices) > 0:
+                                                step1_result = resp.choices[0].message.content.strip()
+                                        elif is_gemini:
+                                            from utils.chat_util import _stream_oci_genai_chat_gemini
+                                            step1_result = ""
+                                            async def _get_gemini_result():
+                                                result = ""
+                                                async for delta in _stream_oci_genai_chat_gemini(
+                                                    region=region,
+                                                    compartment_id=compartment_id,
+                                                    model_id=model_name,
+                                                    messages=messages,
+                                                ):
+                                                    result += delta
+                                                return result
+                                            step1_result = loop.run_until_complete(_get_gemini_result())
                                         else:
+                                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                                             client = AsyncOciOpenAI(
                                                 service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
                                                 auth=OciUserPrincipalAuth(),
@@ -2569,8 +2598,8 @@ def build_selectai_tab(pool):
                                             resp = loop.run_until_complete(
                                                 client.chat.completions.create(model=model_name, messages=messages)
                                             )
-                                        if resp.choices and len(resp.choices) > 0:
-                                            step1_result = resp.choices[0].message.content.strip()
+                                            if resp.choices and len(resp.choices) > 0:
+                                                step1_result = resp.choices[0].message.content.strip()
                                     finally:
                                         loop.close()
                             
@@ -2618,7 +2647,30 @@ def build_selectai_tab(pool):
                                     resp = loop.run_until_complete(
                                         client.chat.completions.create(model=model_name, messages=messages)
                                     )
+                                    if resp.choices and len(resp.choices) > 0:
+                                        final_result = str(step1_result) + "\n\n" + resp.choices[0].message.content.strip()
+                                    else:
+                                        final_result = step1_result
+                                elif is_gemini:
+                                    from utils.chat_util import _stream_oci_genai_chat_gemini
+                                    step2_text = ""
+                                    async def _get_gemini_step2():
+                                        result = ""
+                                        async for delta in _stream_oci_genai_chat_gemini(
+                                            region=region,
+                                            compartment_id=compartment_id,
+                                            model_id=model_name,
+                                            messages=messages,
+                                        ):
+                                            result += delta
+                                        return result
+                                    step2_text = loop.run_until_complete(_get_gemini_step2())
+                                    if step2_text:
+                                        final_result = str(step1_result) + "\n\n" + step2_text.strip()
+                                    else:
+                                        final_result = step1_result
                                 else:
+                                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                                     client = AsyncOciOpenAI(
                                         service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
                                         auth=OciUserPrincipalAuth(),
@@ -2627,10 +2679,10 @@ def build_selectai_tab(pool):
                                     resp = loop.run_until_complete(
                                         client.chat.completions.create(model=model_name, messages=messages)
                                     )
-                                if resp.choices and len(resp.choices) > 0:
-                                    final_result = str(step1_result) + "\n\n" + resp.choices[0].message.content.strip()
-                                else:
-                                    final_result = step1_result
+                                    if resp.choices and len(resp.choices) > 0:
+                                        final_result = str(step1_result) + "\n\n" + resp.choices[0].message.content.strip()
+                                    else:
+                                        final_result = step1_result
                             finally:
                                 loop.close()
                             
@@ -2807,7 +2859,8 @@ def build_selectai_tab(pool):
                             # フォールバック: str() で変換してみる
                             try:
                                 return str(obj or "")
-                            except:
+                            except Exception as e:
+                                logger.warning(f"_extract_gradio_value failed to convert object: {e}")
                                 return ""
                         
                         # 最大3回のリトライ(SQL生成 + 実行の全プロセス)
@@ -3020,17 +3073,30 @@ def build_selectai_tab(pool):
                     async def _dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt, structure_prompt):
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
+                            
                             s = str(sql_text or "").strip()
                             if not s:
                                 return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             
+                            # Geminiモデルの判定
+                            is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                            
+                            # OCI設定はGPT以外のモデルで必要
+                            region = None
+                            compartment_id = None
+                            if not str(model_name).startswith("gpt-"):
+                                region = get_oci_region()
+                                compartment_id = get_compartment_id()
+                                if not region or not compartment_id:
+                                    return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
+                            
                             if str(model_name).startswith("gpt-"):
                                 from openai import AsyncOpenAI
                                 client = AsyncOpenAI()
+                            elif is_gemini:
+                                # Geminiモデルの場合はOCI Native SDKを使用
+                                from utils.chat_util import _stream_oci_genai_chat_gemini
+                                client = None  # Native SDKを使用するためclientは不要
                             else:
                                 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                                 client = AsyncOciOpenAI(
@@ -3054,44 +3120,84 @@ def build_selectai_tab(pool):
                                 },
                             ]
 
-                            resp = await client.chat.completions.create(model=model_name, messages=messages)
-                            sql_structure_md = ""
-                            if getattr(resp, "choices", None):
-                                msg = resp.choices[0].message
-                                out = msg.content if hasattr(msg, "content") else ""
-                                sql_structure_md = str(out or "").strip()
-                                # マークダウンコードブロックを削除
-                                sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
-                                sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
-                                sql_structure_md = sql_structure_md.strip()
+                            # SQL構造分析の取得
+                            if is_gemini:
+                                sql_structure_md = ""
+                                async for delta in _stream_oci_genai_chat_gemini(
+                                    region=region,
+                                    compartment_id=compartment_id,
+                                    model_id=model_name,
+                                    messages=messages,
+                                ):
+                                    sql_structure_md += delta
+                            else:
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                sql_structure_md = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    out = msg.content if hasattr(msg, "content") else ""
+                                    sql_structure_md = str(out or "").strip()
+                            
+                            # マークダウンコードブロックを削除
+                            sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
+                            sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
+                            sql_structure_md = sql_structure_md.strip()
                             if not sql_structure_md:
                                 sql_structure_md = "## 📊 SQL構造分析\n\n情報を抽出できませんでした。"
+                            
                             dev_summary = ""
                             user_summary = ""
                             dev_enable=True
                             user_enable=True
+                            
+                            # 開発者向け要約
                             if bool(dev_enable):
                                 dp = str(dev_prompt or "").strip()
                                 dmsg = [
                                     {"role": "system", "content": "あなたはSQLの要約に特化したアシスタントです。回答は簡潔な日本語テキストのみ。"},
                                     {"role": "user", "content": ((dp + "\n") if dp else "") + "SQL:\n```sql\n" + str(sql_text) + "\n```"}
                                 ]
-                                dresp = await client.chat.completions.create(model=model_name, messages=dmsg)
-                                if getattr(dresp, "choices", None):
-                                    dmsg0 = dresp.choices[0].message
-                                    dout = dmsg0.content if hasattr(dmsg0, "content") else ""
-                                    dev_summary = re.sub(r"```+\w*", "", str(dout or "")).strip()
+                                if is_gemini:
+                                    dev_summary = ""
+                                    async for delta in _stream_oci_genai_chat_gemini(
+                                        region=region,
+                                        compartment_id=compartment_id,
+                                        model_id=model_name,
+                                        messages=dmsg,
+                                    ):
+                                        dev_summary += delta
+                                else:
+                                    dresp = await client.chat.completions.create(model=model_name, messages=dmsg)
+                                    if getattr(dresp, "choices", None):
+                                        dmsg0 = dresp.choices[0].message
+                                        dout = dmsg0.content if hasattr(dmsg0, "content") else ""
+                                        dev_summary = str(dout or "")
+                                dev_summary = re.sub(r"```+\w*", "", dev_summary).strip()
+                            
+                            # ユーザー向け要約
                             if bool(user_enable):
                                 up = str(user_prompt or "").strip()
                                 umsg = [
                                     {"role": "system", "content": "あなたは非技術ユーザー向けに分かりやすく説明するアシスタントです。回答は日本語の平易な文章のみ。"},
                                     {"role": "user", "content": ((up + "\n") if up else "") + "SQL:\n```sql\n" + str(sql_text) + "\n```"}
                                 ]
-                                uresp = await client.chat.completions.create(model=model_name, messages=umsg)
-                                if getattr(uresp, "choices", None):
-                                    umsg0 = uresp.choices[0].message
-                                    uout = umsg0.content if hasattr(umsg0, "content") else ""
-                                    user_summary = re.sub(r"```+\w*", "", str(uout or "")).strip()
+                                if is_gemini:
+                                    user_summary = ""
+                                    async for delta in _stream_oci_genai_chat_gemini(
+                                        region=region,
+                                        compartment_id=compartment_id,
+                                        model_id=model_name,
+                                        messages=umsg,
+                                    ):
+                                        user_summary += delta
+                                else:
+                                    uresp = await client.chat.completions.create(model=model_name, messages=umsg)
+                                    if getattr(uresp, "choices", None):
+                                        umsg0 = uresp.choices[0].message
+                                        uout = umsg0.content if hasattr(umsg0, "content") else ""
+                                        user_summary = str(uout or "")
+                                user_summary = re.sub(r"```+\w*", "", user_summary).strip()
+                            
                             return gr.Markdown(visible=True, value="✅ AI分析完了"), gr.Textbox(value=sql_structure_md), gr.Textbox(value=dev_summary), gr.Textbox(value=user_summary)
                         except Exception as e:
                             logger.error(f"_dev_ai_analyze_async error: {e}")
@@ -3334,6 +3440,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "google.gemini-2.5-flash",
+                                                "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
                                                 "gpt-4o",
                                                 "gpt-5.1",
@@ -3399,6 +3507,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "google.gemini-2.5-flash",
+                                                "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
                                                 "gpt-4o",
                                                 "gpt-5.1",
@@ -3490,10 +3600,18 @@ def build_selectai_tab(pool):
                         """
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
+                            
+                            # Geminiモデルの判定
+                            is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                            
+                            # OCI設定はGPT以外のモデルで必要
+                            region = None
+                            compartment_id = None
+                            if not str(model_name).startswith("gpt-"):
+                                region = get_oci_region()
+                                compartment_id = get_compartment_id()
+                                if not region or not compartment_id:
+                                    return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
                             ctx_comp = str(context_text or "")
                             
                             # コメントを除去
@@ -3648,17 +3766,6 @@ def build_selectai_tab(pool):
                                 "===対象SQL===\n```sql\n" + s + "\n```"
                             )
                             
-                            if str(model_name).startswith("gpt-"):
-                                from openai import AsyncOpenAI
-                                client = AsyncOpenAI()
-                            else:
-                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                                client = AsyncOciOpenAI(
-                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                    auth=OciUserPrincipalAuth(),
-                                    compartment_id=compartment_id,
-                                )
-                            
                             messages = [
                                 {
                                     "role": "system", 
@@ -3666,11 +3773,39 @@ def build_selectai_tab(pool):
                                 },
                                 {"role": "user", "content": prompt},
                             ]
-                            resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
-                            out_text = ""
-                            if getattr(resp, "choices", None):
-                                msg = resp.choices[0].message
-                                out_text = msg.content if hasattr(msg, "content") else ""
+                            
+                            # モデルに応じたAPI呼び出し
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                                resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
+                                out_text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    out_text = msg.content if hasattr(msg, "content") else ""
+                            elif is_gemini:
+                                # GeminiモデルはOCI Native SDKを使用
+                                from utils.chat_util import _stream_oci_genai_chat_gemini
+                                out_text = ""
+                                async for delta in _stream_oci_genai_chat_gemini(
+                                    region=region,
+                                    compartment_id=compartment_id,
+                                    model_id=model_name,
+                                    messages=messages,
+                                ):
+                                    out_text += delta
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
+                                out_text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    out_text = msg.content if hasattr(msg, "content") else ""
                             import re as _re
                             out_text = _re.sub(r"^```.*?\n|\n```$", "", str(out_text or ""), flags=_re.DOTALL).strip()
                             
@@ -3697,12 +3832,38 @@ def build_selectai_tab(pool):
 
 正規化後の質問:"""
                                     
-                                    messages = [{"role": "user", "content": glossary_prompt}]
-                                    glossary_resp = await client.chat.completions.create(model=model_name, messages=messages)
-                                    if glossary_resp.choices and len(glossary_resp.choices) > 0:
-                                        glossary_result = glossary_resp.choices[0].message.content.strip()
-                                        # 元の質問と用語集適用後の質問を\n\nで連結
-                                        out_text = str(out_text) + "\n\n" + glossary_result
+                                    glossary_messages = [{"role": "user", "content": glossary_prompt}]
+                                    
+                                    # 用語集処理もモデルに応じた処理
+                                    if str(model_name).startswith("gpt-"):
+                                        from openai import AsyncOpenAI
+                                        glossary_client = AsyncOpenAI()
+                                        glossary_resp = await glossary_client.chat.completions.create(model=model_name, messages=glossary_messages)
+                                        if glossary_resp.choices and len(glossary_resp.choices) > 0:
+                                            glossary_result = glossary_resp.choices[0].message.content.strip()
+                                            out_text = str(out_text) + "\n\n" + glossary_result
+                                    elif is_gemini:
+                                        from utils.chat_util import _stream_oci_genai_chat_gemini
+                                        glossary_result = ""
+                                        async for delta in _stream_oci_genai_chat_gemini(
+                                            region=region,
+                                            compartment_id=compartment_id,
+                                            model_id=model_name,
+                                            messages=glossary_messages,
+                                        ):
+                                            glossary_result += delta
+                                        out_text = str(out_text) + "\n\n" + glossary_result.strip()
+                                    else:
+                                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                        glossary_client = AsyncOciOpenAI(
+                                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                            auth=OciUserPrincipalAuth(),
+                                            compartment_id=compartment_id,
+                                        )
+                                        glossary_resp = await glossary_client.chat.completions.create(model=model_name, messages=glossary_messages)
+                                        if glossary_resp.choices and len(glossary_resp.choices) > 0:
+                                            glossary_result = glossary_resp.choices[0].message.content.strip()
+                                            out_text = str(out_text) + "\n\n" + glossary_result
                             
                             return gr.Textbox(value=out_text, autoscroll=False)
                         except Exception as e:
@@ -3765,29 +3926,26 @@ def build_selectai_tab(pool):
                         """
                         try:
                             from utils.chat_util import get_oci_region, get_compartment_id
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
                             
                             s = str(sql_text or "").strip()
                             if not s:
                                 return gr.Markdown(visible=True, value="⚠️ SQLが空です"), gr.Textbox(value="", autoscroll=False)
                             
+                            # Geminiモデルの判定
+                            is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                            
+                            # OCI設定はGPT以外のモデルで必要
+                            region = None
+                            compartment_id = None
+                            if not str(model_name).startswith("gpt-"):
+                                region = get_oci_region()
+                                compartment_id = get_compartment_id()
+                                if not region or not compartment_id:
+                                    return gr.Markdown(visible=True, value="⚠️ OCI設定が不足しています"), gr.Textbox(value="", autoscroll=False)
+                            
                             # カスタムプロンプトを使用（空の場合はグローバルプロンプトを使用）
                             base_prompt = str(analysis_prompt or "").strip() or _SQL_STRUCTURE_ANALYSIS_PROMPT
                             prompt = base_prompt + "SQL:\n```sql\n" + s + "\n```"
-                            
-                            if str(model_name).startswith("gpt-"):
-                                from openai import AsyncOpenAI
-                                client = AsyncOpenAI()
-                            else:
-                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                                client = AsyncOciOpenAI(
-                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                    auth=OciUserPrincipalAuth(),
-                                    compartment_id=compartment_id,
-                                )
                             
                             messages = [
                                 {
@@ -3800,16 +3958,45 @@ def build_selectai_tab(pool):
                                 },
                             ]
                             
-                            resp = await client.chat.completions.create(model=model_name, messages=messages)
-                            sql_structure_md = ""
-                            if getattr(resp, "choices", None):
-                                msg = resp.choices[0].message
-                                out = msg.content if hasattr(msg, "content") else ""
-                                sql_structure_md = str(out or "").strip()
-                                # マークダウンコードブロックを削除
-                                sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
-                                sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
-                                sql_structure_md = sql_structure_md.strip()
+                            # モデルに応じた処理
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                sql_structure_md = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    out = msg.content if hasattr(msg, "content") else ""
+                                    sql_structure_md = str(out or "").strip()
+                            elif is_gemini:
+                                # GeminiモデルはOCI Native SDKを使用
+                                from utils.chat_util import _stream_oci_genai_chat_gemini
+                                sql_structure_md = ""
+                                async for delta in _stream_oci_genai_chat_gemini(
+                                    region=region,
+                                    compartment_id=compartment_id,
+                                    model_id=model_name,
+                                    messages=messages,
+                                ):
+                                    sql_structure_md += delta
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                sql_structure_md = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    out = msg.content if hasattr(msg, "content") else ""
+                                    sql_structure_md = str(out or "").strip()
+                            
+                            # マークダウンコードブロックを削除
+                            sql_structure_md = re.sub(r"```+markdown\s*", "", sql_structure_md)
+                            sql_structure_md = re.sub(r"```+\s*$", "", sql_structure_md)
+                            sql_structure_md = sql_structure_md.strip()
                             
                             if not sql_structure_md:
                                 sql_structure_md = "## 📊 SQL構造分析\n\n情報を抽出できませんでした。"
@@ -4224,6 +4411,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "google.gemini-2.5-flash",
+                                                "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
                                                 "gpt-4o",
                                                 "gpt-5.1",
@@ -4265,6 +4454,8 @@ def build_selectai_tab(pool):
                                                     "xai.grok-3-fast",
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
+                                                    "google.gemini-2.5-flash",
+                                                    "google.gemini-2.5-pro",
                                                     "meta.llama-4-scout-17b-16e-instruct",
                                                     "gpt-4o",
                                                     "gpt-5.1",
@@ -4327,8 +4518,14 @@ def build_selectai_tab(pool):
                         try:
                             prompt = (
                                 "あなたはOracleデータベース専門家です。以下の情報に基づき、COMMENT文を生成してください。\n"
-                                "出力はSQLのCOMMENT文のみ。\n"
-                                "表・ビューはA-Zの順で、列はCREATE文の定義順で出力してください。\n\n"
+                                "\n"
+                                "出力ルール:\n"
+                                "- 純粋なCOMMENT ON TABLE/COLUMN ステートメントのみを出力\n"
+                                "- マークダウン記号(```sql、```)は絶対に使用しない\n"
+                                "- 説明文や前置きは不要\n"
+                                "- 表・ビューはA-Zの順で、列はCREATE文の定義順で出力\n"
+                                "- 各説明文は200字以内\n"
+                                "\n"
                                 "<構造>\n" + str(struct_text or "") + "\n\n"
                                 "<主キー>\n" + str(pk_text or "") + "\n\n"
                                 "<外部キー>\n" + str(fk_text or "") + "\n\n"
@@ -4344,25 +4541,61 @@ def build_selectai_tab(pool):
                         try:
                             prompt = _cm_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text)
                             from utils.chat_util import get_oci_region, get_compartment_id
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
-                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                            client = AsyncOciOpenAI(
-                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                auth=OciUserPrincipalAuth(),
-                                compartment_id=compartment_id,
-                            )
+                            
+                            # Geminiモデルの判定
+                            is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                            
+                            # OCI設定はGPT以外のモデルで必要
+                            region = None
+                            compartment_id = None
+                            if not str(model_name).startswith("gpt-"):
+                                region = get_oci_region()
+                                compartment_id = get_compartment_id()
+                                if not region or not compartment_id:
+                                    return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
+                            
                             messages = [
-                                {"role": "system", "content": "OracleのCOMMENT文のみを出力。説明文は200字以内。"},
+                                {"role": "system", "content": "あなたはOracleデータベース専門家です。純粋なCOMMENT ONステートメントのみを出力してください。マークダウンブロック、説明文、コードブロックは不要です。説明文は200字以内。"},
                                 {"role": "user", "content": prompt},
                             ]
-                            resp = await client.chat.completions.create(model=model_name, messages=messages)
-                            text = ""
-                            if resp.choices and len(resp.choices) > 0:
-                                msg = resp.choices[0].message
-                                text = msg.content if hasattr(msg, 'content') else ''
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if resp.choices and len(resp.choices) > 0:
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, 'content') else ''
+                            elif is_gemini:
+                                from utils.chat_util import _stream_oci_genai_chat_gemini
+                                text = ""
+                                async for delta in _stream_oci_genai_chat_gemini(
+                                    region=region,
+                                    compartment_id=compartment_id,
+                                    model_id=model_name,
+                                    messages=messages,
+                                ):
+                                    text += delta
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if resp.choices and len(resp.choices) > 0:
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, 'content') else ''
+                            
+                            # SQLマークダウンブロックを除去
+                            text = re.sub(r"```sql\s*", "", text, flags=re.IGNORECASE)
+                            text = re.sub(r"```\s*$", "", text)
+                            text = re.sub(r"```\s*", "", text)
+                            text = text.strip()
+                            
                             return gr.Textbox(value=text, autoscroll=False)
                         except Exception as e:
                             logger.error(f"_cm_generate_async error: {e}")
@@ -4406,12 +4639,19 @@ def build_selectai_tab(pool):
 
                     async def _cm_ai_analyze_async(model_name, sql_text, exec_result_text):
                         from utils.chat_util import get_oci_region, get_compartment_id
-                        region = get_oci_region()
-                        compartment_id = get_compartment_id()
-                        if not region or not compartment_id:
-                            return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
+                        
+                        # Geminiモデルの判定
+                        is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                        
+                        # OCI設定はGPT以外のモデルで必要
+                        region = None
+                        compartment_id = None
+                        if not str(model_name).startswith("gpt-"):
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                         try:
-                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                             s = str(sql_text or "").strip()
                             r = str(exec_result_text or "").strip()
                             prompt = (
@@ -4422,20 +4662,43 @@ def build_selectai_tab(pool):
                                 + ("SQL:\n```sql\n" + s + "\n```\n" if s else "")
                                 + ("実行結果:\n" + r + "\n" if r else "")
                             )
-                            client = AsyncOciOpenAI(
-                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                auth=OciUserPrincipalAuth(),
-                                compartment_id=compartment_id,
-                            )
                             messages = [
                                 {"role": "system", "content": "あなたはシニアDBエンジニアです。COMMENT ON TABLE/COLUMN の診断に特化し、必要最小限の要点のみを簡潔に提示してください。"},
                                 {"role": "user", "content": prompt},
                             ]
-                            resp = await client.chat.completions.create(model=model_name, messages=messages)
-                            text = ""
-                            if getattr(resp, "choices", None):
-                                msg = resp.choices[0].message
-                                text = msg.content if hasattr(msg, "content") else ""
+                            
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
+                            elif is_gemini:
+                                # GeminiモデルはOCI Native SDKを使用
+                                from utils.chat_util import _stream_oci_genai_chat_gemini
+                                text = ""
+                                async for delta in _stream_oci_genai_chat_gemini(
+                                    region=region,
+                                    compartment_id=compartment_id,
+                                    model_id=model_name,
+                                    messages=messages,
+                                ):
+                                    text += delta
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
+                            
                             return gr.Markdown(visible=True, value=text or "分析結果が空です")
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
@@ -4675,6 +4938,8 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "google.gemini-2.5-flash",
+                                                "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
                                                 "gpt-4o",
                                                 "gpt-5.1",
@@ -4716,6 +4981,8 @@ def build_selectai_tab(pool):
                                                     "xai.grok-3-fast",
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
+                                                    "google.gemini-2.5-flash",
+                                                    "google.gemini-2.5-pro",
                                                     "meta.llama-4-scout-17b-16e-instruct",
                                                     "gpt-4o",
                                                     "gpt-5.1",
@@ -4824,12 +5091,17 @@ def build_selectai_tab(pool):
                         has_samples = bool(str(samples_text or "").strip())
                         prompt = (
                             "あなたはOracleデータベース専門家です。以下の情報に基づき、ALTER TABLE/ALTER VIEW の ANNOTATIONS 文のみを生成してください。\n"
-                            "出力はSQLのアノテーション文のみ。説明や余計な文は出力しないでください。\n"
-                            "テーブル・ビューはA-Zの順、列は定義順で出力してください。\n"
-                            "ビューの列レベルのアノテーションは生成しないでください（列はテーブル列に対してのみ生成）。\n\n"
+                            "\n"
+                            "出力ルール:\n"
+                            "- 純粋なALTER TABLE/ALTER VIEW ANNOTATIONS ステートメントのみを出力\n"
+                            "- マークダウン記号(```sql、```)は絶対に使用しない\n"
+                            "- 説明文や前置きは不要\n"
+                            "- テーブル・ビューはA-Zの順、列は定義順で出力\n"
+                            "- ビューの列レベルのアノテーションは生成しない(列はテーブル列に対してのみ生成)\n"
+                            "\n"
                             "参考構文とルール:\n"
-                            "- 対象: TABLE / VIEW / MATERIALIZED VIEW / INDEX（本ツールでは TABLE 列と VIEW 本体を対象）\n"
-                            "- 操作: ADD / DROP / REPLACE（CREATE 時は ADD/ADD IF NOT EXISTS のみ）\n"
+                            "- 対象: TABLE / VIEW / MATERIALIZED VIEW / INDEX(本ツールでは TABLE 列と VIEW 本体を対象)\n"
+                            "- 操作: ADD / DROP / REPLACE(CREATE 時は ADD/ADD IF NOT EXISTS のみ)\n"
                             "- 注釈名: 英数字と $, _, # を無引用で許容。予約語や空白を含む場合は二重引用符。最大1024文字。\n"
                             "- 値: 最大4000文字。単一引用符は '' にエスケープ。\n"
                             "- 複数注釈は同一文で列挙可能。\n"
@@ -4850,33 +5122,33 @@ def build_selectai_tab(pool):
                         try:
                             prompt = _am_build_prompt(struct_text, pk_text, fk_text, samples_text, extra_text)
                             from utils.chat_util import get_oci_region, get_compartment_id
-                            region = get_oci_region()
-                            compartment_id = get_compartment_id()
-                            if not region or not compartment_id:
-                                logger.error("_am_generate_async missing OCI configuration: region or compartment_id is empty")
-                                return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
                             
-                            if str(model_name).startswith("gpt-"):
-                                from openai import AsyncOpenAI
-                                client = AsyncOpenAI()
-                            else:
-                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                                client = AsyncOciOpenAI(
-                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                    auth=OciUserPrincipalAuth(),
-                                    compartment_id=compartment_id,
-                                )
+                            # Geminiモデルの判定
+                            is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                            
+                            # OCI設定はGPT以外のモデルで必要
+                            region = None
+                            compartment_id = None
+                            if not str(model_name).startswith("gpt-"):
+                                region = get_oci_region()
+                                compartment_id = get_compartment_id()
+                                if not region or not compartment_id:
+                                    logger.error("_am_generate_async missing OCI configuration: region or compartment_id is empty")
+                                    return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
+                            
                             messages = [
                                 {
                                     "role": "system",
                                     "content": (
-                                        "出力は次の形式のみ: \n"
+                                        "あなたはOracleデータベース専門家です。純粋なアノテーションステートメントのみを出力してください。\n"
+                                        "マークダウンブロック、説明文、コードブロックは不要です。\n\n"
+                                        "出力形式:\n"
                                         "- テーブル: ALTER TABLE <表> ANNOTATIONS (<name> '<value>'[, ...]);\n"
                                         "- 列: ALTER TABLE <表> MODIFY (<列> ANNOTATIONS (<name> '<value>'[, ...]));\n"
                                         "- ビュー: ALTER VIEW <ビュー> ANNOTATIONS (<name> '<value>'[, ...]);\n"
                                         "制約: ビュー列のアノテーションは生成しない。'data_type' と 'nullable' を優先的に使用。'sample_header' と 'sample_data' はサンプルが存在する場合のみ生成。'type' は使用しない。値内の単一引用符は '' にエスケープ。余計な説明は出力しない。\n\n"
                                         "Oracle公式の annotations_clause ルール:\n"
-                                        "- ADD / DROP / REPLACE をサポート（CREATE は ADD/ADD IF NOT EXISTS）。\n"
+                                        "- ADD / DROP / REPLACE をサポート(CREATE は ADD/ADD IF NOT EXISTS)。\n"
                                         "- 注釈名は識別子。予約語や空白を含む場合は二重引用符。\n"
                                         "- 値は最大4000文字。複数注釈は同一文で列挙可能。\n"
                                         "例: ALTER TABLE T1 ANNOTATIONS (Operations '[\"Sort\", \"Group\"]', Hidden);\n"
@@ -4886,11 +5158,45 @@ def build_selectai_tab(pool):
                                 },
                                 {"role": "user", "content": prompt},
                             ]
-                            resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
-                            text = ""
-                            if resp.choices and len(resp.choices) > 0:
-                                msg = resp.choices[0].message
-                                text = msg.content if hasattr(msg, "content") else ""
+                            
+                            # モデルに応じた処理
+                            if str(model_name).startswith("gpt-"):
+                                from openai import AsyncOpenAI
+                                client = AsyncOpenAI()
+                                resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
+                                text = ""
+                                if resp.choices and len(resp.choices) > 0:
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
+                            elif is_gemini:
+                                from utils.chat_util import _stream_oci_genai_chat_gemini
+                                text = ""
+                                async for delta in _stream_oci_genai_chat_gemini(
+                                    region=region,
+                                    compartment_id=compartment_id,
+                                    model_id=model_name,
+                                    messages=messages,
+                                ):
+                                    text += delta
+                            else:
+                                from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                client = AsyncOciOpenAI(
+                                    service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                    auth=OciUserPrincipalAuth(),
+                                    compartment_id=compartment_id,
+                                )
+                                resp = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.0)
+                                text = ""
+                                if resp.choices and len(resp.choices) > 0:
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
+                            
+                            # SQLマークダウンブロックを除去
+                            text = re.sub(r"```sql\s*", "", text, flags=re.IGNORECASE)
+                            text = re.sub(r"```\s*$", "", text)
+                            text = re.sub(r"```\s*", "", text)
+                            text = text.strip()
+                            
                             # サンプルが無い場合は、出力から sample_header / sample_data を除去
                             if not str(samples_text or "").strip():
                                 try:
@@ -4956,7 +5262,8 @@ def build_selectai_tab(pool):
                                         else:
                                             out_lines.append(ln)
                                     text = "\n".join(out_lines)
-                                except Exception:
+                                except Exception as e:
+                                    logger.warning(f"Failed to filter sample_header/sample_data from annotations: {e}")
                                     pass
                             return gr.Textbox(value=text, autoscroll=False)
                         except Exception as e:
@@ -4965,10 +5272,18 @@ def build_selectai_tab(pool):
 
                     async def _am_ai_analyze_async(model_name, sql_text, exec_result_text):
                         from utils.chat_util import get_oci_region, get_compartment_id
-                        region = get_oci_region()
-                        compartment_id = get_compartment_id()
-                        if not region or not compartment_id:
-                            return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
+                        
+                        # Geminiモデルの判定
+                        is_gemini = model_name in {"google.gemini-2.5-flash", "google.gemini-2.5-pro"}
+                        
+                        # OCI設定はGPT以外のモデルで必要
+                        region = None
+                        compartment_id = None
+                        if not str(model_name).startswith("gpt-"):
+                            region = get_oci_region()
+                            compartment_id = get_compartment_id()
+                            if not region or not compartment_id:
+                                return gr.Markdown(visible=True, value="ℹ️ OCI設定が不足しています")
                         try:
                             s = str(sql_text or "").strip()
                             r = str(exec_result_text or "").strip()
@@ -4981,9 +5296,30 @@ def build_selectai_tab(pool):
                                 + ("実行結果:\n" + r + "\n" if r else "")
                             )
                             
+                            messages = [
+                                {"role": "system", "content": "あなたはシニアDBエンジニアです。ALTER ... ANNOTATIONS の診断に特化し、必要最小限の要点のみを簡潔に提示してください。"},
+                                {"role": "user", "content": prompt},
+                            ]
+                            
                             if str(model_name).startswith("gpt-"):
                                 from openai import AsyncOpenAI
                                 client = AsyncOpenAI()
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
+                            elif is_gemini:
+                                # GeminiモデルはOCI Native SDKを使用
+                                from utils.chat_util import _stream_oci_genai_chat_gemini
+                                text = ""
+                                async for delta in _stream_oci_genai_chat_gemini(
+                                    region=region,
+                                    compartment_id=compartment_id,
+                                    model_id=model_name,
+                                    messages=messages,
+                                ):
+                                    text += delta
                             else:
                                 from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
                                 client = AsyncOciOpenAI(
@@ -4991,16 +5327,12 @@ def build_selectai_tab(pool):
                                     auth=OciUserPrincipalAuth(),
                                     compartment_id=compartment_id,
                                 )
+                                resp = await client.chat.completions.create(model=model_name, messages=messages)
+                                text = ""
+                                if getattr(resp, "choices", None):
+                                    msg = resp.choices[0].message
+                                    text = msg.content if hasattr(msg, "content") else ""
                             
-                            messages = [
-                                {"role": "system", "content": "あなたはシニアDBエンジニアです。ALTER ... ANNOTATIONS の診断に特化し、必要最小限の要点のみを簡潔に提示してください。"},
-                                {"role": "user", "content": prompt},
-                            ]
-                            resp = await client.chat.completions.create(model=model_name, messages=messages)
-                            text = ""
-                            if getattr(resp, "choices", None):
-                                msg = resp.choices[0].message
-                                text = msg.content if hasattr(msg, "content") else ""
                             return gr.Markdown(visible=True, value=text or "分析結果が空です")
                         except Exception as e:
                             return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
@@ -5341,7 +5673,6 @@ def build_selectai_tab(pool):
                                         if "ORA-20003" in error_msg or "Operation failed" in error_msg:
                                             try:
                                                 # エラーメッセージからテーブル名を抽出
-                                                import re
                                                 match = re.search(r'SYNTHETIC_DATA\$(\d+)_STATUS', error_msg)
                                                 if match:
                                                     extracted_op_id = match.group(1)
@@ -5914,6 +6245,8 @@ def build_selectai_tab(pool):
                                                         "xai.grok-3-fast",
                                                         "xai.grok-4",
                                                         "xai.grok-4-fast-non-reasoning",
+                                                        "google.gemini-2.5-flash",
+                                                        "google.gemini-2.5-pro",
                                                         "meta.llama-4-scout-17b-16e-instruct",
                                                         "gpt-4o",
                                                         "gpt-5.1",

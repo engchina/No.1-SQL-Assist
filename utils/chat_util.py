@@ -195,10 +195,29 @@ async def _stream_oci_genai_chat_gemini(
                     content = getattr(msg, "content", None)
                     if isinstance(content, str):
                         response_text = content
+                    elif isinstance(content, list):
+                        # Handle list of TextContent objects
+                        for item in content:
+                            if hasattr(item, "text"):
+                                response_text += item.text
                 if response_text:
                     _push(response_text)
         except Exception as e:
-            exc["value"] = e
+            # Gemini権限エラーの検出と改善
+            error_msg = str(e)
+            if "PERMISSION_DENIED" in error_msg or "aiplatform.endpoints.predict" in error_msg:
+                logger.error(f"Gemini model access denied: {error_msg}")
+                user_friendly_msg = (
+                    "Geminiモデルへのアクセスが拒否されました。\n\n"
+                    "原因: OCIテナントでGeminiモデルの利用が許可されていない可能性があります。\n\n"
+                    "対処方法:\n"
+                    "1. 別のモデル（GPTまたは他のOCIモデル）を選択して再度お試しください\n"
+                    "2. Geminiモデルの利用が必要な場合は、OCI管理者にアクセス権限を確認してください\n"
+                    "3. 一時的なエラーの場合は、少し時間をおいて再度お試しください"
+                )
+                exc["value"] = Exception(user_friendly_msg)
+            else:
+                exc["value"] = e
         finally:
             _push(None)
 
@@ -269,6 +288,10 @@ async def send_chat_message_async(
         return
 
     try:
+        # Initialize region and compartment_id for non-GPT models
+        region = None
+        compartment_id = None
+        
         if not chat_model.startswith("gpt-"):
             # Get region and compartment ID
             region = get_oci_region()
@@ -527,7 +550,9 @@ def build_oci_chat_test_tab(pool):
 
                 yield gr.Markdown(visible=True, value="⏳ 送信中..."), history, message
                 last_hist, last_msg = history, message
-                for h, m in send_chat_message(message, history, chat_model):
+                # コピーを渡して元の履歴が変更されないようにする
+                history_copy = history.copy()
+                for h, m in send_chat_message(message, history_copy, chat_model):
                     last_hist, last_msg = h, m
                     yield gr.Markdown(visible=True, value="⏳ 送信中..."), h, m
                 yield gr.Markdown(visible=True, value="✅ 完了"), last_hist, last_msg
