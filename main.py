@@ -20,6 +20,7 @@ import logging
 
 from utils.auth_util import do_auth
 from utils.css_util import custom_css
+
 # from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab, build_openai_settings_tab
 from utils.chat_util import build_oci_chat_test_tab
 from utils.settings_tab import build_settings_tab
@@ -34,7 +35,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 # Load environment variables
 load_dotenv(find_dotenv())
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger.info("Environment variables loaded")
 
 # Initialize Oracle client for Linux
@@ -44,14 +47,17 @@ if platform.system() == "Linux":
     os.environ.pop("TNS_ADMIN", None)
     lib_dir = os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")
     config_dir = str(Path(lib_dir) / "network" / "admin")
-    
+
     config_path = Path(config_dir)
     if not config_path.exists():
         config_path.mkdir(parents=True, exist_ok=True)
         logger.warning(f"Oracle network admin directory created: {config_dir}")
-    
-    logger.info(f"Initializing Oracle client lib_dir={lib_dir}, config_dir={config_dir}")
+
+    logger.info(
+        f"Initializing Oracle client lib_dir={lib_dir}, config_dir={config_dir}"
+    )
     oracledb.init_oracle_client(lib_dir=lib_dir, config_dir=config_dir)
+
 
 # Lazy database connection pool
 class LazyPool:
@@ -67,11 +73,15 @@ class LazyPool:
                 if not dsn or not str(dsn).strip():
                     logger.warning("DSN is empty; skip creating DB connection pool")
                     raise RuntimeError("ORACLE_26AI_CONNECTION_STRING is not set")
-                if str(os.environ.get("DB_CONNECT_PRECHECK_ENABLED", "false")).lower() in ("1", "true", "yes"):
+                if str(
+                    os.environ.get("DB_CONNECT_PRECHECK_ENABLED", "false")
+                ).lower() in ("1", "true", "yes"):
                     try:
                         self._precheck_connectivity()
                     except socket.gaierror as e:
-                        logger.warning(f"DB connectivity precheck name resolution failed: {e}")
+                        logger.warning(
+                            f"DB connectivity precheck name resolution failed: {e}"
+                        )
                     except Exception as e:
                         logger.warning(f"DB connectivity precheck failed: {e}")
                 logger.info("Creating DB connection pool")
@@ -147,7 +157,9 @@ class LazyPool:
             logger.info("Recreating DB connection pool")
             self._pool = oracledb.create_pool(**self._kwargs)
 
-    def warmup(self, sessions: int = 1, test_query: Optional[str] = "SELECT 1 FROM DUAL"):
+    def warmup(
+        self, sessions: int = 1, test_query: Optional[str] = "SELECT 1 FROM DUAL"
+    ):
         self._ensure()
         n = max(1, int(sessions or 1))
         for _ in range(n):
@@ -175,6 +187,7 @@ class LazyPool:
     def __getattr__(self, name):
         self._ensure()
         return getattr(self._pool, name)
+
 
 pool = LazyPool(
     dsn=os.environ.get("ORACLE_26AI_CONNECTION_STRING", ""),
@@ -217,7 +230,7 @@ with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん")
 
         with gr.TabItem(label="SQLの実行"):
             # SQLの実行タブを構築
-            build_query_tab(pool)           
+            build_query_tab(pool)
 
         with gr.TabItem(label="SelectAI 連携"):
             build_selectai_tab(pool)
