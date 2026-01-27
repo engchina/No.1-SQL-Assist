@@ -7,6 +7,7 @@
 import os
 import re
 
+
 def do_auth(username, password):
     """データベース接続文字列を使用してユーザー認証を行う.
 
