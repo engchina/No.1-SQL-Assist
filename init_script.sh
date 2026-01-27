@@ -143,25 +143,18 @@ sed -i "s|ORACLE_CLIENT_LIB_DIR=.*|ORACLE_CLIENT_LIB_DIR=${INSTANTCLIENT_DIR}|g"
 echo "ウォレットをセットアップ中..."
 if [ -f "/u01/aipoc/props/wallet.zip" ]; then
     echo "ウォレットを展開中..."
-    mkdir -p /u01/aipoc/props/wallet
-    unzip -o /u01/aipoc/props/wallet.zip -d /u01/aipoc/props/wallet
+    WALLET_DIR="${INSTANTCLIENT_DIR}/network/admin"
+    mkdir -p "${WALLET_DIR}"
+    unzip -o /u01/aipoc/props/wallet.zip -d "${WALLET_DIR}"
     
     echo "sqlnet.oraを設定中..."
-    sed -i 's|DIRECTORY="?\+/network/admin" *|DIRECTORY="/u01/aipoc/props/wallet"|g' /u01/aipoc/props/wallet/sqlnet.ora
-    
-    export TNS_ADMIN=/u01/aipoc/props/wallet
-    echo "TNS_ADMIN=$TNS_ADMIN"
-    
-    # Write to profile if not already present
-    if ! grep -q "TNS_ADMIN=/u01/aipoc/props/wallet" /etc/profile; then
-        echo "export TNS_ADMIN=/u01/aipoc/props/wallet" >> /etc/profile
-    fi
+    sed -i "s|DIRECTORY=\"?/network/admin\"|DIRECTORY=\"${WALLET_DIR}\"|g" "${WALLET_DIR}/sqlnet.ora"
     
     echo "ウォレットファイルリスト:"
-    ls -la $TNS_ADMIN
+    ls -la "${WALLET_DIR}"
     
     echo "sqlnet.ora内容:"
-    cat $TNS_ADMIN/sqlnet.ora
+    cat "${WALLET_DIR}/sqlnet.ora"
 else
     echo "警告: /u01/aipoc/props/wallet.zip が見つかりません！"
 fi

@@ -959,7 +959,7 @@ def build_oracle_ai_database_tab(pool=None):
             """
             required_files = [
                 "cwallet.sso",
-                "ewallet.p12",
+                "ewallet.pem",
                 "sqlnet.ora",
                 "tnsnames.ora",
             ]
@@ -983,7 +983,6 @@ def build_oracle_ai_database_tab(pool=None):
                 bool: 成功した場合True
             """
             import zipfile
-            import tempfile
                     
             try:
                 cfg = _oci_config_with_region(region)
@@ -1006,14 +1005,41 @@ def build_oracle_ai_database_tab(pool=None):
                         f.write(chunk)
                 logger.info(f"Wallet downloaded to {wallet_zip_path}")
                         
-                # TNS_ADMINディレクトリに展開
-                wallet_dir = os.environ.get("TNS_ADMIN", "/u01/aipoc/props/wallet")
+                wallet_dir = str(Path(os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")) / "network" / "admin")
                 wallet_path = Path(wallet_dir)
                 wallet_path.mkdir(parents=True, exist_ok=True)
                         
                 with zipfile.ZipFile(wallet_zip_path, "r") as zip_ref:
                     zip_ref.extractall(wallet_path)
                 logger.info(f"Wallet extracted to {wallet_path}")
+
+                try:
+                    sqlnet_path = wallet_path / "sqlnet.ora"
+                    if sqlnet_path.exists():
+                        content = sqlnet_path.read_text(encoding="utf-8", errors="ignore")
+                        updated = content.replace('DIRECTORY="?/network/admin"', f'DIRECTORY="{wallet_dir}"')
+                        if updated != content:
+                            sqlnet_path.write_text(updated, encoding="utf-8")
+                except Exception as e:
+                    logger.error(f"sqlnet.ora update error: {e}")
+
+                try:
+                    remove_names = [
+                        "README",
+                        "keystore.jks",
+                        "truststore.jks",
+                        "ojdbc.properties",
+                        "ewallet.p12",
+                    ]
+                    for name in remove_names:
+                        p = wallet_path / name
+                        try:
+                            if p.exists():
+                                p.unlink()
+                        except Exception as e:
+                            logger.error(f"wallet cleanup error ({name}): {e}")
+                except Exception as e:
+                    logger.error(f"wallet cleanup error: {e}")
                         
                 # 展開後のファイルを確認
                 extracted_files = list(wallet_path.glob("*"))
@@ -1037,8 +1063,7 @@ def build_oracle_ai_database_tab(pool=None):
             try:
                 yield gr.Markdown(visible=True, value="⏳ ADB情報を取得中..."), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["表示名", "状態", "OCID"]), label="ADB情報(件数: 0)"), {}, ""
                         
-                # Walletファイルの存在確認
-                wallet_dir = os.environ.get("TNS_ADMIN", "/u01/aipoc/props/wallet")
+                wallet_dir = str(Path(os.environ.get("ORACLE_CLIENT_LIB_DIR", "/u01/aipoc/instantclient_23_26")) / "network" / "admin")
                 wallet_exists = _check_wallet_files(wallet_dir)
                         
                 wallet_status = ""
