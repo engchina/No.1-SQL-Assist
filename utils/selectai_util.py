@@ -3532,7 +3532,21 @@ def build_selectai_tab(pool):
                             rev_generate_status_md = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column(scale=1):
-                                gr.Markdown("推奨質問", elem_classes="input-label")
+                                gr.Markdown("SQL論理構造", elem_classes="input-label")
+                            with gr.Column(scale=5):
+                                rev_phisical_sql_output = gr.Textbox(
+                                    label=" ",
+                                    show_label=True,
+                                    lines=4,
+                                    max_lines=10,
+                                    interactive=False,
+                                    show_copy_button=True,
+                                    container=True,
+                                    autoscroll=False,
+                                )
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                gr.Markdown("自然言語の質問", elem_classes="input-label")
                             with gr.Column(scale=5):
                                 rev_question_output = gr.Textbox(
                                     label=" ",
@@ -3543,7 +3557,7 @@ def build_selectai_tab(pool):
                                     show_copy_button=True,
                                     container=True,
                                     autoscroll=False,
-                                )
+                                )                                
 
                     def _rev_build_context_text(profile_name):
                         try:
@@ -3611,7 +3625,7 @@ def build_selectai_tab(pool):
                                 region = get_oci_region()
                                 compartment_id = get_compartment_id()
                                 if not region or not compartment_id:
-                                    return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False)
+                                    return gr.Textbox(value="ℹ️ OCI設定が不足しています", autoscroll=False), gr.Textbox(value="", autoscroll=False)
                             ctx_comp = str(context_text or "")
                             
                             # コメントを除去
@@ -3625,7 +3639,7 @@ def build_selectai_tab(pool):
                                 "GOAL: Output must contain 100% of SQL information using business terms to enable exact SQL reconstruction.\n"
                                 "Output ONLY the markdown text below (no code blocks, no explanations):\n\n"
                                 
-                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                "## 📋 SQL論理構造\n\n"
                                 
                                 "### 📋 SELECT句\n"
                                 "- [DISTINCT] (if present)\n"
@@ -3715,7 +3729,7 @@ def build_selectai_tab(pool):
                                 "SQL: SELECT * FROM ADMIN.USERS u INNER JOIN ADMIN.ORDERS o ON u.id = o.user_id WHERE u.status = 'ACTIVE' ORDER BY u.created_at DESC\n\n"
                                 
                                 "Output:\n"
-                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                "## 📋 SQL論理構造\n\n"
                                 
                                 "### 📋 SELECT句\n"
                                 "- *\n\n"
@@ -3737,7 +3751,7 @@ def build_selectai_tab(pool):
                                 "SQL: SELECT u.id, u.name, o.total FROM USERS u, ORDERS o WHERE u.id = o.user_id AND o.order_date = (SELECT MAX(o2.order_date) FROM ORDERS o2 WHERE o2.user_id = u.id) ORDER BY u.id\n\n"
                                 
                                 "Output:\n"
-                                "## 📋 SQL論理構造 (業務用語版)\n\n"
+                                "## 📋 SQL論理構造\n\n"
                                 
                                 "### 📋 SELECT句\n"
                                 "- [ユーザマスタ](u).[ユーザID]\n"
@@ -3809,12 +3823,75 @@ def build_selectai_tab(pool):
                             import re as _re
                             out_text = _re.sub(r"^```.*?\n|\n```$", "", str(out_text or ""), flags=_re.DOTALL).strip()
                             
-                            # 用語集を利用する場合は逆処理を適用
-                            if use_glossary:
+                            # --- SQL論理構造からユーザー向け自然言語質問文を生成 ---
+                            question_prompt = (
+                                "あなたはText-to-SQL逆エンジニアリングの専門家です。\n"
+                                "以下のSQL論理構造を、Text-to-SQLシステムに入力して元のSQLを正確に再構築できる\n"
+                                "自然言語の質問文に変換してください。\n\n"
+                                "=== SQL論理構造 ===\n"
+                                f"{out_text}\n\n"
+                                "=== 変換ルール ===\n"
+                                "【必須保持項目】以下の情報は全て質問文に含めること（欠落すると元SQLを再構築できない）：\n"
+                                "- SELECT: 取得する全ての列名・計算式・集約関数（COUNT, SUM, AVG, MAX, MIN等）、DISTINCT\n"
+                                "- FROM/JOIN: 対象テーブル名、結合種別（INNER/LEFT/RIGHT/FULL/CROSS）、結合条件\n"
+                                "- WHERE: 全てのフィルタ条件、リテラル値（文字列・数値・日付）を正確に記述\n"
+                                "  例: 'ACTIVE'、>= 100、BETWEEN '2024-01-01' AND '2024-12-31'\n"
+                                "- GROUP BY: グループ化の対象列\n"
+                                "- HAVING: 集約後の絞り込み条件と閾値\n"
+                                "- ORDER BY: ソート列と方向（昇順/降順）、NULLS FIRST/LAST\n"
+                                "- LIMIT/OFFSET: 件数制限\n"
+                                "- サブクエリ: サブクエリの目的と条件を自然言語で表現\n"
+                                "- CASE式: 条件分岐の全WHEN/THEN/ELSEの内容\n"
+                                "- 関数: SUBSTR, TO_DATE, NVL等の引数を正確に反映\n\n"
+                                "【表現規則】\n"
+                                "- 業務用語（テーブル名・列名）をそのまま使用する\n"
+                                "- 演算子は自然言語で表現する（例: = → 「が〜である」、>= → 「が〜以上」、LIKE → 「を含む」）\n"
+                                "- 論理演算子AND/ORの構造を正確に反映する（「かつ」「または」）\n"
+                                "- 複雑なSQLは段落分けや箇条書きで構造を明確にしてよい\n\n"
+                                "【出力形式】\n"
+                                "- 質問文のみを出力。説明・前置き・マークダウン記号は不要\n"
+                                "- 情報の完全性を最優先し、冗長になっても省略しない\n\n"
+                                "質問文:"
+                            )
+                            question_messages = [{"role": "user", "content": question_prompt}]
+                            
+                            question_text = ""
+                            try:
+                                if str(model_name).startswith("gpt-"):
+                                    from openai import AsyncOpenAI
+                                    q_client = AsyncOpenAI()
+                                    q_resp = await q_client.chat.completions.create(model=model_name, messages=question_messages, temperature=0.0)
+                                    if getattr(q_resp, "choices", None):
+                                        question_text = q_resp.choices[0].message.content.strip()
+                                elif is_gemini:
+                                    from utils.chat_util import _stream_oci_genai_chat_gemini
+                                    async for delta in _stream_oci_genai_chat_gemini(
+                                        region=region,
+                                        compartment_id=compartment_id,
+                                        model_id=model_name,
+                                        messages=question_messages,
+                                    ):
+                                        question_text += delta
+                                    question_text = question_text.strip()
+                                else:
+                                    from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                    q_client = AsyncOciOpenAI(
+                                        service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                        auth=OciUserPrincipalAuth(),
+                                        compartment_id=compartment_id,
+                                    )
+                                    q_resp = await q_client.chat.completions.create(model=model_name, messages=question_messages, temperature=0.0)
+                                    if getattr(q_resp, "choices", None):
+                                        question_text = q_resp.choices[0].message.content.strip()
+                            except Exception as qe:
+                                logger.error(f"質問文生成エラー: {qe}")
+                                question_text = f"❌ 質問文の生成に失敗しました: {qe}"
+                            
+                            # 用語集を利用する場合はquestion_textに逆処理を適用
+                            if use_glossary and question_text and not question_text.startswith("❌"):
                                 terms = _load_terminology()
                                 if terms:
                                     # 用語集を使ってLLMで書き換え（逆処理）
-                                    # rules_text = "\n".join([f"- {r}" for r in rules]) if rules else "（ルールなし）"
                                     terms_text = "\n".join([f"- {k}: {v}" for k, v in terms.items()]) if terms else "（用語集なし）"
                                     glossary_prompt = f"""あなたはデータベースクエリの専門家です。以下の用語集に基づいて、元の質問を正規化してください。
 
@@ -3822,7 +3899,7 @@ def build_selectai_tab(pool):
 {terms_text}
 
 === 元の質問 ===
-{out_text}
+{question_text}
 
 指示:
 1. 本タスクでは逆最適化を行います。定義や推奨表現、別名、略称などB側に該当する語句は対応する正式用語（A/TERM）に置換してください。
@@ -3834,43 +3911,45 @@ def build_selectai_tab(pool):
                                     
                                     glossary_messages = [{"role": "user", "content": glossary_prompt}]
                                     
-                                    # 用語集処理もモデルに応じた処理
-                                    if str(model_name).startswith("gpt-"):
-                                        from openai import AsyncOpenAI
-                                        glossary_client = AsyncOpenAI()
-                                        glossary_resp = await glossary_client.chat.completions.create(model=model_name, messages=glossary_messages)
-                                        if glossary_resp.choices and len(glossary_resp.choices) > 0:
-                                            glossary_result = glossary_resp.choices[0].message.content.strip()
-                                            out_text = str(out_text) + "\n\n" + glossary_result
-                                    elif is_gemini:
-                                        from utils.chat_util import _stream_oci_genai_chat_gemini
-                                        glossary_result = ""
-                                        async for delta in _stream_oci_genai_chat_gemini(
-                                            region=region,
-                                            compartment_id=compartment_id,
-                                            model_id=model_name,
-                                            messages=glossary_messages,
-                                        ):
-                                            glossary_result += delta
-                                        out_text = str(out_text) + "\n\n" + glossary_result.strip()
-                                    else:
-                                        from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
-                                        glossary_client = AsyncOciOpenAI(
-                                            service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
-                                            auth=OciUserPrincipalAuth(),
-                                            compartment_id=compartment_id,
-                                        )
-                                        glossary_resp = await glossary_client.chat.completions.create(model=model_name, messages=glossary_messages)
-                                        if glossary_resp.choices and len(glossary_resp.choices) > 0:
-                                            glossary_result = glossary_resp.choices[0].message.content.strip()
-                                            out_text = str(out_text) + "\n\n" + glossary_result
+                                    try:
+                                        # 用語集処理もモデルに応じた処理
+                                        if str(model_name).startswith("gpt-"):
+                                            from openai import AsyncOpenAI
+                                            glossary_client = AsyncOpenAI()
+                                            glossary_resp = await glossary_client.chat.completions.create(model=model_name, messages=glossary_messages)
+                                            if glossary_resp.choices and len(glossary_resp.choices) > 0:
+                                                question_text = glossary_resp.choices[0].message.content.strip()
+                                        elif is_gemini:
+                                            from utils.chat_util import _stream_oci_genai_chat_gemini
+                                            glossary_result = ""
+                                            async for delta in _stream_oci_genai_chat_gemini(
+                                                region=region,
+                                                compartment_id=compartment_id,
+                                                model_id=model_name,
+                                                messages=glossary_messages,
+                                            ):
+                                                glossary_result += delta
+                                            question_text = glossary_result.strip()
+                                        else:
+                                            from oci_openai import AsyncOciOpenAI, OciUserPrincipalAuth
+                                            glossary_client = AsyncOciOpenAI(
+                                                service_endpoint=f"https://inference.generativeai.{region}.oci.oraclecloud.com",
+                                                auth=OciUserPrincipalAuth(),
+                                                compartment_id=compartment_id,
+                                            )
+                                            glossary_resp = await glossary_client.chat.completions.create(model=model_name, messages=glossary_messages)
+                                            if glossary_resp.choices and len(glossary_resp.choices) > 0:
+                                                question_text = glossary_resp.choices[0].message.content.strip()
+                                    except Exception as ge:
+                                        logger.error(f"用語集逆処理エラー: {ge}")
+                                        # 用語集処理失敗時はquestion_textをそのまま維持
                             
-                            return gr.Textbox(value=out_text, autoscroll=False)
+                            return gr.Textbox(value=out_text, autoscroll=False), gr.Textbox(value=question_text, autoscroll=False)
                         except Exception as e:
                             logger.error(f"_rev_generate_async error: {e}")
                             import traceback
                             logger.error(traceback.format_exc())
-                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False)
+                            return gr.Textbox(value=f"❌ エラー: {e}", autoscroll=False), gr.Textbox(value="", autoscroll=False)
 
                     def _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary):
                         """SQL→質問逆生成のラッパー関数.
@@ -3883,7 +3962,7 @@ def build_selectai_tab(pool):
                             use_glossary: 用語集を利用するか
                         
                         Returns:
-                            gr.Textbox: 生成された質問文
+                            tuple: (gr.Textbox: SQL論理構造, gr.Textbox: 生成された質問文)
                         """
                         import asyncio
                         loop = asyncio.new_event_loop()
@@ -3904,14 +3983,14 @@ def build_selectai_tab(pool):
                                 missing.append("対象SQL")
                             if missing:
                                 msg = "⚠️ 必須入力が不足しています: " + ", ".join(missing)
-                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False, autoscroll=False)
+                                yield gr.Markdown(visible=True, value=msg), gr.Textbox(value="", interactive=False, autoscroll=False), gr.Textbox(value="", interactive=False, autoscroll=False)
                                 return
-                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False, autoscroll=False)
-                            out = _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary)
-                            yield gr.Markdown(visible=True, value="✅ 生成完了"), out
+                            yield gr.Markdown(visible=True, value="⏳ 生成中..."), gr.Textbox(value="", interactive=False, autoscroll=False), gr.Textbox(value="", interactive=False, autoscroll=False)
+                            out_physical, out_question = _rev_generate(model_name, sql_structure_text, context_text, sql_text, use_glossary)
+                            yield gr.Markdown(visible=True, value="✅ 生成完了"), out_physical, out_question
                         except Exception as e:
                             logger.error(f"_rev_generate_stream error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False, autoscroll=False)
+                            yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", interactive=False, autoscroll=False), gr.Textbox(value="", interactive=False, autoscroll=False)
 
                     async def _rev_ai_analyze_async(model_name, sql_text, analysis_prompt):
                         """逆生成タブ用のAI分析処理.
@@ -4067,7 +4146,7 @@ def build_selectai_tab(pool):
                     rev_generate_btn.click(
                         fn=_rev_generate_stream,
                         inputs=[rev_model_input, rev_sql_structure_output, rev_context_text, rev_sql_input, rev_use_glossary],
-                        outputs=[rev_generate_status_md, rev_question_output],
+                        outputs=[rev_generate_status_md, rev_phisical_sql_output, rev_question_output],
                     )
 
                 with gr.TabItem(label="フィードバック管理") as feedback_tab:
