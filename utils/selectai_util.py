@@ -2827,11 +2827,10 @@ def build_selectai_tab(pool):
                                     for pattern in error_patterns:
                                         if pattern.lower() in generated_sql.lower():
                                             logger.warning(f"SQL生成失敗メッセージを検出: {generated_sql[:500]}...")
-                                            yield f"❌ エラー: SQL生成に失敗しました。プロンプトを見直してください。", ""
+                                            yield f"❌ エラー: SQL生成に失敗しました。プロンプトを見直してください。", generated_sql
                                             return
                                     
-                                    gen_sql_display = generated_sql
-                                    yield "✅ SQL生成完了", gen_sql_display
+                                    yield "✅ SQL生成完了", generated_sql
                                     return
                         except Exception as e:
                             logger.error(f"_common_step_generate error: {e}")
