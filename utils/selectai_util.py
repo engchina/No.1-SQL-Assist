@@ -2816,6 +2816,20 @@ def build_selectai_tab(pool):
                                         yield "❌ エラー: SQL生成に失敗しました（空の結果）", ""
                                         return
                                     
+                                    # SQL生成失敗のエラーメッセージをチェック
+                                    # "SELECT statement could not be generated" などが返される場合がある
+                                    error_patterns = [
+                                        "statement could not be generated",
+                                        "with the restriction of",
+                                        "Here is some more information to help you further",
+                                        "Exception encountered",
+                                    ]
+                                    for pattern in error_patterns:
+                                        if pattern.lower() in generated_sql.lower():
+                                            logger.warning(f"SQL生成失敗メッセージを検出: {generated_sql[:500]}...")
+                                            yield f"❌ エラー: SQL生成に失敗しました。プロンプトを見直してください。", ""
+                                            return
+                                    
                                     gen_sql_display = generated_sql
                                     yield "✅ SQL生成完了", gen_sql_display
                                     return
