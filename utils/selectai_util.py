@@ -1179,6 +1179,7 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "xai.grok-4.20-non-reasoning",
                                                 "google.gemini-2.5-flash",
                                                 "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
@@ -1269,7 +1270,7 @@ def build_selectai_tab(pool):
                                         annotations_input = gr.Dropdown(
                                             show_label=False,
                                             choices=["true", "false"],
-                                            value="true",
+                                            value="false",
                                             interactive=True,
                                             container=False,
                                         )
@@ -1450,7 +1451,7 @@ def build_selectai_tab(pool):
                         bool_map = {"true": True, "false": False}
                         eol = bool_map.get(str(enforce_object_list).lower(), True)
                         com = bool_map.get(str(comments).lower(), True)
-                        ann = bool_map.get(str(annotations).lower(), True)
+                        ann = bool_map.get(str(annotations).lower(), False)
                         con = bool_map.get(str(constraints).lower(), True)
                         create_db_profile(
                             pool,
@@ -2115,6 +2116,7 @@ def build_selectai_tab(pool):
                                                         "xai.grok-3-fast",
                                                         "xai.grok-4",
                                                         "xai.grok-4-fast-non-reasoning",
+                                                        "xai.grok-4.20-non-reasoning",
                                                         "google.gemini-2.5-flash",
                                                         "google.gemini-2.5-pro",
                                                         "meta.llama-4-scout-17b-16e-instruct",
@@ -2246,6 +2248,7 @@ def build_selectai_tab(pool):
                                                     "xai.grok-3-fast",
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
+                                                    "xai.grok-4.20-non-reasoning",
                                                     "google.gemini-2.5-flash",
                                                     "google.gemini-2.5-pro",
                                                     "meta.llama-4-scout-17b-16e-instruct",
@@ -3453,6 +3456,7 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "xai.grok-4.20-non-reasoning",
                                                 "google.gemini-2.5-flash",
                                                 "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
@@ -3520,6 +3524,7 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "xai.grok-4.20-non-reasoning",
                                                 "google.gemini-2.5-flash",
                                                 "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
@@ -4503,6 +4508,7 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "xai.grok-4.20-non-reasoning",
                                                 "google.gemini-2.5-flash",
                                                 "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
@@ -4546,6 +4552,7 @@ def build_selectai_tab(pool):
                                                     "xai.grok-3-fast",
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
+                                                    "xai.grok-4.20-non-reasoning",
                                                     "google.gemini-2.5-flash",
                                                     "google.gemini-2.5-pro",
                                                     "meta.llama-4-scout-17b-16e-instruct",
@@ -5030,6 +5037,7 @@ def build_selectai_tab(pool):
                                                 "xai.grok-3-fast",
                                                 "xai.grok-4",
                                                 "xai.grok-4-fast-non-reasoning",
+                                                "xai.grok-4.20-non-reasoning",
                                                 "google.gemini-2.5-flash",
                                                 "google.gemini-2.5-pro",
                                                 "meta.llama-4-scout-17b-16e-instruct",
@@ -5073,6 +5081,7 @@ def build_selectai_tab(pool):
                                                     "xai.grok-3-fast",
                                                     "xai.grok-4",
                                                     "xai.grok-4-fast-non-reasoning",
+                                                    "xai.grok-4.20-non-reasoning",
                                                     "google.gemini-2.5-flash",
                                                     "google.gemini-2.5-pro",
                                                     "meta.llama-4-scout-17b-16e-instruct",
@@ -6337,6 +6346,7 @@ def build_selectai_tab(pool):
                                                         "xai.grok-3-fast",
                                                         "xai.grok-4",
                                                         "xai.grok-4-fast-non-reasoning",
+                                                        "xai.grok-4.20-non-reasoning",
                                                         "google.gemini-2.5-flash",
                                                         "google.gemini-2.5-pro",
                                                         "meta.llama-4-scout-17b-16e-instruct",

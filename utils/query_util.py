@@ -533,6 +533,7 @@ def build_query_tab(pool):
                                     "xai.grok-3-fast",
                                     "xai.grok-4",
                                     "xai.grok-4-fast-non-reasoning",
+                                    "xai.grok-4.20-non-reasoning",
                                     "google.gemini-2.5-flash",
                                     "google.gemini-2.5-pro",
                                     "meta.llama-4-scout-17b-16e-instruct",
