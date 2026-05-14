@@ -3,6 +3,21 @@
 プロジェクト全体で使用される共通の関数を提供します。
 """
 
+CHAT_MODEL_CHOICES = [
+    "xai.grok-code-fast-1",
+    "xai.grok-3",
+    "xai.grok-3-fast",
+    "xai.grok-4",
+    "xai.grok-4.3",
+    "xai.grok-4-fast-non-reasoning",
+    "xai.grok-4.20-non-reasoning",
+    "google.gemini-2.5-flash",
+    "google.gemini-2.5-pro",
+    "meta.llama-4-scout-17b-16e-instruct",
+    "gpt-4o",
+    "gpt-5.1",
+]
+
 
 def get_dict_value(dictionary, key, default_value=None):
     """辞書から値を安全に取得する.

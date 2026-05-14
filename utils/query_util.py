@@ -13,7 +13,7 @@ import gradio as gr
 import pandas as pd
 import oracledb
 from oracledb import DatabaseError
-from utils.common_util import remove_comments
+from utils.common_util import CHAT_MODEL_CHOICES, remove_comments
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -527,19 +527,7 @@ def build_query_tab(pool):
                         with gr.Column(scale=5):
                             ai_model_input = gr.Dropdown(
                                 show_label=False,
-                                choices=[
-                                    "xai.grok-code-fast-1",
-                                    "xai.grok-3",
-                                    "xai.grok-3-fast",
-                                    "xai.grok-4",
-                                    "xai.grok-4-fast-non-reasoning",
-                                    "xai.grok-4.20-non-reasoning",
-                                    "google.gemini-2.5-flash",
-                                    "google.gemini-2.5-pro",
-                                    "meta.llama-4-scout-17b-16e-instruct",
-                                    "gpt-4o",
-                                    "gpt-5.1",
-                                ],
+                                choices=CHAT_MODEL_CHOICES,
                                 value="xai.grok-code-fast-1",
                                 interactive=True,
                                 container=False,

@@ -22,7 +22,7 @@ import oci
 from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import EmbedTextDetails
 
-from utils.common_util import remove_comments
+from utils.common_util import CHAT_MODEL_CHOICES, remove_comments
 
 from utils.management_util import (
     get_table_list,
@@ -1173,19 +1173,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         model_input = gr.Dropdown(
                                             show_label=False,
-                                            choices=[
-                                                "xai.grok-code-fast-1",
-                                                "xai.grok-3",
-                                                "xai.grok-3-fast",
-                                                "xai.grok-4",
-                                                "xai.grok-4-fast-non-reasoning",
-                                                "xai.grok-4.20-non-reasoning",
-                                                "google.gemini-2.5-flash",
-                                                "google.gemini-2.5-pro",
-                                                "meta.llama-4-scout-17b-16e-instruct",
-                                                "gpt-4o",
-                                                "gpt-5.1",
-                                            ],
+                                            choices=CHAT_MODEL_CHOICES,
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
                                             container=False,
@@ -2110,19 +2098,7 @@ def build_selectai_tab(pool):
                                             with gr.Column(scale=5):
                                                 dev_rewrite_model_select = gr.Dropdown(
                                                     show_label=False,
-                                                    choices=[
-                                                        "xai.grok-code-fast-1",
-                                                        "xai.grok-3",
-                                                        "xai.grok-3-fast",
-                                                        "xai.grok-4",
-                                                        "xai.grok-4-fast-non-reasoning",
-                                                        "xai.grok-4.20-non-reasoning",
-                                                        "google.gemini-2.5-flash",
-                                                        "google.gemini-2.5-pro",
-                                                        "meta.llama-4-scout-17b-16e-instruct",
-                                                        "gpt-4o",
-                                                        "gpt-5.1",
-                                                    ],
+                                                    choices=CHAT_MODEL_CHOICES,
                                                     value="xai.grok-code-fast-1",
                                                     interactive=True,
                                                     container=False,
@@ -2242,19 +2218,7 @@ def build_selectai_tab(pool):
                                         with gr.Column(scale=5):
                                             dev_analysis_model_input = gr.Dropdown(
                                                 show_label=False,
-                                                choices=[
-                                                    "xai.grok-code-fast-1",
-                                                    "xai.grok-3",
-                                                    "xai.grok-3-fast",
-                                                    "xai.grok-4",
-                                                    "xai.grok-4-fast-non-reasoning",
-                                                    "xai.grok-4.20-non-reasoning",
-                                                    "google.gemini-2.5-flash",
-                                                    "google.gemini-2.5-pro",
-                                                    "meta.llama-4-scout-17b-16e-instruct",
-                                                    "gpt-4o",
-                                                    "gpt-5.1",
-                                                ],
+                                                choices=CHAT_MODEL_CHOICES,
                                                 value="xai.grok-code-fast-1",
                                                 interactive=True,
                                                 container=False,
@@ -3450,19 +3414,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         rev_analysis_model_input = gr.Dropdown(
                                             show_label=False,
-                                            choices=[
-                                                "xai.grok-code-fast-1",
-                                                "xai.grok-3",
-                                                "xai.grok-3-fast",
-                                                "xai.grok-4",
-                                                "xai.grok-4-fast-non-reasoning",
-                                                "xai.grok-4.20-non-reasoning",
-                                                "google.gemini-2.5-flash",
-                                                "google.gemini-2.5-pro",
-                                                "meta.llama-4-scout-17b-16e-instruct",
-                                                "gpt-4o",
-                                                "gpt-5.1",
-                                            ],
+                                            choices=CHAT_MODEL_CHOICES,
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
                                             container=False,
@@ -3518,19 +3470,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         rev_model_input = gr.Dropdown(
                                             show_label=False,
-                                            choices=[
-                                                "xai.grok-code-fast-1",
-                                                "xai.grok-3",
-                                                "xai.grok-3-fast",
-                                                "xai.grok-4",
-                                                "xai.grok-4-fast-non-reasoning",
-                                                "xai.grok-4.20-non-reasoning",
-                                                "google.gemini-2.5-flash",
-                                                "google.gemini-2.5-pro",
-                                                "meta.llama-4-scout-17b-16e-instruct",
-                                                "gpt-4o",
-                                                "gpt-5.1",
-                                            ],
+                                            choices=CHAT_MODEL_CHOICES,
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
                                             container=False,
@@ -4502,19 +4442,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         cm_model_input = gr.Dropdown(
                                             show_label=False,
-                                            choices=[
-                                                "xai.grok-code-fast-1",
-                                                "xai.grok-3",
-                                                "xai.grok-3-fast",
-                                                "xai.grok-4",
-                                                "xai.grok-4-fast-non-reasoning",
-                                                "xai.grok-4.20-non-reasoning",
-                                                "google.gemini-2.5-flash",
-                                                "google.gemini-2.5-pro",
-                                                "meta.llama-4-scout-17b-16e-instruct",
-                                                "gpt-4o",
-                                                "gpt-5.1",
-                                            ],
+                                            choices=CHAT_MODEL_CHOICES,
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
                                             container=False,
@@ -4546,19 +4474,7 @@ def build_selectai_tab(pool):
                                         with gr.Column(scale=5):
                                             cm_ai_model_input = gr.Dropdown(
                                                 show_label=False,
-                                                choices=[
-                                                    "xai.grok-code-fast-1",
-                                                    "xai.grok-3",
-                                                    "xai.grok-3-fast",
-                                                    "xai.grok-4",
-                                                    "xai.grok-4-fast-non-reasoning",
-                                                    "xai.grok-4.20-non-reasoning",
-                                                    "google.gemini-2.5-flash",
-                                                    "google.gemini-2.5-pro",
-                                                    "meta.llama-4-scout-17b-16e-instruct",
-                                                    "gpt-4o",
-                                                    "gpt-5.1",
-                                                ],
+                                                choices=CHAT_MODEL_CHOICES,
                                                 value="xai.grok-code-fast-1",
                                                 interactive=True,
                                                 container=False,
@@ -5031,19 +4947,7 @@ def build_selectai_tab(pool):
                                     with gr.Column(scale=5):
                                         am_model_input = gr.Dropdown(
                                             show_label=False,
-                                            choices=[
-                                                "xai.grok-code-fast-1",
-                                                "xai.grok-3",
-                                                "xai.grok-3-fast",
-                                                "xai.grok-4",
-                                                "xai.grok-4-fast-non-reasoning",
-                                                "xai.grok-4.20-non-reasoning",
-                                                "google.gemini-2.5-flash",
-                                                "google.gemini-2.5-pro",
-                                                "meta.llama-4-scout-17b-16e-instruct",
-                                                "gpt-4o",
-                                                "gpt-5.1",
-                                            ],
+                                            choices=CHAT_MODEL_CHOICES,
                                             value="xai.grok-code-fast-1",
                                             interactive=True,
                                             container=False,
@@ -5075,19 +4979,7 @@ def build_selectai_tab(pool):
                                         with gr.Column(scale=5):
                                             am_ai_model_input = gr.Dropdown(
                                                 show_label=False,
-                                                choices=[
-                                                    "xai.grok-code-fast-1",
-                                                    "xai.grok-3",
-                                                    "xai.grok-3-fast",
-                                                    "xai.grok-4",
-                                                    "xai.grok-4-fast-non-reasoning",
-                                                    "xai.grok-4.20-non-reasoning",
-                                                    "google.gemini-2.5-flash",
-                                                    "google.gemini-2.5-pro",
-                                                    "meta.llama-4-scout-17b-16e-instruct",
-                                                    "gpt-4o",
-                                                    "gpt-5.1",
-                                                ],
+                                                choices=CHAT_MODEL_CHOICES,
                                                 value="xai.grok-code-fast-1",
                                                 interactive=True,
                                                 container=False,
@@ -6340,19 +6232,7 @@ def build_selectai_tab(pool):
                                             with gr.Column(scale=5):
                                                 rewrite_model_select = gr.Dropdown(
                                                     show_label=False,
-                                                    choices=[
-                                                        "xai.grok-code-fast-1",
-                                                        "xai.grok-3",
-                                                        "xai.grok-3-fast",
-                                                        "xai.grok-4",
-                                                        "xai.grok-4-fast-non-reasoning",
-                                                        "xai.grok-4.20-non-reasoning",
-                                                        "google.gemini-2.5-flash",
-                                                        "google.gemini-2.5-pro",
-                                                        "meta.llama-4-scout-17b-16e-instruct",
-                                                        "gpt-4o",
-                                                        "gpt-5.1",
-                                                    ],
+                                                    choices=CHAT_MODEL_CHOICES,
                                                     value="xai.grok-code-fast-1",
                                                     interactive=True,
                                                     container=False,
