@@ -14,6 +14,18 @@ variable "adb_password" {
   default = ""
 }
 
+variable "adb_use_private_subnet" {
+  description = "Whether to use a private subnet for Autonomous Database"
+  type        = bool
+  default     = false
+}
+
+variable "adb_subnet_id" {
+  description = "Private subnet OCID for Autonomous Database (used when private subnet is enabled)"
+  type        = string
+  default     = ""
+}
+
 variable "license_model" {
   default = ""
 }
