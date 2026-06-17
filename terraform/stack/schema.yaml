@@ -8,14 +8,6 @@ version: "20220422"
 locale: "en"
 
 variableGroups:
-  - title: Hidden
-    visible: false
-    variables:
-      - instance_boot_volume_size
-      - instance_boot_volume_vpus
-      - instance_flex_shape_memory
-      - instance_flex_shape_ocpus
-
   - title: Required Configuration
     visible: true
     variables:
@@ -31,6 +23,16 @@ variableGroups:
       - adb_subnet_id
       - subnet_ai_subnet_id
       - ssh_authorized_keys
+
+  - title: Compute Configuration
+    visible: true
+    variables:
+      - instance_image_source_id
+      - instance_shape
+      - instance_flex_shape_ocpus
+      - instance_flex_shape_memory
+      - instance_boot_volume_size
+      - instance_boot_volume_vpus
 
 variables:
   region:
@@ -155,13 +157,29 @@ variables:
     default: "VM.Standard.E5.Flex"
 
   instance_boot_volume_size:
-    visible: false
+    required: true
+    visible: true
+    title: "Compute boot block volume size (GB)"
+    description: "Set the boot block volume capacity for the Compute instance."
+    default: 100
   instance_boot_volume_vpus:
-    visible: false
+    required: true
+    visible: true
+    title: "Compute boot block volume VPUs per GB"
+    description: "Set the boot block volume performance for the Compute instance."
+    default: 10
   instance_flex_shape_memory:
-    visible: false
+    required: true
+    visible: true
+    title: "Compute memory (GB)"
+    description: "Set memory for the Compute flex shape."
+    default: 16
   instance_flex_shape_ocpus:
-    visible: false
+    required: true
+    visible: true
+    title: "Compute OCPUs"
+    description: "Set OCPUs for the Compute flex shape."
+    default: 2
 
 outputs:
 

@@ -39,19 +39,27 @@ variable "instance_shape" {
 }
 
 variable "instance_flex_shape_ocpus" {
-  default = 2
+  description = "Number of OCPUs for the Compute flex shape"
+  type        = number
+  default     = 2
 }
 
 variable "instance_flex_shape_memory" {
-  default = 16
+  description = "Memory in GB for the Compute flex shape"
+  type        = number
+  default     = 16
 }
 
 variable "instance_boot_volume_size" {
-  default = 100
+  description = "Boot block volume size in GB for the Compute instance"
+  type        = number
+  default     = 100
 }
 
 variable "instance_boot_volume_vpus" {
-  default = 20
+  description = "Boot block volume performance in VPUs per GB for the Compute instance"
+  type        = number
+  default     = 10
 }
 
 variable "instance_image_source_id" {
