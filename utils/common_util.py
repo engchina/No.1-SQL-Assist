@@ -11,6 +11,7 @@ CHAT_MODEL_CHOICES = [
     "xai.grok-4.3",
     "xai.grok-4-fast-non-reasoning",
     "xai.grok-4.20-non-reasoning",
+    "cohere.command-a-03-2025",
     "google.gemini-2.5-flash",
     "google.gemini-2.5-pro",
     "meta.llama-4-scout-17b-16e-instruct",
