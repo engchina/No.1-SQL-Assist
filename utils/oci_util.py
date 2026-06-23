@@ -1156,7 +1156,7 @@ def build_oracle_ai_database_tab(pool=None):
                 wallet_zip_path = "/tmp/wallet.zip"
                 with open(wallet_zip_path, "wb") as f:
                     for chunk in wallet_response.data.raw.stream(
-                        1024 * 1024, decode_content=False
+                        1024 * 1024, decode_content=True
                     ):
                         f.write(chunk)
                 logger.info(f"Wallet downloaded to {wallet_zip_path}")
