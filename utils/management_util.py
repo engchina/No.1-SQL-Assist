@@ -12,7 +12,7 @@ from dateutil import parser as dateutil_parser
 
 import gradio as gr
 import pandas as pd
-from utils.common_util import CHAT_MODEL_CHOICES, remove_comments
+from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1351,7 +1351,7 @@ def build_management_tab(pool):
                                     table_ai_model_input = gr.Dropdown(
                                         show_label=False,
                                         choices=CHAT_MODEL_CHOICES,
-                                        value="xai.grok-code-fast-1",
+                                        value=DEFAULT_CHAT_MODEL,
                                         interactive=True,
                                         container=False,
                                     )
@@ -1699,7 +1699,7 @@ def build_management_tab(pool):
                                 view_analysis_model_input = gr.Dropdown(
                                     show_label=False,
                                     choices=CHAT_MODEL_CHOICES,
-                                    value="xai.grok-code-fast-1",
+                                    value=DEFAULT_CHAT_MODEL,
                                     interactive=True,
                                     container=False,
                                 )
@@ -1778,7 +1778,7 @@ def build_management_tab(pool):
                                     view_ai_model_input = gr.Dropdown(
                                         show_label=False,
                                         choices=CHAT_MODEL_CHOICES,
-                                        value="xai.grok-code-fast-1",
+                                        value=DEFAULT_CHAT_MODEL,
                                         interactive=True,
                                         container=False,
                                     )
@@ -2354,7 +2354,7 @@ def build_management_tab(pool):
                                     data_ai_model_input = gr.Dropdown(
                                         show_label=False,
                                         choices=CHAT_MODEL_CHOICES,
-                                        value="xai.grok-code-fast-1",
+                                        value=DEFAULT_CHAT_MODEL,
                                         interactive=True,
                                         container=False,
                                     )

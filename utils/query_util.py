@@ -13,7 +13,7 @@ import gradio as gr
 import pandas as pd
 import oracledb
 from oracledb import DatabaseError
-from utils.common_util import CHAT_MODEL_CHOICES, remove_comments
+from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -528,7 +528,7 @@ def build_query_tab(pool):
                             ai_model_input = gr.Dropdown(
                                 show_label=False,
                                 choices=CHAT_MODEL_CHOICES,
-                                value="xai.grok-code-fast-1",
+                                value=DEFAULT_CHAT_MODEL,
                                 interactive=True,
                                 container=False,
                             )

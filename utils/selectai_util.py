@@ -22,7 +22,7 @@ import oci
 from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import EmbedTextDetails
 
-from utils.common_util import CHAT_MODEL_CHOICES, remove_comments
+from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
 
 from utils.management_util import (
     get_table_list,
@@ -1174,7 +1174,7 @@ def build_selectai_tab(pool):
                                         model_input = gr.Dropdown(
                                             show_label=False,
                                             choices=CHAT_MODEL_CHOICES,
-                                            value="xai.grok-code-fast-1",
+                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -2099,7 +2099,7 @@ def build_selectai_tab(pool):
                                                 dev_rewrite_model_select = gr.Dropdown(
                                                     show_label=False,
                                                     choices=CHAT_MODEL_CHOICES,
-                                                    value="xai.grok-code-fast-1",
+                                                    value=DEFAULT_CHAT_MODEL,
                                                     interactive=True,
                                                     container=False,
                                                 )
@@ -2219,7 +2219,7 @@ def build_selectai_tab(pool):
                                             dev_analysis_model_input = gr.Dropdown(
                                                 show_label=False,
                                                 choices=CHAT_MODEL_CHOICES,
-                                                value="xai.grok-code-fast-1",
+                                                value=DEFAULT_CHAT_MODEL,
                                                 interactive=True,
                                                 container=False,
                                             )
@@ -3415,7 +3415,7 @@ def build_selectai_tab(pool):
                                         rev_analysis_model_input = gr.Dropdown(
                                             show_label=False,
                                             choices=CHAT_MODEL_CHOICES,
-                                            value="xai.grok-code-fast-1",
+                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -3471,7 +3471,7 @@ def build_selectai_tab(pool):
                                         rev_model_input = gr.Dropdown(
                                             show_label=False,
                                             choices=CHAT_MODEL_CHOICES,
-                                            value="xai.grok-code-fast-1",
+                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -4443,7 +4443,7 @@ def build_selectai_tab(pool):
                                         cm_model_input = gr.Dropdown(
                                             show_label=False,
                                             choices=CHAT_MODEL_CHOICES,
-                                            value="xai.grok-code-fast-1",
+                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -4475,7 +4475,7 @@ def build_selectai_tab(pool):
                                             cm_ai_model_input = gr.Dropdown(
                                                 show_label=False,
                                                 choices=CHAT_MODEL_CHOICES,
-                                                value="xai.grok-code-fast-1",
+                                                value=DEFAULT_CHAT_MODEL,
                                                 interactive=True,
                                                 container=False,
                                             )
@@ -4948,7 +4948,7 @@ def build_selectai_tab(pool):
                                         am_model_input = gr.Dropdown(
                                             show_label=False,
                                             choices=CHAT_MODEL_CHOICES,
-                                            value="xai.grok-code-fast-1",
+                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -4980,7 +4980,7 @@ def build_selectai_tab(pool):
                                             am_ai_model_input = gr.Dropdown(
                                                 show_label=False,
                                                 choices=CHAT_MODEL_CHOICES,
-                                                value="xai.grok-code-fast-1",
+                                                value=DEFAULT_CHAT_MODEL,
                                                 interactive=True,
                                                 container=False,
                                             )
@@ -6233,7 +6233,7 @@ def build_selectai_tab(pool):
                                                 rewrite_model_select = gr.Dropdown(
                                                     show_label=False,
                                                     choices=CHAT_MODEL_CHOICES,
-                                                    value="xai.grok-code-fast-1",
+                                                    value=DEFAULT_CHAT_MODEL,
                                                     interactive=True,
                                                     container=False,
                                                 )

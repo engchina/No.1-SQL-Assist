@@ -15,7 +15,7 @@ from dotenv import find_dotenv, get_key
 import asyncio
 import os
 import oci
-from utils.common_util import CHAT_MODEL_CHOICES
+from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -474,7 +474,7 @@ def build_oci_chat_test_tab(pool):
                                 chat_model_input = gr.Dropdown(
                                     show_label=False,
                                     choices=CHAT_MODEL_CHOICES,
-                                    value="xai.grok-code-fast-1",
+                                    value=DEFAULT_CHAT_MODEL,
                                     interactive=True,
                                     container=False,
                                 )

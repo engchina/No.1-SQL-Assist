@@ -3,18 +3,15 @@
 プロジェクト全体で使用される共通の関数を提供します。
 """
 
+DEFAULT_CHAT_MODEL = "xai.grok-4.3"
+
 CHAT_MODEL_CHOICES = [
-    "xai.grok-code-fast-1",
-    "xai.grok-3",
-    "xai.grok-3-fast",
-    "xai.grok-4",
-    "xai.grok-4.3",
-    "xai.grok-4-fast-non-reasoning",
-    "xai.grok-4.20-non-reasoning",
+    DEFAULT_CHAT_MODEL,
     "cohere.command-a-03-2025",
     "google.gemini-2.5-flash",
     "google.gemini-2.5-pro",
     "meta.llama-4-scout-17b-16e-instruct",
+    "openai.gpt-oss-120b",
     "gpt-4o",
     "gpt-5.1",
 ]
