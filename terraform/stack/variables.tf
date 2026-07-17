@@ -262,3 +262,14 @@ variable "subnet_ai_subnet_id" {
 variable "ssh_authorized_keys" {
   default = ""
 }
+
+variable "application_git_tag" {
+  description = "Git tag used to deploy the application. The main branch is intentionally not allowed."
+  type        = string
+  default     = "v0.1.8"
+
+  validation {
+    condition     = trimspace(var.application_git_tag) != "" && lower(trimspace(var.application_git_tag)) != "main"
+    error_message = "application_git_tag must be a non-empty Git tag other than main."
+  }
+}

@@ -42,10 +42,10 @@ write_files:
       ${wallet_content}
 runcmd:
   - apt install -y git unzip gcc build-essential libmagic-dev libgl1-mesa-dev pandoc dos2unix netfilter-persistent
-  - iptables -I INPUT 6 -m state --state NEW -p tcp --dport 8080 -j ACCEPT
+  - iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
   - netfilter-persistent save
   - cd /u01/aipoc
-  - git clone -b main https://github.com/engchina/No.1-SQL-Assist.git
+  - git clone --branch ${application_git_tag} --single-branch https://github.com/engchina/No.1-SQL-Assist.git
   - cd /u01/aipoc/No.1-SQL-Assist
   - chmod +x init_script.sh
   - nohup bash init_script.sh >> /var/log/cloud-init-custom.log 2>&1 &

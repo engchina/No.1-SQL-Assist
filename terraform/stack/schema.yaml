@@ -50,6 +50,7 @@ variableGroups:
   - title: Compute
     visible: true
     variables:
+      - application_git_tag
       - instance_display_name
       - instance_image_source_id
       - instance_shape
@@ -306,6 +307,14 @@ variables:
     visible: true
     title: "Require mutual TLS (mTLS)"
     default: true
+
+  application_git_tag:
+    type: string
+    required: true
+    visible: true
+    title: "Application Git tag"
+    description: "Deploy an immutable non-main Git tag. The default release for this stack is v0.1.8."
+    default: "v0.1.8"
 
   instance_display_name:
     type: string

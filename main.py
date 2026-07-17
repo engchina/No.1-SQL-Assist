@@ -255,8 +255,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--port",
         type=int,
-        default=8080,
-        help="Port number to run the server (default: 8080)",
+        default=80,
+        help="Port number to run the server (default: 80)",
     )
     args = parser.parse_args()
 

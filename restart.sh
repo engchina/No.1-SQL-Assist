@@ -2,7 +2,7 @@
 
 PROJECT_DIR="/u01/aipoc/No.1-SQL-Assist"
 
-lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+lsof -ti:80 | xargs kill -9 2>/dev/null || true
 cd "$PROJECT_DIR" || exit 1
 /bin/bash "$PROJECT_DIR/main.sh"
 exit 0
