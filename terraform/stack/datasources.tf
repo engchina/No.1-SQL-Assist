@@ -1,3 +1,7 @@
+data "oci_core_subnet" "selected_compute_subnet" {
+  subnet_id = var.subnet_ai_subnet_id
+}
+
 data "template_file" "cloud_init_file" {
   template = file("./cloud_init/bootstrap.template.yaml")
 

@@ -12,7 +12,7 @@ resource "oci_core_instance" "generated_oci_core_instance" {
   create_vnic_details {
     assign_ipv6ip             = "false"
     assign_private_dns_record = "true"
-    assign_public_ip          = "true"
+    assign_public_ip          = !local.compute_subnet_prohibits_public_ip
     subnet_id                 = var.subnet_ai_subnet_id
   }
   display_name = var.instance_display_name

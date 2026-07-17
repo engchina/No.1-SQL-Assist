@@ -313,8 +313,8 @@ variables:
     required: true
     visible: true
     title: "Application Git tag"
-    description: "Deploy an immutable non-main Git tag. The default release for this stack is v0.1.8."
-    default: "v0.1.8"
+    description: "Deploy an immutable non-main Git tag. The default release for this stack is v0.1.9."
+    default: "v0.1.9"
 
   instance_display_name:
     type: string
@@ -378,7 +378,7 @@ variables:
     required: true
     visible: true
     title: "Compute subnet"
-    description: "Select an existing subnet for the Compute instance. Use a public subnet unless you customize the stack to run the instance without a public IP."
+    description: "Select a public or private subnet. Public IP assignment is detected automatically from the selected subnet. Private subnets require NAT for installation and private connectivity for application and SSH access."
     dependsOn:
       compartmentId: ${compartment_ocid}
       vcnId: ${vcn_ai_vcn_id}
