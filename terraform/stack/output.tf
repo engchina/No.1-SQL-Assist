@@ -27,5 +27,5 @@ output "ssh_to_instance" {
 
 output "application_url" {
   description = "convenient URL to access the application using its public or private access IP"
-  value       = "http://${local.instance_access_ip}"
+  value       = var.application_port == 80 ? "http://${local.instance_access_ip}" : "http://${local.instance_access_ip}:${var.application_port}"
 }

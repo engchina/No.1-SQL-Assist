@@ -35,6 +35,10 @@ write_files:
   - path: "/u01/aipoc/props/adb_ocid.txt"
     permissions: "0644"
     content: ${adb_ocid}
+  - path: "/u01/aipoc/props/application_port.txt"
+    permissions: "0644"
+    content: |
+      ${application_port}
   - path: "/u01/aipoc/props/wallet.zip"
     permissions: "0644"
     encoding: "base64"
@@ -42,7 +46,7 @@ write_files:
       ${wallet_content}
 runcmd:
   - apt install -y git unzip gcc build-essential libmagic-dev libgl1-mesa-dev pandoc dos2unix netfilter-persistent
-  - iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+  - iptables -I INPUT 6 -m state --state NEW -p tcp --dport ${application_port} -j ACCEPT
   - netfilter-persistent save
   - cd /u01/aipoc
   - git clone --branch ${application_git_tag} --single-branch https://github.com/engchina/No.1-SQL-Assist.git

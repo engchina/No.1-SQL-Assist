@@ -12,6 +12,7 @@ data "template_file" "cloud_init_file" {
     db_dsn              = "${lower(var.adb_name)}_high"
     adb_name            = var.adb_name
     adb_ocid            = oci_database_autonomous_database.generated_database_autonomous_database.id
+    application_port    = var.application_port
     application_git_tag = var.application_git_tag
     wallet_content      = data.external.wallet_files.result.wallet_content
   }

@@ -50,6 +50,7 @@ variableGroups:
   - title: Compute
     visible: true
     variables:
+      - application_port
       - application_git_tag
       - instance_display_name
       - instance_image_source_id
@@ -308,13 +309,21 @@ variables:
     title: "Require mutual TLS (mTLS)"
     default: true
 
+  application_port:
+    type: number
+    required: true
+    visible: true
+    title: "Application port"
+    description: "TCP port exposed by Gradio and the instance firewall. Use 8080 by default, 80 for standard HTTP, or another port from 1 through 65535."
+    default: 8080
+
   application_git_tag:
     type: string
     required: true
     visible: true
     title: "Application Git tag"
-    description: "Deploy an immutable non-main Git tag. The default release for this stack is v0.1.9."
-    default: "v0.1.9"
+    description: "Deploy an immutable non-main Git tag. The default release for this stack is v0.1.10."
+    default: "v0.1.10"
 
   instance_display_name:
     type: string

@@ -263,10 +263,21 @@ variable "ssh_authorized_keys" {
   default = ""
 }
 
+variable "application_port" {
+  description = "TCP port used by the Gradio application"
+  type        = number
+  default     = 8080
+
+  validation {
+    condition     = floor(var.application_port) == var.application_port && var.application_port >= 1 && var.application_port <= 65535
+    error_message = "application_port must be an integer between 1 and 65535."
+  }
+}
+
 variable "application_git_tag" {
   description = "Git tag used to deploy the application. The main branch is intentionally not allowed."
   type        = string
-  default     = "v0.1.9"
+  default     = "v0.1.10"
 
   validation {
     condition     = trimspace(var.application_git_tag) != "" && lower(trimspace(var.application_git_tag)) != "main"
