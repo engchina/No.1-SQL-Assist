@@ -39,6 +39,10 @@ variableGroups:
       - license_model
       - adb_backup_retention_period_in_days
       - adb_password
+      - app_admin_password
+      - vpd_login_users
+      - vpd_shared_password
+      - vpd_runtime_password
       - adb_network_access_type
       - adb_subnet_id
       - adb_acl_notation_type
@@ -222,6 +226,50 @@ variables:
     # renders a second field to re-enter the password for confirmation
     confirmation: true
     pattern: "^(?!.*admin)(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?!.*[\"]).{12,30}$"
+
+  app_admin_password:
+    type: password
+    required: true
+    visible: true
+    title: "ADMIN web login password"
+    description: "Used only to authenticate the ADMIN user in SQL Assist. It may equal another configured password, but a warning will be shown."
+    confirmation: true
+    pattern: "^[^\r\n]+$"
+
+  vpd_login_users:
+    type: string
+    required: false
+    visible: true
+    title: "VPD login users"
+    description: "Optional comma-separated users in Oracle identifier form or digits-only form, each at most 64 ASCII characters, for example user001,001,01. The name admin is not allowed."
+    default: ""
+    pattern: "^$|^(?!.*(?:^|,)\\s*[Aa][Dd][Mm][Ii][Nn]\\s*(?:,|$))\\s*(?:[A-Za-z][A-Za-z0-9_$#]{0,63}|[0-9]{1,64})\\s*(?:,\\s*(?:[A-Za-z][A-Za-z0-9_$#]{0,63}|[0-9]{1,64})\\s*)*$"
+
+  vpd_shared_password:
+    type: password
+    required: false
+    visible:
+      not:
+        - eq:
+            - vpd_login_users
+            - ""
+    title: "VPD shared web login password"
+    description: "Shared by the configured VPD web users. It may equal another configured password, but a warning will be shown."
+    confirmation: true
+    pattern: "^[^\r\n]+$"
+
+  vpd_runtime_password:
+    type: password
+    required: false
+    visible:
+      not:
+        - eq:
+            - vpd_login_users
+            - ""
+    title: "SQL_ASSIST_RUNTIME database password"
+    description: "Only enter the password. Terraform constructs the full runtime connection string."
+    confirmation: true
+    pattern: "^(?!.*[\"]).{12,30}$"
 
   adb_network_access_type:
     type: enum

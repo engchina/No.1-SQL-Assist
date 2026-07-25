@@ -16,6 +16,7 @@ import pandas as pd
 import oci
 from dotenv import find_dotenv, get_key, load_dotenv, set_key
 from oracledb import DatabaseError
+from utils.vpd_util import require_admin
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -58,7 +59,8 @@ def get_region():
         return None
 
 
-def load_openai_settings():
+def load_openai_settings(request: gr.Request):
+    require_admin(request)
     try:
         env_path = find_dotenv()
         if not env_path:
@@ -440,8 +442,10 @@ def build_oci_genai_tab(pool):
         )
 
     def update_oci_config_wrapper(
-        user_ocid, tenancy_ocid, fingerprint, private_key_file, region
+        user_ocid, tenancy_ocid, fingerprint, private_key_file, region,
+        request: gr.Request,
     ):
+        require_admin(request)
         return update_oci_config(
             user_ocid, tenancy_ocid, fingerprint, private_key_file, region
         )
@@ -558,7 +562,8 @@ def build_oci_embedding_test_tab(pool):
     """
 
     # ラッパー関数の定義
-    def test_oci_cred_wrapper(test_query_text, embed_model):
+    def test_oci_cred_wrapper(test_query_text, embed_model, request: gr.Request):
+        require_admin(request)
         logger.info("Embedding test button clicked")
         logger.info(f"Model selected: {embed_model}")
         logger.info(f"Text preview: {str(test_query_text)[:80]}")
@@ -663,7 +668,8 @@ def build_oci_embedding_test_tab(pool):
         outputs=[tab_test_status_md, tab_test_oci_cred_vector_text],
     )
 
-    def create_oci_cred_from_config_wrapper():
+    def create_oci_cred_from_config_wrapper(request: gr.Request):
+        require_admin(request)
         for _vals in create_oci_db_credential_from_config(pool):
             yield _vals
 
@@ -678,7 +684,8 @@ def build_oci_embedding_test_tab(pool):
 
 
 def build_openai_settings_tab(pool=None):
-    def save_openai_settings(base_url, api_key):
+    def save_openai_settings(base_url, api_key, request: gr.Request):
+        require_admin(request)
         try:
             yield gr.Markdown(visible=True, value="⏳ 設定保存を開始します...")
             env_path = find_dotenv()
@@ -1218,7 +1225,8 @@ def build_oracle_ai_database_tab(pool=None):
                 logger.error(f"Wallet download/extract error: {e}")
                 return False
 
-        def _fetch(region):
+        def _fetch(region, request: gr.Request):
+            require_admin(request)
             """ADB OCIDを使用してADB情報を取得し、必要に応じてWalletをダウンロードする."""
             adb_ocid = os.environ.get("ADB_OCID", "")
             region_code = region
@@ -1358,7 +1366,8 @@ def build_oracle_ai_database_tab(pool=None):
                     "",
                 )
 
-        def _on_row_select(evt: gr.SelectData, current_df, mp):
+        def _on_row_select(evt: gr.SelectData, current_df, mp, request: gr.Request):
+            require_admin(request)
             try:
                 if isinstance(current_df, dict) and "data" in current_df:
                     headers = (
@@ -1452,7 +1461,8 @@ def build_oracle_ai_database_tab(pool=None):
                 else pd.DataFrame(columns=["表示名", "状態", "OCID"])
             )
 
-        def _start(region, selected_id, mp):
+        def _start(region, selected_id, mp, request: gr.Request):
+            require_admin(request)
             region_code = region
             mpv = _state_to_val(mp)
             if not selected_id:
@@ -1514,7 +1524,8 @@ def build_oracle_ai_database_tab(pool=None):
                     ),
                 )
 
-        def _stop(region, selected_id, mp):
+        def _stop(region, selected_id, mp, request: gr.Request):
+            require_admin(request)
             region_code = region
             mpv = _state_to_val(mp)
             if not selected_id:

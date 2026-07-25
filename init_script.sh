@@ -108,36 +108,61 @@ crontab main.cron
 
 # Update environment variables
 echo "環境変数を設定中..."
-cp .env.example .env
+install -m 0600 .env.example .env
+
+# Values containing '/', '@', '&', and backslashes are preserved exactly.
+source ./scripts/dotenv_util.sh
 
 # Check for property files before reading
 if [ -f "/u01/aipoc/props/db.env" ]; then
     DB_CONNECTION_STRING=$(cat /u01/aipoc/props/db.env)
-    sed -i "s|ORACLE_26AI_CONNECTION_STRING=TODO|ORACLE_26AI_CONNECTION_STRING=$DB_CONNECTION_STRING|g" .env
+    set_env_value ".env" "ORACLE_26AI_CONNECTION_STRING" "$DB_CONNECTION_STRING"
 else
     echo "警告: /u01/aipoc/props/db.env が見つかりません！"
 fi
 
+if [ -f "/u01/aipoc/props/admin_web_password.txt" ]; then
+    APP_ADMIN_PASSWORD_VALUE=$(cat /u01/aipoc/props/admin_web_password.txt)
+    set_env_value ".env" "APP_ADMIN_PASSWORD" "$APP_ADMIN_PASSWORD_VALUE"
+else
+    echo "警告: ADMIN Web認証パスワードの設定ファイルが見つかりません！"
+fi
+
+if [ -f "/u01/aipoc/props/vpd_login_users.txt" ]; then
+    VPD_LOGIN_USERS_VALUE=$(cat /u01/aipoc/props/vpd_login_users.txt)
+    set_env_value ".env" "ORACLE_VPD_LOGIN_USERS" "$VPD_LOGIN_USERS_VALUE"
+fi
+
+if [ -f "/u01/aipoc/props/vpd_shared_password.txt" ]; then
+    VPD_SHARED_PASSWORD_VALUE=$(cat /u01/aipoc/props/vpd_shared_password.txt)
+    set_env_value ".env" "APP_VPD_SHARED_PASSWORD" "$VPD_SHARED_PASSWORD_VALUE"
+fi
+
+if [ -f "/u01/aipoc/props/vpd_db.env" ]; then
+    VPD_CONNECTION_STRING=$(cat /u01/aipoc/props/vpd_db.env)
+    set_env_value ".env" "ORACLE_VPD_RUNTIME_CONNECTION_STRING" "$VPD_CONNECTION_STRING"
+fi
+
 if [ -f "/u01/aipoc/props/compartment_id.txt" ]; then
     COMPARTMENT_ID=$(cat /u01/aipoc/props/compartment_id.txt)
-    sed -i "s|OCI_COMPARTMENT_OCID=TODO|OCI_COMPARTMENT_OCID=$COMPARTMENT_ID|g" .env
+    set_env_value ".env" "OCI_COMPARTMENT_OCID" "$COMPARTMENT_ID"
 else
     echo "警告: /u01/aipoc/props/compartment_id.txt が見つかりません！"
 fi
 
 ADB_NAME=$(cat /u01/aipoc/props/adb_name.txt 2>/dev/null || true)
 if [ -n "$ADB_NAME" ]; then 
-    sed -i "s|ADB_NAME=TODO|ADB_NAME=$ADB_NAME|g" .env
+    set_env_value ".env" "ADB_NAME" "$ADB_NAME"
 fi
 
 # Add ADB OCID if available
 if [ -f "/u01/aipoc/props/adb_ocid.txt" ]; then
     ADB_OCID=$(cat /u01/aipoc/props/adb_ocid.txt)
-    sed -i "s|ADB_OCID=ocid1.autonomousdatabase.oc1..|ADB_OCID=$ADB_OCID|g" .env
+    set_env_value ".env" "ADB_OCID" "$ADB_OCID"
 fi
 
 # Set Oracle Client Library Directory
-sed -i "s|ORACLE_CLIENT_LIB_DIR=.*|ORACLE_CLIENT_LIB_DIR=${INSTANTCLIENT_DIR}|g" .env
+set_env_value ".env" "ORACLE_CLIENT_LIB_DIR" "$INSTANTCLIENT_DIR"
 
 # Setup wallet
 echo "ウォレットをセットアップ中..."
@@ -165,7 +190,7 @@ EXTERNAL_IP=$(curl -s -m 10 http://whatismyip.akamai.com/ || echo "")
 echo "外部IP: $EXTERNAL_IP"
 
 if [ -n "$EXTERNAL_IP" ]; then
-    sed -i "s|^EXTERNAL_IP=.*|EXTERNAL_IP=$EXTERNAL_IP|g" .env
+    set_env_value ".env" "EXTERNAL_IP" "$EXTERNAL_IP"
 else
     echo "警告: EXTERNAL_IPの検出に失敗しました"
 fi

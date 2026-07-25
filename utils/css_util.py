@@ -83,6 +83,10 @@ textarea {
   padding-bottom: 0;
 }
 
+.block.tab-intro {
+  margin-top: 10px;
+}
+
 .tab-container {
   button[role="tab"] {
     color: #606060;
@@ -132,6 +136,143 @@ textarea {
 
   .cell-wrap span {
     font-size: 0.8rem;
+  }
+}
+
+/* Shared operation feedback */
+.block.operation-status {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 12px !important;
+  border: 1px solid #bfd1e0;
+  border-left: 4px solid var(--primary-color);
+  border-radius: 3px;
+  background: #f3f8fc;
+}
+
+.block.operation-status .prose p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.block.operation-status--loading {
+  border-color: #bfd1e0;
+  border-left-color: var(--primary-color);
+  background: #f3f8fc;
+}
+
+.block.operation-status--success {
+  border-color: #a8d5ad;
+  border-left-color: #2e7d32;
+  background: #f2f8f3;
+  color: #235d27;
+}
+
+.block.operation-status--warning {
+  border-color: #f0cf75;
+  border-left-color: #c17b00;
+  background: #fff8e6;
+  color: #6f4b00;
+}
+
+.block.operation-status--error {
+  border-color: #f3aaa4;
+  border-left-color: #c43b31;
+  background: #fff3f2;
+  color: #8f1d18;
+}
+
+.vpd-status-table,
+.vpd-status-table .table-wrap,
+.vpd-inventory-table,
+.vpd-inventory-table .table-wrap {
+  border-radius: 3px;
+}
+
+.block.vpd-rule-help {
+  padding: 10px 12px !important;
+  border-left: 4px solid var(--primary-color);
+  background: #f3f8fc;
+}
+
+.vpd-form-row {
+  align-items: flex-start;
+}
+
+.vpd-access-mode [role="radiogroup"] {
+  flex-wrap: wrap;
+}
+
+.vpd-relation-row > .column {
+  min-width: 0;
+}
+
+.block.vpd-form-control,
+.vpd-dynamic-field {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.block.vpd-form-control {
+  border-radius: 3px;
+}
+
+.block.vpd-form-hint {
+  margin-top: 4px;
+  color: var(--body-text-color-subdued, #606060);
+  font-size: 0.875rem;
+}
+
+.block.vpd-form-hint .prose p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.block.vpd-danger-zone {
+  border: 1px solid #f0b7b2;
+  background: #fffafa;
+}
+
+.vpd-delete-action {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+@media (min-width: 769px) {
+  .vpd-status-table table.table {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .vpd-form-row {
+    gap: 8px;
+  }
+
+  .vpd-relation-row {
+    flex-direction: column;
+  }
+
+  .vpd-relation-row > .column {
+    width: 100%;
+  }
+
+  .block.vpd-form-hint {
+    margin-top: 4px;
+  }
+
+  .vpd-status-table .table-wrap,
+  .vpd-inventory-table .table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .vpd-status-table table.table,
+  .vpd-inventory-table table.table {
+    min-width: 680px;
   }
 }
 

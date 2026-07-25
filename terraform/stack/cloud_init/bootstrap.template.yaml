@@ -16,10 +16,30 @@ packages:
   - netfilter-persistent
 write_files:
   - path: "/u01/aipoc/props/db.env"
-    permissions: "0644"
+    permissions: "0600"
     encoding: "gzip+base64"
     content: |
       ${db_conn}
+  - path: "/u01/aipoc/props/admin_web_password.txt"
+    permissions: "0600"
+    encoding: "gzip+base64"
+    content: |
+      ${app_admin_password}
+  - path: "/u01/aipoc/props/vpd_login_users.txt"
+    permissions: "0600"
+    encoding: "gzip+base64"
+    content: |
+      ${vpd_login_users}
+  - path: "/u01/aipoc/props/vpd_shared_password.txt"
+    permissions: "0600"
+    encoding: "gzip+base64"
+    content: |
+      ${vpd_shared_password}
+  - path: "/u01/aipoc/props/vpd_db.env"
+    permissions: "0600"
+    encoding: "gzip+base64"
+    content: |
+      ${vpd_runtime_connection}
   - path: "/u01/aipoc/props/adb_name.txt"
     permissions: "0644"
     content: ${adb_name}
@@ -27,8 +47,10 @@ write_files:
     permissions: "0644"
     content: ${comp_id}
   - path: "/u01/aipoc/props/db_password.txt"
-    permissions: "0644"
-    content: ${db_pass}
+    permissions: "0600"
+    encoding: "gzip+base64"
+    content: |
+      ${db_pass}
   - path: "/u01/aipoc/props/adb_dsn.txt"
     permissions: "0644"
     content: ${db_dsn}

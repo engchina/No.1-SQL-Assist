@@ -16,6 +16,7 @@ import asyncio
 import os
 import oci
 from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL
+from utils.vpd_util import require_admin
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -510,7 +511,8 @@ def build_oci_chat_test_tab(pool):
                     chat_status_md = gr.Markdown(visible=False)
 
         # Event handlers with status markdown under the button
-        def send_chat_with_status(message, history, chat_model):
+        def send_chat_with_status(message, history, chat_model, request: gr.Request):
+            require_admin(request)
             try:
                 from utils.chat_util import get_oci_region, get_compartment_id
 
@@ -554,7 +556,8 @@ def build_oci_chat_test_tab(pool):
                     message,
                 )
 
-        def clear_chat_with_status():
+        def clear_chat_with_status(request: gr.Request):
+            require_admin(request)
             h, m = clear_chat()
             return gr.Markdown(visible=False), h, m
 

@@ -39,4 +39,17 @@ resource "oci_core_instance" "generated_oci_core_instance" {
     source_id               = var.instance_image_source_id
     source_type             = "image"
   }
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(var.app_admin_password) != ""
+      error_message = "app_admin_password must be configured."
+    }
+    precondition {
+      condition = trimspace(var.vpd_login_users) == "" || (
+        var.vpd_shared_password != "" && var.vpd_runtime_password != ""
+      )
+      error_message = "vpd_shared_password and vpd_runtime_password are required when vpd_login_users is not empty."
+    }
+  }
 }

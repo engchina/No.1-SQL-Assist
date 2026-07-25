@@ -144,6 +144,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Terraform provider cache (keep .terraform.lock.hcl for reproducibility)
+**/.terraform/
+
 # Spyder project settings
 .spyderproject
 .spyproject

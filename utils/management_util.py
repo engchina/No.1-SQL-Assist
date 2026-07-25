@@ -13,6 +13,8 @@ from dateutil import parser as dateutil_parser
 import gradio as gr
 import pandas as pd
 from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
+from utils.vpd_management_util import build_vpd_management_tab
+from utils.vpd_util import require_admin
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1235,7 +1237,7 @@ def execute_annotation_sql(pool, sql_statements):
         return f"❌ エラー: {str(e)}"
 
 
-def build_management_tab(pool):
+def build_management_tab(pool, vpd_pool=None):
     """Build the Management Function tab with three sub-functions.
     
     Args:
@@ -1365,7 +1367,8 @@ def build_management_tab(pool):
                         table_ai_result_md = gr.Markdown(visible=False)
             
             # Event handlers
-            def on_table_select(evt: gr.SelectData, current_df):
+            def on_table_select(evt: gr.SelectData, current_df, request: gr.Request):
+                require_admin(request)
                 """Handle table row selection.
                 
                 Always extracts the table name from the first column (Table Name),
@@ -1419,7 +1422,8 @@ def build_management_tab(pool):
                 
                 return "", gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value="")
             
-            def refresh_table_list():
+            def refresh_table_list(request: gr.Request):
+                require_admin(request)
                 try:
                     logger.info("テーブル一覧を取得ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ テーブル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
@@ -1430,7 +1434,8 @@ def build_management_tab(pool):
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
             
-            def drop_selected_table(table_name):
+            def drop_selected_table(table_name, request: gr.Request):
+                require_admin(request)
                 """Drop the selected table and refresh list."""
                 yield (
                     gr.Markdown(visible=True, value="⏳ テーブルを削除中..."),
@@ -1447,7 +1452,8 @@ def build_management_tab(pool):
                     gr.Textbox(visible=False, value="", autoscroll=False),
                 )
             
-            def execute_create(sql):
+            def execute_create(sql, request: gr.Request):
+                require_admin(request)
                 """Execute CREATE TABLE and refresh list."""
                 sql_no_comment = remove_comments(sql)
                 yield gr.Markdown(visible=True, value="⏳ テーブル作成を実行中...")
@@ -1455,11 +1461,13 @@ def build_management_tab(pool):
                 status_md = gr.Markdown(visible=True, value=result)
                 yield status_md
             
-            def clear_sql():
+            def clear_sql(request: gr.Request):
+                require_admin(request)
                 """Clear the SQL input."""
                 return ""
             
-            def load_table_sql_file(file_path):
+            def load_table_sql_file(file_path, request: gr.Request):
+                require_admin(request)
                 """
                 SQLファイルを読み込み、テキストボックスに表示する.
                 
@@ -1600,7 +1608,8 @@ def build_management_tab(pool):
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-            def table_ai_analyze(model_name, create_sql_text, exec_result_text):
+            def table_ai_analyze(model_name, create_sql_text, exec_result_text, request: gr.Request):
+                require_admin(request)
                 import asyncio
                 # 必須入力項目のチェック
                 if not model_name or not str(model_name).strip():
@@ -1792,7 +1801,8 @@ def build_management_tab(pool):
                         view_ai_result_md = gr.Markdown(visible=False)
             
             # Event handlers
-            def on_view_select(evt: gr.SelectData, current_df):
+            def on_view_select(evt: gr.SelectData, current_df, request: gr.Request):
+                require_admin(request)
                 """Handle view row selection.
                 
                 Always extracts the view name from the first column (View Name),
@@ -1846,7 +1856,8 @@ def build_management_tab(pool):
                 
                 return "", gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value="")
             
-            def refresh_view_list():
+            def refresh_view_list(request: gr.Request):
+                require_admin(request)
                 try:
                     logger.info("ビュー一覧を取得ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ ビュー一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
@@ -1857,7 +1868,8 @@ def build_management_tab(pool):
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
             
-            def drop_selected_view(view_name):
+            def drop_selected_view(view_name, request: gr.Request):
+                require_admin(request)
                 """Drop the selected view and refresh list."""
                 yield (
                     gr.Markdown(visible=True, value="⏳ ビューを削除中..."),
@@ -1871,7 +1883,8 @@ def build_management_tab(pool):
                 status_md = gr.Markdown(visible=True, value=result)
                 yield status_md, "", gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Textbox(visible=False, value="", autoscroll=False), "", ""
             
-            def execute_create_view_handler(sql):
+            def execute_create_view_handler(sql, request: gr.Request):
+                require_admin(request)
                 """Execute CREATE VIEW and refresh list."""
                 sql_no_comment = remove_comments(sql)
                 yield gr.Markdown(visible=True, value="⏳ ビュー作成を実行中...")
@@ -1879,11 +1892,13 @@ def build_management_tab(pool):
                 status_md = gr.Markdown(visible=True, value=result)
                 yield status_md
             
-            def clear_view_sql():
+            def clear_view_sql(request: gr.Request):
+                require_admin(request)
                 """Clear the SQL input."""
                 return ""
             
-            def load_view_sql_file(file_path):
+            def load_view_sql_file(file_path, request: gr.Request):
+                require_admin(request)
                 """
                 SQLファイルを読み込み、テキストボックスに表示する.
                 
@@ -2030,7 +2045,8 @@ def build_management_tab(pool):
                 except Exception:
                     return gr.Textbox(value="None", autoscroll=False), gr.Textbox(value="None", autoscroll=False)
 
-            def _view_join_where_ai_extract(model_name, ddl_text):
+            def _view_join_where_ai_extract(model_name, ddl_text, request: gr.Request):
+                require_admin(request)
                 import asyncio
                 # 必須入力項目のチェック
                 if not model_name or not str(model_name).strip():
@@ -2138,7 +2154,8 @@ def build_management_tab(pool):
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-            def view_ai_analyze(model_name, create_sql_text, exec_result_text):
+            def view_ai_analyze(model_name, create_sql_text, exec_result_text, request: gr.Request):
+                require_admin(request)
                 import asyncio
                 # 必須入力項目のチェック
                 if not model_name or not str(model_name).strip():
@@ -2367,7 +2384,8 @@ def build_management_tab(pool):
                         data_ai_result_md = gr.Markdown(visible=False)
             
             # Event Handlers
-            def refresh_data_table_list():
+            def refresh_data_table_list(request: gr.Request):
+                require_admin(request)
                 try:
                     logger.info("テーブル・ビュー一覧を取得ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ テーブル・ビュー一覧を取得中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[], visible=False)
@@ -2378,7 +2396,8 @@ def build_management_tab(pool):
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[], visible=False)
             
-            def display_data(table_name, limit, where_clause):
+            def display_data(table_name, limit, where_clause, request: gr.Request):
+                require_admin(request)
                 try:
                     yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(value="⏳ データを取得中...", visible=True)
                     df = display_table_data(pool, table_name, limit, where_clause)
@@ -2422,25 +2441,29 @@ def build_management_tab(pool):
                 except Exception as e:
                     yield gr.Dataframe(visible=False, value=pd.DataFrame()), gr.Markdown(value=f"❌ データ取得に失敗しました: {str(e)}", visible=True)
             
-            def upload_csv(file, table_name, mode):
+            def upload_csv(file, table_name, mode, request: gr.Request):
+                require_admin(request)
                 """Upload CSV file."""
                 yield gr.Dataframe(), gr.Markdown(visible=True, value="⏳ CSVアップロードを実行中..."), gr.Markdown(visible=False)
                 preview, result = upload_csv_data(pool, file, table_name, mode)
                 status_md = gr.Markdown(visible=True, value=result)
                 yield gr.Dataframe(visible=True, value=preview), gr.Markdown(visible=False), status_md
             
-            def execute_sql(sql):
+            def execute_sql(sql, request: gr.Request):
+                require_admin(request)
                 """Execute SQL statements."""
                 sql_no_comment = remove_comments(sql)
                 yield gr.Markdown(visible=True, value="⏳ SQL一括実行中..."), gr.Markdown(visible=False)
                 result = execute_data_sql(pool, sql_no_comment)
                 yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=result)
             
-            def clear_sql():
+            def clear_sql(request: gr.Request):
+                require_admin(request)
                 """Clear SQL input."""
                 return ""
             
-            def apply_sql_template(template):
+            def apply_sql_template(template, request: gr.Request):
+                require_admin(request)
                 """Apply SQL template to input."""
                 if not template:
                     return ""
@@ -2466,7 +2489,8 @@ def build_management_tab(pool):
                 outputs=[data_display, data_display_status]
             )
             
-            def preview_csv(file):
+            def preview_csv(file, request: gr.Request):
+                require_admin(request)
                 """Preview CSV file."""
                 if file:
                     try:
@@ -2570,7 +2594,8 @@ def build_management_tab(pool):
                 except Exception as e:
                     return gr.Markdown(visible=True, value=f"❌ エラー: {e}")
 
-            def data_ai_analyze(model_name, create_sql_text, exec_result_text):
+            def data_ai_analyze(model_name, create_sql_text, exec_result_text, request: gr.Request):
+                require_admin(request)
                 import asyncio
                 # 必須入力項目のチェック
                 if not model_name or not str(model_name).strip():
@@ -2599,3 +2624,8 @@ def build_management_tab(pool):
                 inputs=[data_ai_model_input, data_sql_input, data_sql_result],
                 outputs=[data_ai_status_md, data_ai_result_md],
             )
+
+        # Oracle VPD Management Tab (ADMIN only; parent tab visibility is
+        # enforced in main.py and every callback also performs an ADMIN check).
+        with gr.TabItem(label="VPDの管理"):
+            build_vpd_management_tab(pool, vpd_pool)

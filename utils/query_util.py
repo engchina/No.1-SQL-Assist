@@ -13,7 +13,18 @@ import gradio as gr
 import pandas as pd
 import oracledb
 from oracledb import DatabaseError
-from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
+from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL
+from utils.oracle_sql_util import (
+    OracleScriptError,
+    created_program,
+    is_single_select,
+    parse_oracle_script,
+)
+from utils.vpd_util import (
+    request_username,
+    user_role,
+    vpd_runtime_connection,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -21,46 +32,71 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+_ADMIN_QUERY_NOTICE = (
+    "ℹ️ SELECT/WITHは1文のみ実行可能です。"
+    "複数実行時はSELECTを含めないでください。\n\n"
+    "ℹ️ 通常SQLはセミコロンで終了します。package、function、procedure、"
+    "trigger、type、匿名PL/SQLブロックはSQL*Plus標準どおり、末尾に独占行の "
+    "`/` が必須です。\n\n"
+    "ℹ️ `SET`、`SPOOL`、`PROMPT`、`WHENEVER`、`@script.sql` は未対応です。"
+)
+
+_READ_ONLY_QUERY_NOTICE = (
+    "ℹ️ ADMIN以外のユーザーは、SELECT/WITHを1文のみ実行できます。\n\n"
+    "ℹ️ INSERT、UPDATE、DELETE、MERGE、DDL、PL/SQLなど、"
+    "データを変更する文は実行できません。\n\n"
+    "ℹ️ SQLファイルから読み込んだ内容にも同じ制限が適用されます。"
+)
+
 
 def _is_select_sql(sql: str) -> bool:
-    if not sql:
-        return False
-    s = sql.strip()
-    if not re.match(r"^\s*(select|with)\b", s, flags=re.IGNORECASE):
-        return False
-    if re.search(r"\b(insert|update|delete|merge|create|drop|alter|truncate|grant|revoke)\b", s, flags=re.IGNORECASE):
-        return False
-    sc = s.count(";")
-    if sc > 1:
-        return False
-    if sc == 1 and not s.endswith(";"):
-        return False
-    return True
+    return is_single_select(sql)
 
 
-def execute_select_sql(pool, sql: str, limit: int):
-    if not sql or not sql.strip():
-        logger.error("SQLが未入力です")
-        return (
-            gr.Markdown(visible=True, value="❌ エラー: SQLを入力してください"),
-            gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果"),
-            gr.HTML(visible=False, value=""),
-        )
+def _query_access_notice(role: str | None) -> str:
+    """Return the SQL execution guidance for an authenticated role."""
+    if role == "admin":
+        return _ADMIN_QUERY_NOTICE
+    if role == "vpd":
+        return _READ_ONLY_QUERY_NOTICE
+    return ""
 
-    if not _is_select_sql(sql):
-        ui_msg = "❌ エラー: SELECT文のみ実行可能です"
-        return (
-            gr.Markdown(visible=True, value=ui_msg),
-            gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果"),
-            gr.HTML(visible=False, value=""),
-        )
 
-    q = sql.strip()
-    if q.endswith(";"):
-        q = q[:-1]
+def _query_error_result(message: str):
+    return (
+        gr.Markdown(visible=True, value=message),
+        gr.Dataframe(
+            visible=False,
+            value=pd.DataFrame(),
+            label="実行結果",
+            elem_id="query_result_df",
+        ),
+        gr.HTML(visible=False, value=""),
+    )
+
+
+def _read_only_validation_error(sql: str) -> str | None:
+    if not sql or not str(sql).strip():
+        return "❌ エラー: SQLを入力してください"
+    if not _is_select_sql(str(sql)):
+        return "❌ エラー: SELECT/WITHは1文のみ実行可能です"
+    return None
+
+
+def execute_select_sql(pool, sql: str, limit: int, login_user: str | None = None):
+    validation_error = _read_only_validation_error(sql)
+    if validation_error:
+        logger.error(validation_error)
+        return _query_error_result(validation_error)
 
     try:
-        with pool.acquire() as conn:
+        q = parse_oracle_script(sql)[0].text
+        connection_scope = (
+            vpd_runtime_connection(pool, login_user)
+            if login_user
+            else pool.acquire()
+        )
+        with connection_scope as conn:
             with conn.cursor() as cursor:
                 cursor.execute(q)
                 rows = cursor.fetchmany(size=int(limit) if limit and int(limit) > 0 else 100)
@@ -158,7 +194,11 @@ def execute_select_sql(pool, sql: str, limit: int):
         code = m.group(0) if m else None
         hint = "SQLと権限、スキーマを確認してください"
         if code == "ORA-00942":
-            hint = "対象の表またはビューが存在しません。スキーマやオブジェクト名を確認してください"
+            hint = (
+                "対象の表またはビューが存在しないか、参照権限がありません。"
+                "スキーマ、オブジェクト名、データアクセスルールを"
+                "確認してください"
+            )
         ui_msg = f"❌ エラー: {s}\n\n👉 ヒント: {hint}"
         return (
             gr.Markdown(visible=True, value=ui_msg),
@@ -177,140 +217,6 @@ def execute_select_sql(pool, sql: str, limit: int):
     )
 
 
-def _split_sql_statements(sql: str):
-    if not sql:
-        return []
-    s = str(sql)
-    stmts = []
-    buf = []
-    in_s = False
-    in_d = False
-    in_lc = False
-    in_bc = False
-    pl = 0
-    i = 0
-    L = len(s)
-    def ahead_word(j):
-        k = j
-        while k < L and s[k].isspace():
-            k += 1
-        w = []
-        while k < L and (s[k].isalpha() or s[k] == '_'):
-            w.append(s[k])
-            k += 1
-        return ''.join(w).lower(), k
-    while i < L:
-        ch = s[i]
-        nxt = s[i+1] if i + 1 < L else ''
-        if in_lc:
-            buf.append(ch)
-            if ch == '\n':
-                in_lc = False
-            i += 1
-            continue
-        if in_bc:
-            buf.append(ch)
-            if ch == '*' and nxt == '/':
-                buf.append(nxt)
-                in_bc = False
-                i += 2
-            else:
-                i += 1
-            continue
-        if not in_s and not in_d:
-            if ch == '-' and nxt == '-':
-                buf.append(ch)
-                buf.append(nxt)
-                in_lc = True
-                i += 2
-                continue
-            if ch == '/' and nxt == '*':
-                buf.append(ch)
-                buf.append(nxt)
-                in_bc = True
-                i += 2
-                continue
-            # SQL*Plus style delimiter: a line containing only '/'
-            if ch == '/':
-                # Check that this '/' is the only non-whitespace on its line
-                # Look backward to previous newline
-                j = i - 1
-                only_ws_before = True
-                while j >= 0 and s[j] != '\n':
-                    if not s[j].isspace():
-                        only_ws_before = False
-                        break
-                    j -= 1
-                # Look forward to next newline
-                k = i + 1
-                only_ws_after = True
-                while k < L and s[k] != '\n':
-                    if not s[k].isspace():
-                        only_ws_after = False
-                        break
-                    k += 1
-                if only_ws_before and only_ws_after:
-                    st = ''.join(buf).strip()
-                    if st:
-                        stmts.append(st)
-                    buf = []
-                    # Skip '/' and the rest of the line including newline
-                    i = k + 1 if k < L and s[k] == '\n' else k
-                    # Reset PL/SQL nesting just in case
-                    pl = 0
-                    continue
-        if ch == "'" and not in_d:
-            buf.append(ch)
-            if in_s:
-                pk = s[i+1] if i + 1 < L else ''
-                if pk == "'":
-                    buf.append(pk)
-                    i += 2
-                    continue
-                in_s = False
-                i += 1
-            else:
-                in_s = True
-                i += 1
-            continue
-        if ch == '"' and not in_s:
-            buf.append(ch)
-            in_d = not in_d
-            i += 1
-            continue
-        if not in_s and not in_d:
-            if ch.isalpha():
-                w, k = ahead_word(i)
-                if w in ('begin', 'declare'):
-                    pl += 1
-                elif w == 'end':
-                    pass
-                i = k
-                buf.append(s[i-len(w):i])
-                continue
-            if ch == ';' and pl == 0:
-                st = ''.join(buf).strip()
-                if st:
-                    stmts.append(st)
-                buf = []
-                i += 1
-                continue
-            if ch == ';' and pl > 0:
-                js = ''.join(buf)
-                m = re.search(r"\bend\s*$", js, flags=re.IGNORECASE)
-                if m:
-                    pl = max(0, pl - 1)
-                buf.append(ch)
-                i += 1
-                continue
-        buf.append(ch)
-        i += 1
-    tail = ''.join(buf).strip()
-    if tail:
-        stmts.append(tail)
-    return stmts
-
-
 def _normalize_exec(stmt: str) -> str:
     s = str(stmt or '').strip()
     if re.match(r"^(exec|execute)\b", s, flags=re.IGNORECASE):
@@ -321,42 +227,26 @@ def _normalize_exec(stmt: str) -> str:
     return s
 
 
-def _stmt_type(stmt: str) -> str:
-    s = str(stmt or '').strip()
-    def strip_comments(x: str) -> str:
-        i = 0
-        L = len(x)
-        while True:
-            while i < L and x[i].isspace():
-                i += 1
-            if i + 1 < L and x[i] == '-' and x[i+1] == '-':
-                i += 2
-                while i < L and x[i] != '\n':
-                    i += 1
-                continue
-            if i + 1 < L and x[i] == '/' and x[i+1] == '*':
-                i += 2
-                while i + 1 < L and not (x[i] == '*' and x[i+1] == '/'):
-                    i += 1
-                i = i + 2 if i + 1 < L else L
-                continue
-            break
-        return x[i:]
-    s = strip_comments(s)
-    m = re.match(r"^comment\s+on\s+([a-zA-Z_]+(?:\s+[a-zA-Z_]+)?(?:\s+[a-zA-Z_]+)?)\b", s, flags=re.IGNORECASE)
-    if m:
-        # tgt = m.group(1).upper()
-        return "COMMENT"
-    if re.match(r"^(select|with)\b", s, flags=re.IGNORECASE):
-        return 'SELECT'
-    for k in ('insert', 'update', 'delete', 'merge', 'create', 'drop', 'alter', 'truncate', 'grant', 'revoke'):
-        if re.match(rf"^{k}\b", s, flags=re.IGNORECASE):
-            return k.upper()
-    if re.match(r"^(begin|declare)\b", s, flags=re.IGNORECASE):
-        return 'PLSQL'
-    if re.match(r"^(exec|execute)\b", s, flags=re.IGNORECASE):
-        return 'PLSQL'
-    return 'UNKNOWN'
+def _compilation_errors(cursor, sql: str) -> str:
+    program = created_program(sql)
+    if not program:
+        return ""
+    object_type, object_name = program
+    cursor.execute(
+        """
+        SELECT line, position, text
+        FROM user_errors
+        WHERE name = :name AND type = :object_type
+        ORDER BY sequence
+        """,
+        name=object_name,
+        object_type=object_type,
+    )
+    errors = cursor.fetchall()
+    return "\n".join(
+        f"line {line}, position {position}: {text}"
+        for line, position, text in errors
+    )
 
 
 def execute_sql_general(pool, sql: str, limit: int):
@@ -367,8 +257,20 @@ def execute_sql_general(pool, sql: str, limit: int):
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
             gr.HTML(visible=False, value=""),
         )
-    statements = _split_sql_statements(sql)
-    statements = [s for s in statements if s and s.strip()]
+    try:
+        parsed = parse_oracle_script(sql)
+    except OracleScriptError as exc:
+        return (
+            gr.Markdown(visible=True, value=f"❌ SQL形式エラー: {exc}"),
+            gr.Dataframe(
+                visible=False,
+                value=pd.DataFrame(),
+                label="実行結果",
+                elem_id="query_result_df",
+            ),
+            gr.HTML(visible=False, value=""),
+        )
+    statements = [statement for statement in parsed if statement.text.strip()]
     if not statements:
         logger.error("分割後のSQLが空です")
         return (
@@ -376,10 +278,10 @@ def execute_sql_general(pool, sql: str, limit: int):
             gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"),
             gr.HTML(visible=False, value=""),
         )
-    types = [_stmt_type(s) for s in statements]
+    types = [statement.statement_type for statement in statements]
     sel_count = sum(1 for t in types if t == 'SELECT')
     if len(statements) == 1 and sel_count == 1:
-        return execute_select_sql(pool, statements[0], limit)
+        return execute_select_sql(pool, statements[0].text, limit)
     if len(statements) > 1 and sel_count > 0:
         return (
             gr.Markdown(visible=True, value="❌ エラー: 複数実行にSELECTは含められません"),
@@ -389,6 +291,18 @@ def execute_sql_general(pool, sql: str, limit: int):
     import time
     rows = []
     ok = True
+    dml_types = {"INSERT", "UPDATE", "DELETE", "MERGE"}
+    ddl_types = {
+        "CREATE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE",
+        "GRANT",
+        "REVOKE",
+        "COMMENT",
+    }
+    pure_dml = all(statement.statement_type in dml_types for statement in statements)
+    implicit_commit_seen = False
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
@@ -396,16 +310,30 @@ def execute_sql_general(pool, sql: str, limit: int):
                     cursor.callproc("dbms_output.enable")
                 except Exception as e:
                     logger.error(f"dbms_output.enable failed: {e}")
-                for idx, st in enumerate(statements, start=1):
-                    typ = _stmt_type(st)
-                    run = _normalize_exec(st)
+                for idx, statement in enumerate(statements, start=1):
+                    typ = statement.statement_type
+                    run = _normalize_exec(statement.text)
                     t0 = time.perf_counter()
+                    execution_reached = False
                     try:
+                        if typ in ddl_types:
+                            # Oracle commits the current transaction immediately
+                            # before attempting a DDL statement.
+                            implicit_commit_seen = True
+                            for previous in rows:
+                                if previous[2] == "成功":
+                                    previous[5] = "DDL実行前COMMITにより確定"
                         cursor.execute(run)
+                        execution_reached = True
+                        compile_errors = _compilation_errors(cursor, run)
+                        if compile_errors:
+                            raise RuntimeError(
+                                "Oracleコンパイルエラー:\n" + compile_errors
+                            )
                         rc = cursor.rowcount if hasattr(cursor, 'rowcount') else None
                         dur = int((time.perf_counter() - t0) * 1000)
                         is_dml = typ in ('INSERT', 'UPDATE', 'DELETE', 'MERGE')
-                        is_plsql = typ == 'PLSQL'
+                        is_plsql = statement.is_plsql_unit or typ == 'PLSQL'
                         is_comment = (typ == 'COMMENT')
                         msg = _fetch_dbms_output(cursor)
                         if is_dml:
@@ -416,34 +344,113 @@ def execute_sql_general(pool, sql: str, limit: int):
                             msg = msg or 'Comment applied'
                         else:
                             msg = msg or 'OK'
-                        rows.append([idx, typ, '成功', rc if rc is not None else -1, msg, dur])
+                        if typ in ddl_types:
+                            permanence = "DDLにより確定"
+                        elif is_plsql:
+                            permanence = "完了時にCOMMIT（内部COMMITは要確認）"
+                        else:
+                            permanence = "未確定"
+                        rows.append(
+                            [
+                                idx,
+                                typ,
+                                "成功",
+                                rc if rc is not None else -1,
+                                msg,
+                                permanence,
+                                dur,
+                            ]
+                        )
                     except Exception as e:
                         ok = False
                         dur = int((time.perf_counter() - t0) * 1000)
                         msg = str(e)
                         logger.error(f"Statement #{idx} failed: {e}")
                         logger.error(traceback.format_exc())
-                        rows.append([idx, typ, '失敗', -1, msg, dur])
+                        if typ in ddl_types and execution_reached:
+                            permanence = (
+                                "DDLは確定済み（コンパイル状態を確認）"
+                            )
+                        elif typ in ddl_types:
+                            permanence = (
+                                "DDL自身は未反映（直前までの処理は確定）"
+                            )
+                        else:
+                            permanence = "未反映"
+                        rows.append(
+                            [idx, typ, "失敗", -1, msg, permanence, dur]
+                        )
+                        break
                 if ok:
                     conn.commit()
+                    for row in rows:
+                        if row[2] == "成功":
+                            row[5] = "確定"
                 else:
                     conn.rollback()
+                    for row in rows:
+                        if row[2] != "成功":
+                            continue
+                        if row[5] in {
+                            "DDLにより確定",
+                            "DDL実行前COMMITにより確定",
+                        }:
+                            continue
+                        if row[1] == "PLSQL":
+                            row[5] = "ロールバック要求済み（内部COMMITは要確認）"
+                        else:
+                            row[5] = "ロールバック済み"
     except Exception as e:
         logger.error(f"SQL実行に失敗しました: {e}")
         logger.error(traceback.format_exc())
         s = str(e)
-        df = pd.DataFrame(rows, columns=["No", "Type", "Status", "RowsAffected", "Message", "Duration_ms"]) if rows else pd.DataFrame()
+        df = pd.DataFrame(
+            rows,
+            columns=[
+                "No",
+                "Type",
+                "Status",
+                "RowsAffected",
+                "Message",
+                "Permanent",
+                "Duration_ms",
+            ],
+        ) if rows else pd.DataFrame()
         info = f"❌ エラー: {s}"
         return (
             gr.Markdown(visible=True, value=info),
             gr.Dataframe(visible=True, value=df, label="実行結果", elem_id="query_result_df"),
             gr.HTML(visible=False, value=""),
         )
-    df = pd.DataFrame(rows, columns=["No", "Type", "Status", "RowsAffected", "Message", "Duration_ms"]) if rows else pd.DataFrame()
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "No",
+            "Type",
+            "Status",
+            "RowsAffected",
+            "Message",
+            "Permanent",
+            "Duration_ms",
+        ],
+    ) if rows else pd.DataFrame()
     succ = sum(1 for r in rows if r[2] == '成功')
     fail = sum(1 for r in rows if r[2] == '失敗')
-    tx = "コミット済み" if ok else "ロールバック済み"
+    if ok:
+        tx = "全成功・コミット済み"
+    elif pure_dml:
+        tx = "全体ロールバック済み"
+    elif implicit_commit_seen:
+        tx = "失敗箇所で停止（DDL確定分はロールバック不可）"
+    else:
+        tx = "失敗箇所で停止・ロールバック要求済み"
     summary = f"成功: {succ}件 / 失敗: {fail}件 ({tx})"
+    if not pure_dml:
+        summary = (
+            "⚠️ このバッチにはDDL/PLSQLが含まれます。Oracleの暗黙COMMIT、"
+            "またはPL/SQL内の明示COMMITはロールバックできません。\n\n"
+            + summary
+        )
     icon = "✅" if fail == 0 else "⚠️"
     return (
         gr.Markdown(visible=True, value=f"{icon} {summary}"),
@@ -452,10 +459,32 @@ def execute_sql_general(pool, sql: str, limit: int):
     )
 
 
-def build_query_tab(pool):
+def _execute_query_for_user(
+    admin_pool,
+    vpd_pool,
+    username: str,
+    sql: str,
+    limit: int,
+):
+    """Route SQL through the execution policy for the authenticated user."""
+    role = user_role(username)
+    if role == "admin":
+        return execute_sql_general(admin_pool, sql, limit)
+    if role != "vpd":
+        raise PermissionError("ログインユーザーを確認できません")
+
+    validation_error = _read_only_validation_error(sql)
+    if validation_error:
+        return _query_error_result(validation_error)
+    if vpd_pool is None:
+        raise RuntimeError("VPD実行プールが設定されていません")
+    return execute_select_sql(vpd_pool, sql, limit, login_user=username)
+
+
+def build_query_tab(pool, vpd_pool=None):
     """クエリ実行タブのUIを構築する."""
     with gr.Accordion(label="1. SQLの入力", open=True):
-        gr.Markdown("ℹ️ SELECTは1文のみ実行可能。複数実行時はSELECTを含めないでください。\n\nℹ️ INSERT/UPDATE/DELETE/MERGE/CREATE/DROP/COMMENT/(PL/SQL)/EXECは複数文をセミコロン、または行単位の '/' で区切って同時実行可能。\n\n")
+        query_notice = gr.Markdown(value="", visible=False)
         with gr.Accordion(label="SQLファイル（.sql / .txt 形式をサポート）", open=False):
             with gr.Row():
                 with gr.Column(scale=1):
@@ -643,11 +672,17 @@ def build_query_tab(pool):
         finally:
             loop.close()
 
-    def on_execute(sql, limit):
+    def on_execute(sql, limit, request: gr.Request):
         try:
             yield gr.Markdown(visible=True, value="⏳ 実行中..."), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果", elem_id="query_result_df"), gr.HTML(visible=False, value="")
-            sql_no_comment = remove_comments(sql)
-            result_info, result_df, result_style = execute_sql_general(pool, sql_no_comment, limit)
+            username = request_username(request)
+            result_info, result_df, result_style = _execute_query_for_user(
+                pool,
+                vpd_pool,
+                username,
+                sql,
+                limit,
+            )
             yield result_info, result_df, result_style
         except Exception as e:
             yield gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {str(e)}"), gr.Dataframe(visible=False), gr.HTML(visible=False, value="")
@@ -715,6 +750,9 @@ def build_query_tab(pool):
         fn=on_clear,
         outputs=[sql_input],
     )
+
+    return query_notice
+
 
 def _fetch_dbms_output(cursor, batch: int = 1000) -> str:
     try:

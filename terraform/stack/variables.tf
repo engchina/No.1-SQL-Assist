@@ -30,6 +30,63 @@ variable "adb_password" {
   default   = ""
 }
 
+variable "app_admin_password" {
+  description = "Password used only for ADMIN web authentication"
+  type        = string
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition     = !can(regex("[\r\n]", var.app_admin_password))
+    error_message = "app_admin_password must not contain line breaks."
+  }
+}
+
+variable "vpd_login_users" {
+  description = "Optional comma-separated application users whose SELECTs run through Oracle VPD"
+  type        = string
+  default     = ""
+
+  validation {
+    condition = alltrue([
+      for username in split(",", var.vpd_login_users) :
+      trimspace(username) == "" || (
+        lower(trimspace(username)) != "admin" &&
+        can(regex("^([A-Za-z][A-Za-z0-9_$#]{0,63}|[0-9]{1,64})$", trimspace(username)))
+      )
+    ])
+    error_message = "vpd_login_users must contain comma-separated usernames in Oracle identifier form or digits-only form, each at most 64 characters, and must not contain admin."
+  }
+}
+
+variable "vpd_shared_password" {
+  description = "Shared web-login password for configured VPD users"
+  type        = string
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition     = !can(regex("[\r\n]", var.vpd_shared_password))
+    error_message = "vpd_shared_password must not contain line breaks."
+  }
+}
+
+variable "vpd_runtime_password" {
+  description = "Database password for the fixed SQL_ASSIST_RUNTIME account"
+  type        = string
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition = var.vpd_runtime_password == "" || (
+      length(var.vpd_runtime_password) >= 12 &&
+      length(var.vpd_runtime_password) <= 30 &&
+      !can(regex("[\"\r\n]", var.vpd_runtime_password))
+    )
+    error_message = "vpd_runtime_password must be 12-30 characters and must not contain double quotes or line breaks."
+  }
+}
+
 variable "adb_workload" {
   description = "Autonomous Database workload type"
   type        = string

@@ -18,7 +18,7 @@ from dotenv import find_dotenv, load_dotenv
 from gradio.themes import Default, GoogleFont
 import logging
 
-from utils.auth_util import do_auth
+from utils.auth_util import access_navigation_for_role, do_auth
 from utils.css_util import custom_css
 
 # from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab, build_openai_settings_tab
@@ -26,7 +26,14 @@ from utils.chat_util import build_oci_chat_test_tab
 from utils.settings_tab import build_settings_tab
 from utils.management_util import build_management_tab
 from utils.selectai_util import build_selectai_tab
-from utils.query_util import build_query_tab
+from utils.query_util import _query_access_notice, build_query_tab
+from utils.vpd_util import (
+    VpdConfigurationError,
+    normalize_vpd_login_users,
+    parse_oracle_connection_string,
+    request_username,
+    user_role,
+)
 
 # Suppress NumPy warnings about longdouble on certain platforms
 warnings.filterwarnings("ignore", message=".*does not match any known type.*")
@@ -61,9 +68,10 @@ if platform.system() == "Linux":
 
 # Lazy database connection pool
 class LazyPool:
-    def __init__(self, **kwargs):
+    def __init__(self, config_name="ORACLE_26AI_CONNECTION_STRING", **kwargs):
         self._pool = None
         self._kwargs = kwargs
+        self._config_name = config_name
         self._lock = threading.RLock()
 
     def _ensure(self):
@@ -72,7 +80,7 @@ class LazyPool:
                 dsn = self._kwargs.get("dsn")
                 if not dsn or not str(dsn).strip():
                     logger.warning("DSN is empty; skip creating DB connection pool")
-                    raise RuntimeError("ORACLE_26AI_CONNECTION_STRING is not set")
+                    raise RuntimeError(f"{self._config_name} is not set")
                 if str(
                     os.environ.get("DB_CONNECT_PRECHECK_ENABLED", "false")
                 ).lower() in ("1", "true", "yes"):
@@ -92,10 +100,7 @@ class LazyPool:
         host = None
         port = None
         try:
-            if "@" in dsn:
-                after = dsn.split("@", 1)[1]
-            else:
-                after = dsn
+            after = parse_oracle_connection_string(dsn).dsn
             hp = after.split("/")[0]
             parts = hp.split(":")
             host = parts[0] if parts else None
@@ -197,7 +202,29 @@ pool = LazyPool(
     timeout=30,
     getmode=oracledb.POOL_GETMODE_WAIT,
 )
-logger.info("LazyPool configured")
+try:
+    configured_vpd_users = normalize_vpd_login_users()
+except VpdConfigurationError as exc:
+    configured_vpd_users = ()
+    logger.error("VPD login-user configuration is invalid: %s", exc)
+
+vpd_pool = (
+    LazyPool(
+        config_name="ORACLE_VPD_RUNTIME_CONNECTION_STRING",
+        dsn=os.environ.get("ORACLE_VPD_RUNTIME_CONNECTION_STRING", ""),
+        min=0,
+        max=8,
+        increment=1,
+        timeout=30,
+        getmode=oracledb.POOL_GETMODE_WAIT,
+    )
+    if configured_vpd_users
+    else None
+)
+logger.info(
+    "Database pools configured (VPD runtime pool enabled=%s)",
+    vpd_pool is not None,
+)
 
 
 # Configure Gradio theme
@@ -219,23 +246,31 @@ with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん")
         elem_classes="sub_Header",
     )
 
-    with gr.Tabs():
-        with gr.TabItem(label="環境設定"):
+    with gr.Tabs() as primary_tabs:
+        with gr.TabItem(label="環境設定") as settings_tab:
             # 環境設定関連のタブを構築
             build_settings_tab(pool)
 
-        with gr.TabItem(label="データベース管理"):
+        with gr.TabItem(label="データベース管理") as management_tab:
             # 管理機能タブを構築
-            build_management_tab(pool)
+            build_management_tab(pool, vpd_pool)
 
-        with gr.TabItem(label="SQLの実行"):
+        with gr.TabItem(label="SQLの実行") as query_tab:
             # SQLの実行タブを構築
-            build_query_tab(pool)
+            query_notice = build_query_tab(pool, vpd_pool)
 
-        with gr.TabItem(label="SelectAI 連携"):
-            build_selectai_tab(pool)
+        with gr.TabItem(label="SelectAI 連携") as selectai_tab:
+            (
+                developer_features_tab,
+                user_features_tab,
+                selectai_feature_tabs,
+                user_function_tabs,
+                user_basic_tab,
+                sql_learning_schema_setup,
+                sql_learning_select_lessons,
+            ) = build_selectai_tab(pool, vpd_pool)
 
-        with gr.TabItem(label="AI チャット"):
+        with gr.TabItem(label="AI チャット") as chat_tab:
             build_oci_chat_test_tab(pool)
 
     gr.Markdown(
@@ -243,6 +278,68 @@ with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん")
         elem_classes="sub_Header",
     )
     gr.Markdown(value="### Developed by Oracle Japan", elem_classes="sub_Header")
+
+    def _apply_access_visibility(request: gr.Request):
+        role = user_role(request_username(request))
+        navigation = access_navigation_for_role(role)
+        primary_targets = {
+            "settings": settings_tab.id,
+            "selectai": selectai_tab.id,
+        }
+        selectai_targets = {
+            "developer": developer_features_tab.id,
+            "user": user_features_tab.id,
+        }
+        user_targets = {"basic": user_basic_tab.id}
+        return (
+            gr.Tabs(
+                selected=primary_targets.get(navigation.primary_selection)
+            ),
+            gr.TabItem(visible=navigation.settings_visible),
+            gr.TabItem(visible=navigation.management_visible),
+            gr.TabItem(visible=navigation.query_visible),
+            gr.TabItem(visible=navigation.selectai_visible),
+            gr.TabItem(visible=navigation.chat_visible),
+            gr.Tabs(
+                selected=selectai_targets.get(
+                    navigation.selectai_selection
+                )
+            ),
+            gr.TabItem(visible=navigation.developer_features_visible),
+            gr.TabItem(visible=navigation.user_features_visible),
+            gr.Tabs(
+                selected=user_targets.get(navigation.user_selection)
+            ),
+            gr.Markdown(
+                value=_query_access_notice(role),
+                visible=navigation.query_visible,
+            ),
+            gr.Accordion(
+                visible=navigation.sql_learning_schema_setup_visible
+            ),
+            gr.Accordion(
+                label=navigation.sql_learning_select_label
+            ),
+        )
+
+    app.load(
+        fn=_apply_access_visibility,
+        outputs=[
+            primary_tabs,
+            settings_tab,
+            management_tab,
+            query_tab,
+            selectai_tab,
+            chat_tab,
+            selectai_feature_tabs,
+            developer_features_tab,
+            user_features_tab,
+            user_function_tabs,
+            query_notice,
+            sql_learning_schema_setup,
+            sql_learning_select_lessons,
+        ],
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Launch SQL Assist web application")

@@ -8,6 +8,7 @@ import json
 import re
 import os
 import asyncio
+import inspect
 from datetime import datetime
 from dotenv import find_dotenv, load_dotenv  # noqa: E402
 from pathlib import Path
@@ -23,6 +24,13 @@ from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import EmbedTextDetails
 
 from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
+from utils.oracle_sql_util import is_single_select, parse_oracle_script
+from utils.vpd_util import (
+    request_username,
+    require_admin,
+    user_role,
+    vpd_runtime_connection,
+)
 
 from utils.management_util import (
     get_table_list,
@@ -38,6 +46,28 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
+
+def _admin_only_event(fn):
+    """Inject an ADMIN authorization check into a Gradio event callback."""
+    if inspect.isasyncgenfunction(fn):
+        async def guarded(request: gr.Request, *args):
+            require_admin(request)
+            async for item in fn(*args):
+                yield item
+    elif inspect.iscoroutinefunction(fn):
+        async def guarded(request: gr.Request, *args):
+            require_admin(request)
+            return await fn(*args)
+    elif inspect.isgeneratorfunction(fn):
+        def guarded(request: gr.Request, *args):
+            require_admin(request)
+            yield from fn(*args)
+    else:
+        def guarded(request: gr.Request, *args):
+            require_admin(request)
+            return fn(*args)
+    return guarded
 
 # Load environment variables
 load_dotenv(find_dotenv())
@@ -1056,9 +1086,9 @@ def _predict_domain_and_set_profile(text):
         ch = _load_profiles_from_json() or [("", "")]
         return gr.Dropdown(choices=ch, value=ch[0][1])
 
-def build_selectai_tab(pool):
-    with gr.Tabs():
-        with gr.TabItem(label="開発者機能"):
+def build_selectai_tab(pool, vpd_pool=None):
+    with gr.Tabs() as selectai_feature_tabs:
+        with gr.TabItem(label="開発者機能") as developer_features_tab:
             with gr.Tabs():
                 with gr.TabItem(label="プロファイル管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
@@ -1478,12 +1508,12 @@ def build_selectai_tab(pool):
                         yield gr.Markdown(visible=True, value=msg)
 
                 profile_refresh_event = profile_refresh_btn.click(
-                    fn=refresh_profiles,
+                    fn=_admin_only_event(refresh_profiles),
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
                 )
 
                 profile_list_df.select(
-                    fn=on_profile_select,
+                    fn=_admin_only_event(on_profile_select),
                     inputs=[profile_list_df, compartment_id_input],
                     outputs=[selected_profile_name, category_text, profile_json_text, selected_profile_original_name],
                 )
@@ -1513,20 +1543,20 @@ def build_selectai_tab(pool):
                         yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), edited_name, gr.Textbox(value=category), gr.Textbox(value="", autoscroll=False), original_name
 
                 profile_delete_event = profile_delete_btn.click(
-                    fn=_delete_profile_handler,
+                    fn=_admin_only_event(_delete_profile_handler),
                     inputs=[selected_profile_name],
                     outputs=[profile_action_status, selected_profile_name, category_text, profile_json_text],
                 ).then(
-                    fn=refresh_profiles,
+                    fn=_admin_only_event(refresh_profiles),
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
                 )
 
                 profile_update_event = profile_update_btn.click(
-                    fn=_update_profile_handler,
+                    fn=_admin_only_event(_update_profile_handler),
                     inputs=[selected_profile_original_name, selected_profile_name, category_text],
                     outputs=[profile_action_status, selected_profile_name, category_text, profile_json_text, selected_profile_original_name],
                 ).then(
-                    fn=refresh_profiles,
+                    fn=_admin_only_event(refresh_profiles),
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
                 )
 
@@ -1542,12 +1572,12 @@ def build_selectai_tab(pool):
                         yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
 
                 refresh_btn.click(
-                    fn=refresh_sources_handler,
+                    fn=_admin_only_event(refresh_sources_handler),
                     outputs=[refresh_status, tables_input, views_input],
                 )
 
                 profile_build_event = build_btn.click(
-                    fn=build_profile,
+                    fn=_admin_only_event(build_profile),
                     inputs=[
                         profile_name,
                         tables_input,
@@ -1565,7 +1595,7 @@ def build_selectai_tab(pool):
                     ],
                     outputs=[create_info],
                 ).then(
-                    fn=refresh_profiles,
+                    fn=_admin_only_event(refresh_profiles),
                     outputs=[profile_refresh_status, profile_list_df, profile_list_style],
                 )
 
@@ -2020,21 +2050,21 @@ def build_selectai_tab(pool):
                             mt_test_result = gr.Markdown(visible=False)
 
                     td_refresh_btn.click(
-                        fn=_td_refresh,
+                        fn=_admin_only_event(_td_refresh),
                         outputs=[td_refresh_status, td_list_df],
                     )
                     td_upload_excel_btn.click(
-                        fn=_td_upload_excel,
+                        fn=_admin_only_event(_td_upload_excel),
                         inputs=[td_upload_excel_file],
                         outputs=[td_upload_result],
                     )
                     td_train_btn.click(
-                        fn=_td_train,
+                        fn=_admin_only_event(_td_train),
                         inputs=[td_embed_model],
                         outputs=[td_train_status],
                     )
                     mt_test_btn.click(
-                        fn=_mt_test,
+                        fn=_admin_only_event(_mt_test),
                         inputs=[mt_text_input],
                         outputs=[mt_test_result, mt_label_text],
                     )
@@ -2794,7 +2824,7 @@ def build_selectai_tab(pool):
                                     for pattern in error_patterns:
                                         if pattern.lower() in generated_sql.lower():
                                             logger.warning(f"SQL生成失敗メッセージを検出: {generated_sql[:500]}...")
-                                            yield f"❌ エラー: SQL生成に失敗しました。プロンプトを見直してください。", generated_sql
+                                            yield "❌ エラー: SQL生成に失敗しました。プロンプトを見直してください。", generated_sql
                                             return
                                     
                                     yield "✅ SQL生成完了", generated_sql
@@ -2804,7 +2834,7 @@ def build_selectai_tab(pool):
                             yield f"❌ エラー: {e}", ""
                             return
 
-                    def _step_generate_and_run_common(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, elem_id="selectai_dev_chat_result_df", include_feedback=True):
+                    def _step_generate_and_run_common(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, elem_id="selectai_dev_chat_result_df", include_feedback=True, login_user=None):
                         """SQL生成と実行を統合し、実行エラー時にSQL生成から再試行する.
                         
                         Args:
@@ -2883,7 +2913,9 @@ def build_selectai_tab(pool):
                                 sql_execution_failed = False
                                 logger.info(f"SQL実行開始: generated_sql={generated_sql[:100] if generated_sql else '(空)'}...")
                                 
-                                for exec_status_msg, result_df, col_widths in _run_sql_common(generated_sql, elem_id):
+                                for exec_status_msg, result_df, col_widths in _run_sql_common(
+                                    generated_sql, elem_id, login_user=login_user
+                                ):
                                     # Gradioオブジェクトを構築
                                     exec_status_md = gr.Markdown(visible=True, value=exec_status_msg)
                                     if result_df is not None and len(result_df) > 0:
@@ -2949,8 +2981,9 @@ def build_selectai_tab(pool):
                                         yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(エラー)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
                                     return
 
-                    def _dev_step_generate_and_run(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                    def _dev_step_generate_and_run(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, request: gr.Request):
                         """開発者向けSQL生成と実行を統合し、実行エラー時にSQL生成から再試行する."""
+                        require_admin(request)
                         yield from _step_generate_and_run_common(
                             profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
                             elem_id="selectai_dev_chat_result_df", include_feedback=True
@@ -2961,7 +2994,7 @@ def build_selectai_tab(pool):
                         for status_msg, sql_value in _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                             yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=sql_value, autoscroll=False)
 
-                    def _run_sql_common(sql_text, elem_id):
+                    def _run_sql_common(sql_text, elem_id, login_user=None):
                         """SQLを実行する（リトライなし、エラー時は呼び出し元がハンドリング）.
                         
                         Yields:
@@ -2971,17 +3004,25 @@ def build_selectai_tab(pool):
                                 - col_widths: カラム幅リスト（Noneの場合あり）
                         """
                         s = str(sql_text or "").strip()
-                        if not s or not re.match(r"^\s*(select|with)\b", s, flags=re.IGNORECASE):
-                            yield "✅ 表示完了（データなし）", None, None
+                        if not is_single_select(s):
+                            yield "❌ エラー: SELECT/WITH 1文のみ実行できます", None, None
                             return
                         
                         try:
                             yield "⏳ 実行中...", None, None
-                            with pool.acquire() as conn:
+                            run_sql = parse_oracle_script(s)[0].text
+                            execution_pool = vpd_pool if login_user else pool
+                            if execution_pool is None:
+                                raise RuntimeError("VPD実行プールが設定されていません")
+                            connection_scope = (
+                                vpd_runtime_connection(
+                                    execution_pool, login_user
+                                )
+                                if login_user
+                                else execution_pool.acquire()
+                            )
+                            with connection_scope as conn:
                                 with conn.cursor() as cursor:
-                                    run_sql = s
-                                    if run_sql.endswith(";"):
-                                        run_sql = run_sql[:-1]
                                     cursor.execute(run_sql)
                                     exec_rows = cursor.fetchmany(size=10000)
                                     exec_cols = [d[0] for d in cursor.description] if cursor.description else []
@@ -3016,39 +3057,6 @@ def build_selectai_tab(pool):
                             logger.error(f"_run_sql_common error: {e}")
                             yield f"❌ エラー: {e}", None, None
                             return
-
-                    def _dev_step_run_sql(generated_sql, status_text=None):
-                        """開発者向けSQL実行（値からGradioオブジェクトを構築）."""
-                        if status_text and "❌" in str(status_text):
-                            return
-                        elem_id = "selectai_dev_chat_result_df"
-                        for status_msg, result_df, col_widths in _run_sql_common(generated_sql, elem_id):
-                            status_md = gr.Markdown(visible=True, value=status_msg)
-                            if result_df is not None and len(result_df) > 0:
-                                df_component = gr.Dataframe(
-                                    visible=True,
-                                    value=result_df,
-                                    label=f"実行結果（件数: {len(result_df)}）",
-                                    interactive=False,
-                                    wrap=True,
-                                    elem_id=elem_id,
-                                )
-                                style_value = ""
-                                if col_widths:
-                                    rules = []
-                                    rules.append(f"#{elem_id} {{ width: 100% !important; }}")
-                                    rules.append(f"#{elem_id} .wrap {{ overflow-x: auto !important; }}")
-                                    rules.append(f"#{elem_id} table {{ table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }}")
-                                    for idx, pct in enumerate(col_widths, start=1):
-                                        rules.append(
-                                            f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
-                                        )
-                                    style_value = "<style>" + "\n".join(rules) + "</style>"
-                                style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                            else:
-                                df_component = gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id)
-                                style_component = gr.HTML(visible=False, value="")
-                            yield status_md, df_component, style_component
 
                     async def _dev_ai_analyze_async(model_name, sql_text, dev_prompt, user_prompt, structure_prompt):
                         try:
@@ -3359,25 +3367,25 @@ def build_selectai_tab(pool):
                     )
 
                     dev_ai_analyze_btn.click(
-                        fn=_dev_ai_analyze,
+                        fn=_admin_only_event(_dev_ai_analyze),
                         inputs=[dev_analysis_model_input, dev_generated_sql_text, dev_prompt_text, user_prompt_text, dev_structure_prompt_text],
                         outputs=[dev_ai_analyze_status, dev_sql_structure_text, dev_sql_summary_text, user_sql_summary_text],
                     )
 
                     dev_chat_clear_btn.click(
-                        fn=_on_dev_chat_clear,
+                        fn=_admin_only_event(_on_dev_chat_clear),
                         outputs=[dev_prompt_input, dev_profile_select],
                     )
 
                     dev_predict_domain_btn.click(
-                        fn=_predict_domain_and_set_profile,
+                        fn=_admin_only_event(_predict_domain_and_set_profile),
                         inputs=[dev_prompt_input],
                         outputs=[dev_profile_select],
                     )
                     
                     # Query転写ボタンのイベントハンドラ
                     dev_rewrite_btn.click(
-                        fn=_dev_rewrite_query,
+                        fn=_admin_only_event(_dev_rewrite_query),
                         inputs=[dev_rewrite_model_select, dev_profile_select, dev_prompt_input, dev_rewrite_use_glossary, dev_rewrite_use_schema],
                         outputs=[dev_rewrite_status, dev_rewritten_query],
                     )
@@ -4090,19 +4098,19 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 分析に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     rev_analysis_btn.click(
-                        fn=_rev_ai_analyze_stream,
+                        fn=_admin_only_event(_rev_ai_analyze_stream),
                         inputs=[rev_analysis_model_input, rev_sql_input, rev_analysis_prompt_input],
                         outputs=[rev_analysis_status_md, rev_sql_structure_output],
                     )
 
                     rev_context_meta_btn.click(
-                        fn=_on_profile_change_set_context_stream,
+                        fn=_admin_only_event(_on_profile_change_set_context_stream),
                         inputs=[rev_profile_select],
                         outputs=[rev_context_status_md, rev_context_text],
                     )
 
                     rev_generate_btn.click(
-                        fn=_rev_generate_stream,
+                        fn=_admin_only_event(_rev_generate_stream),
                         inputs=[rev_model_input, rev_sql_structure_output, rev_context_text, rev_sql_input, rev_use_glossary],
                         outputs=[rev_generate_status_md, rev_phisical_sql_output, rev_question_output],
                     )
@@ -4249,7 +4257,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value="ℹ️ まだフィードバック索引がありません"), gr.Dataframe(visible=False, value=pd.DataFrame())
 
                     global_feedback_index_refresh_btn.click(
-                        fn=_view_feedback_index_global,
+                        fn=_admin_only_event(_view_feedback_index_global),
                         inputs=[global_profile_select],
                         outputs=[global_feedback_index_refresh_status, global_feedback_index_df],
                     )
@@ -4269,7 +4277,7 @@ def build_selectai_tab(pool):
                         return ""
 
                     global_feedback_index_df.select(
-                        fn=on_index_row_select,
+                        fn=_admin_only_event(on_index_row_select),
                         inputs=[global_feedback_index_df],
                         outputs=[selected_sql_text],
                     )
@@ -4302,11 +4310,11 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {str(e)}"), gr.Textbox(value="", autoscroll=False)
 
                     selected_feedback_delete_btn.click(
-                        fn=_delete_by_sql_text,
+                        fn=_admin_only_event(_delete_by_sql_text),
                         inputs=[global_profile_select, selected_sql_text],
                         outputs=[selected_feedback_delete_status_md, selected_sql_text],
                     ).then(
-                        fn=_view_feedback_index_global,
+                        fn=_admin_only_event(_view_feedback_index_global),
                         inputs=[global_profile_select],
                         outputs=[global_feedback_index_refresh_status, global_feedback_index_df],
                     )
@@ -4357,11 +4365,11 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {str(e)}")
 
                     vec_update_btn.click(
-                        fn=_update_vector_index,
+                        fn=_admin_only_event(_update_vector_index),
                         inputs=[global_profile_select, vec_similarity_threshold_input, vec_match_limit_input],
                         outputs=[global_feedback_index_refresh_status],
                     ).then(
-                        fn=_view_feedback_index_global,
+                        fn=_admin_only_event(_view_feedback_index_global),
                         inputs=[global_profile_select],
                         outputs=[global_feedback_index_refresh_status, global_feedback_index_df],
                     )
@@ -4743,7 +4751,7 @@ def build_selectai_tab(pool):
                             loop.close()
 
                     cm_refresh_btn.click(
-                        fn=_cm_refresh_objects,
+                        fn=_admin_only_event(_cm_refresh_objects),
                         outputs=[cm_refresh_status, cm_tables_input, cm_views_input],
                     )
 
@@ -4823,25 +4831,25 @@ def build_selectai_tab(pool):
                         return gr.Textbox(value=samples_text, interactive=True, autoscroll=False)
 
                     cm_fetch_btn.click(
-                        fn=_cm_fetch_stream,
+                        fn=_admin_only_event(_cm_fetch_stream),
                         inputs=[cm_tables_input, cm_views_input, cm_sample_limit],
                         outputs=[cm_fetch_status_md, cm_input_confirm_acc, cm_structure_text, cm_pk_text, cm_fk_text, cm_samples_text],
                     )
 
                     cm_generate_btn.click(
-                        fn=_cm_generate_stream,
+                        fn=_admin_only_event(_cm_generate_stream),
                         inputs=[cm_model_input, cm_structure_text, cm_pk_text, cm_fk_text, cm_samples_text, cm_extra_input, cm_tables_input],
                         outputs=[cm_generate_status_md, cm_generated_sql],
                     )
 
                     cm_execute_btn.click(
-                        fn=_cm_execute,
+                        fn=_admin_only_event(_cm_execute),
                         inputs=[cm_generated_sql],
                         outputs=[cm_execute_result],
                     )
 
                     cm_ai_analyze_btn.click(
-                        fn=_cm_ai_analyze,
+                        fn=_admin_only_event(_cm_ai_analyze),
                         inputs=[cm_ai_model_input, cm_generated_sql, cm_execute_result],
                         outputs=[cm_ai_status_md, cm_ai_result_md],
                     )
@@ -4853,13 +4861,13 @@ def build_selectai_tab(pool):
                         return gr.Textbox(interactive=True, autoscroll=False), gr.Textbox(interactive=True, autoscroll=False)
 
                     dev_feedback_type_select.change(
-                        fn=_on_feedback_type_change,
+                        fn=_admin_only_event(_on_feedback_type_change),
                         inputs=[dev_feedback_type_select, dev_generated_sql_text],
                         outputs=[dev_feedback_response_text, dev_feedback_content_text],
                     )
 
                     dev_feedback_send_btn.click(
-                        fn=_send_feedback,
+                        fn=_admin_only_event(_send_feedback),
                         inputs=[dev_feedback_type_select, dev_feedback_response_text, dev_feedback_content_text, dev_prompt_input, dev_profile_select],
                         outputs=[dev_feedback_status, dev_feedback_result, dev_feedback_used_sql_text],
                     )
@@ -5380,7 +5388,7 @@ def build_selectai_tab(pool):
                             return gr.Markdown(visible=True, value=f"❌ エラー: {str(e)}")
 
                     am_refresh_btn.click(
-                        fn=_am_refresh_objects,
+                        fn=_admin_only_event(_am_refresh_objects),
                         outputs=[am_refresh_status, am_tables_input, am_views_input],
                     )
 
@@ -5408,7 +5416,7 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {e}"), gr.Accordion(open=True), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False), gr.Textbox(value="", autoscroll=False)
 
                     am_fetch_btn.click(
-                        fn=_am_fetch_stream,
+                        fn=_admin_only_event(_am_fetch_stream),
                         inputs=[am_tables_input, am_views_input, am_sample_limit],
                         outputs=[am_fetch_status_md, am_input_confirm_acc, am_structure_text, am_pk_text, am_fk_text, am_samples_text],
                     )
@@ -5432,19 +5440,19 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 生成に失敗しました: {e}"), gr.Textbox(value="", autoscroll=False)
 
                     am_generate_btn.click(
-                        fn=_am_generate_stream,
+                        fn=_admin_only_event(_am_generate_stream),
                         inputs=[am_model_input, am_structure_text, am_pk_text, am_fk_text, am_samples_text, am_extra_input],
                         outputs=[am_generate_status_md, am_generated_sql],
                     )
 
                     am_execute_btn.click(
-                        fn=_am_execute,
+                        fn=_admin_only_event(_am_execute),
                         inputs=[am_generated_sql],
                         outputs=[am_execute_result],
                     )
 
                     am_ai_analyze_btn.click(
-                        fn=_am_ai_analyze,
+                        fn=_admin_only_event(_am_ai_analyze),
                         inputs=[am_ai_model_input, am_generated_sql, am_execute_result],
                         outputs=[am_ai_status_md, am_ai_result_md],
                     )
@@ -5817,14 +5825,14 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 表示に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame(), label="データ表示", elem_id="synthetic_data_result_df"), gr.HTML(visible=False, value="")
 
                     syn_refresh_btn.click(
-                        fn=_syn_refresh_objects,
+                        fn=_admin_only_event(_syn_refresh_objects),
                         inputs=[syn_profile_select],
                         outputs=[syn_refresh_status, syn_tables_input, syn_result_table_select],
                     )
 
                     # プロファイル変更時にテーブル選択をリセット
                     syn_profile_select.change(
-                        fn=lambda: gr.CheckboxGroup(value=[]),
+                        fn=_admin_only_event(lambda: gr.CheckboxGroup(value=[])),
                         inputs=[],
                         outputs=[syn_tables_input],
                     )
@@ -5890,23 +5898,23 @@ def build_selectai_tab(pool):
                             yield gr.Markdown(visible=True, value=f"❌ 更新に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
 
                     syn_generate_btn.click(
-                        fn=_syn_generate_stream,
+                        fn=_admin_only_event(_syn_generate_stream),
                         inputs=[syn_profile_select, syn_tables_input, syn_rows_per_table, syn_prompt_input, syn_sample_rows, syn_comments],
                         outputs=[syn_generate_status_md, syn_operation_id_text],
                     ).then(
-                        fn=_syn_update_status_stream,
+                        fn=_admin_only_event(_syn_update_status_stream),
                         inputs=[syn_operation_id_text],
                         outputs=[syn_status_update_status_md, syn_status_df, syn_status_style],
                     )
 
                     syn_status_update_btn.click(
-                        fn=_syn_update_status_stream,
+                        fn=_admin_only_event(_syn_update_status_stream),
                         inputs=[syn_operation_id_text],
                         outputs=[syn_status_update_status_md, syn_status_df, syn_status_style],
                     )
 
                     syn_result_btn.click(
-                        fn=_syn_display_result_stream,
+                        fn=_admin_only_event(_syn_display_result_stream),
                         inputs=[syn_result_table_select, syn_result_limit],
                         outputs=[syn_result_status_md, syn_result_df, syn_result_style],
                     )
@@ -6025,13 +6033,13 @@ def build_selectai_tab(pool):
                             return gr.Textbox(visible=True, value=f"❌ エラー: {e}", autoscroll=False)
 
                     term_preview_btn.click(
-                        fn=_term_refresh,
+                        fn=_admin_only_event(_term_refresh),
                         outputs=[term_preview_status, term_preview_df],
                     )
 
                     # ダウンロードはボタン自体で実行（クリックハンドラ不要）
                     term_upload_file.change(
-                        fn=_term_upload_excel,
+                        fn=_admin_only_event(_term_upload_excel),
                         inputs=[term_upload_file],
                         outputs=[term_upload_result],
                     )
@@ -6173,8 +6181,8 @@ def build_selectai_tab(pool):
                         outputs=[rule_upload_result],
                     )
 
-        with gr.TabItem(label="ユーザー機能"):
-            with gr.Tabs():
+        with gr.TabItem(label="ユーザー機能") as user_features_tab:
+            with gr.Tabs() as user_function_tabs:
                 with gr.TabItem(label="基本機能") as user_basic_tab:
                     with gr.Accordion(label="1. チャット", open=True):
                         def _profile_names():
@@ -6328,52 +6336,27 @@ def build_selectai_tab(pool):
                         )
                         chat_result_style = gr.HTML(visible=False)
 
-                build_sql_learning_tab(pool)
+                (
+                    sql_learning_schema_setup,
+                    sql_learning_select_lessons,
+                ) = build_sql_learning_tab(pool)
 
             def _user_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                 """ユーザー向けSQL生成（値からGradioオブジェクトを構築）."""
                 for status_msg, sql_value in _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                     yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=sql_value, autoscroll=False)
 
-            def _user_step_generate_and_run(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+            def _user_step_generate_and_run(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, request: gr.Request):
                 """ユーザー向けSQL生成と実行を統合し、実行エラー時にSQL生成から再試行する."""
+                username = request_username(request)
+                role = user_role(username)
+                if role not in {"admin", "vpd"}:
+                    raise PermissionError("ログインユーザーを確認できません")
                 yield from _step_generate_and_run_common(
                     profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
-                    elem_id="selectai_chat_result_df", include_feedback=False
+                    elem_id="selectai_chat_result_df", include_feedback=False,
+                    login_user=username if role == "vpd" else None,
                 )
-
-            def _user_step_run_sql(sql_text, status_text=None):
-                """ユーザー向けSQL実行（値からGradioオブジェクトを構築）."""
-                if status_text and "❌" in str(status_text):
-                    return
-                elem_id = "selectai_chat_result_df"
-                for status_msg, result_df, col_widths in _run_sql_common(sql_text, elem_id):
-                    status_md = gr.Markdown(visible=True, value=status_msg)
-                    if result_df is not None and len(result_df) > 0:
-                        df_component = gr.Dataframe(
-                            visible=True,
-                            value=result_df,
-                            label=f"実行結果（件数: {len(result_df)}）",
-                            interactive=False,
-                            wrap=True,
-                            elem_id=elem_id,
-                        )
-                        style_value = ""
-                        if col_widths:
-                            rules = []
-                            rules.append(f"#{elem_id} {{ width: 100% !important; }}")
-                            rules.append(f"#{elem_id} .wrap {{ overflow-x: auto !important; }}")
-                            rules.append(f"#{elem_id} table {{ table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }}")
-                            for idx, pct in enumerate(col_widths, start=1):
-                                rules.append(
-                                    f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
-                                )
-                            style_value = "<style>" + "\n".join(rules) + "</style>"
-                        style_component = gr.HTML(visible=bool(style_value), value=style_value)
-                    else:
-                        df_component = gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id)
-                        style_component = gr.HTML(visible=False, value="")
-                    yield status_md, df_component, style_component
 
             def _on_chat_clear():
                 ch = _profile_names() or [("", "")]
@@ -6524,3 +6507,13 @@ def build_selectai_tab(pool):
             inputs=[profile_select],
             outputs=[profile_select],
         )
+
+    return (
+        developer_features_tab,
+        user_features_tab,
+        selectai_feature_tabs,
+        user_function_tabs,
+        user_basic_tab,
+        sql_learning_schema_setup,
+        sql_learning_select_lessons,
+    )

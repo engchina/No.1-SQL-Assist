@@ -15,9 +15,20 @@ import pandas as pd
 
 from utils.query_util import execute_sql_general, execute_select_sql
 from utils.common_util import remove_comments
+from utils.vpd_util import require_admin
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+
+def _admin_only_event(fn):
+    """Gradioイベントの実行前にADMIN権限を確認する."""
+
+    def guarded(request: gr.Request, *args):
+        require_admin(request)
+        return fn(*args)
+
+    return guarded
 
 
 def _schema_sql() -> Tuple[str, str]:
@@ -267,7 +278,11 @@ def build_sql_learning_tab(pool):
     lessons = _lessons()
 
     with gr.TabItem(label="SQL学習"):
-        with gr.Accordion(label="1. 学習用スキーマの準備", open=True):
+        with gr.Accordion(
+            label="1. 学習用スキーマの準備",
+            open=True,
+            visible=False,
+        ) as schema_setup_accordion:
             gr.Markdown(
                 value=(
                     "ℹ️ このセクションでは学習用の3つの表（DEPARTMENT/EMPLOYEE/PROJECT）と2つのビュー（V_EMP_DEPT/V_DEPT_PROJECT）を作成し、サンプルデータを投入します。\n\n"
@@ -317,7 +332,10 @@ def build_sql_learning_tab(pool):
             with gr.Row():
                 reset_result_md = gr.Markdown(visible=False)
 
-        with gr.Accordion(label="2. SELECTの学習（ステップ）", open=True):
+        with gr.Accordion(
+            label="1. SELECTの学習（ステップ）",
+            open=True,
+        ) as select_learning_accordion:
             pd.DataFrame([{k: lesson[k] for k in ("id", "title", "desc")} for lesson in lessons])
             # デフォルトレッスン（L01）の情報を取得
             default_lesson = lessons[0]
@@ -455,16 +473,18 @@ def build_sql_learning_tab(pool):
                 return gr.Markdown(visible=True, value=f"❌ 実行に失敗しました: {e}"), gr.Dataframe(visible=False, value=pd.DataFrame()), gr.HTML(visible=False)
 
         # イベントハンドラの接続
-        show_tables_btn.click(fn=_show_tables, inputs=[tables_sql_visible_state], outputs=[show_tables_btn, tables_sql_text, tables_sql_visible_state])
-        exec_tables_btn.click(fn=_exec_tables, outputs=[tables_result_md])
+        show_tables_btn.click(fn=_admin_only_event(_show_tables), inputs=[tables_sql_visible_state], outputs=[show_tables_btn, tables_sql_text, tables_sql_visible_state])
+        exec_tables_btn.click(fn=_admin_only_event(_exec_tables), outputs=[tables_result_md])
 
-        show_views_btn.click(fn=_show_views, inputs=[views_sql_visible_state], outputs=[show_views_btn, views_sql_text, views_sql_visible_state])
-        exec_views_btn.click(fn=_exec_views, outputs=[views_result_md])
+        show_views_btn.click(fn=_admin_only_event(_show_views), inputs=[views_sql_visible_state], outputs=[show_views_btn, views_sql_text, views_sql_visible_state])
+        exec_views_btn.click(fn=_admin_only_event(_exec_views), outputs=[views_result_md])
 
-        show_inserts_btn.click(fn=_show_inserts, inputs=[inserts_sql_visible_state], outputs=[show_inserts_btn, inserts_sql_text, inserts_sql_visible_state])
-        exec_inserts_btn.click(fn=_exec_inserts, outputs=[inserts_result_md])
+        show_inserts_btn.click(fn=_admin_only_event(_show_inserts), inputs=[inserts_sql_visible_state], outputs=[show_inserts_btn, inserts_sql_text, inserts_sql_visible_state])
+        exec_inserts_btn.click(fn=_admin_only_event(_exec_inserts), outputs=[inserts_result_md])
 
-        reset_btn.click(fn=_reset_all, outputs=[reset_result_md])
+        reset_btn.click(fn=_admin_only_event(_reset_all), outputs=[reset_result_md])
 
         lesson_select.change(fn=_on_lesson_change, inputs=[lesson_select], outputs=[lesson_desc_md, lesson_sql_text])
         run_lesson_btn.click(fn=_run_lesson, inputs=[lesson_sql_text], outputs=[lesson_result_info, lesson_result_df, lesson_result_style])
+
+    return schema_setup_accordion, select_learning_accordion
