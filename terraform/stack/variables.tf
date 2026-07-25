@@ -334,7 +334,7 @@ variable "application_port" {
 variable "application_git_tag" {
   description = "Git tag used to deploy the application. The main branch is intentionally not allowed."
   type        = string
-  default     = "v0.1.10"
+  default     = "v0.1.11"
 
   validation {
     condition     = trimspace(var.application_git_tag) != "" && lower(trimspace(var.application_git_tag)) != "main"

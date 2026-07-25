@@ -370,8 +370,8 @@ variables:
     required: true
     visible: true
     title: "Application Git tag"
-    description: "Deploy an immutable non-main Git tag. The default release for this stack is v0.1.10."
-    default: "v0.1.10"
+    description: "Deploy an immutable non-main Git tag. The default release for this stack is v0.1.11."
+    default: "v0.1.11"
 
   instance_display_name:
     type: string
