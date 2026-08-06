@@ -15,20 +15,10 @@ import pandas as pd
 
 from utils.query_util import execute_sql_general, execute_select_sql
 from utils.common_util import remove_comments
-from utils.vpd_util import require_admin
+from utils.gradio_util import admin_only_event as _admin_only_event
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-
-
-def _admin_only_event(fn):
-    """Gradioイベントの実行前にADMIN権限を確認する."""
-
-    def guarded(request: gr.Request, *args):
-        require_admin(request)
-        return fn(*args)
-
-    return guarded
 
 
 def _schema_sql() -> Tuple[str, str]:

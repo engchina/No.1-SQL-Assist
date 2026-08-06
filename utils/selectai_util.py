@@ -8,7 +8,6 @@ import json
 import re
 import os
 import asyncio
-import inspect
 from datetime import datetime
 from dotenv import find_dotenv, load_dotenv  # noqa: E402
 from pathlib import Path
@@ -24,6 +23,7 @@ from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import EmbedTextDetails
 
 from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
+from utils.gradio_util import admin_only_event as _admin_only_event
 from utils.oracle_sql_util import is_single_select, parse_oracle_script
 from utils.vpd_util import (
     request_username,
@@ -47,27 +47,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-
-def _admin_only_event(fn):
-    """Inject an ADMIN authorization check into a Gradio event callback."""
-    if inspect.isasyncgenfunction(fn):
-        async def guarded(request: gr.Request, *args):
-            require_admin(request)
-            async for item in fn(*args):
-                yield item
-    elif inspect.iscoroutinefunction(fn):
-        async def guarded(request: gr.Request, *args):
-            require_admin(request)
-            return await fn(*args)
-    elif inspect.isgeneratorfunction(fn):
-        def guarded(request: gr.Request, *args):
-            require_admin(request)
-            yield from fn(*args)
-    else:
-        def guarded(request: gr.Request, *args):
-            require_admin(request)
-            return fn(*args)
-    return guarded
 
 # Load environment variables
 load_dotenv(find_dotenv())
