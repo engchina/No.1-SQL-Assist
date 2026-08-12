@@ -332,12 +332,12 @@ variable "application_port" {
 }
 
 variable "application_git_tag" {
-  description = "Git tag used to deploy the application. The main branch is intentionally not allowed."
+  description = "Git ref used to deploy the application."
   type        = string
-  default     = "v0.1.11"
+  default     = "main"
 
   validation {
-    condition     = trimspace(var.application_git_tag) != "" && lower(trimspace(var.application_git_tag)) != "main"
-    error_message = "application_git_tag must be a non-empty Git tag other than main."
+    condition     = trimspace(var.application_git_tag) != ""
+    error_message = "application_git_tag must be a non-empty Git ref."
   }
 }
