@@ -13,7 +13,7 @@ import gradio as gr
 import pandas as pd
 import oracledb
 from oracledb import DatabaseError
-from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL
+from utils.llm_model_util import create_chat_model_dropdown
 from utils.oracle_sql_util import (
     OracleScriptError,
     created_program,
@@ -554,10 +554,8 @@ def build_query_tab(pool, vpd_pool=None):
                         with gr.Column(scale=1):
                             gr.Markdown("モデル*", elem_classes="input-label")
                         with gr.Column(scale=5):
-                            ai_model_input = gr.Dropdown(
+                            ai_model_input = create_chat_model_dropdown(
                                 show_label=False,
-                                choices=CHAT_MODEL_CHOICES,
-                                value=DEFAULT_CHAT_MODEL,
                                 interactive=True,
                                 container=False,
                             )

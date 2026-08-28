@@ -20,6 +20,10 @@ import logging
 
 from utils.auth_util import access_navigation_for_role, do_auth
 from utils.css_util import custom_css
+from utils.llm_model_util import (
+    bind_llm_model_settings_events,
+    reset_model_dropdown_registry,
+)
 
 # from utils.oci_util import build_oci_genai_tab, build_oci_embedding_test_tab, build_oracle_ai_database_tab, build_openai_settings_tab
 from utils.chat_util import build_oci_chat_test_tab
@@ -239,6 +243,7 @@ theme = Default(
 ).set()
 
 # Create Gradio interface
+reset_model_dropdown_registry()
 with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん") as app:
     gr.Markdown(value="# クエリできすぎくん ", elem_classes="main_Header")
     gr.Markdown(
@@ -249,7 +254,7 @@ with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん")
     with gr.Tabs() as primary_tabs:
         with gr.TabItem(label="環境設定") as settings_tab:
             # 環境設定関連のタブを構築
-            build_settings_tab(pool)
+            llm_model_settings_controls = build_settings_tab(pool)
 
         with gr.TabItem(label="データベース管理") as management_tab:
             # 管理機能タブを構築
@@ -272,6 +277,8 @@ with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん")
 
         with gr.TabItem(label="AI チャット") as chat_tab:
             build_oci_chat_test_tab(pool)
+
+    bind_llm_model_settings_events(llm_model_settings_controls)
 
     gr.Markdown(
         value="### 本ソフトウェアは検証評価用です。日常利用のための基本機能は備えていない点につきましてご理解をよろしくお願い申し上げます。",

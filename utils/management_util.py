@@ -12,7 +12,8 @@ from dateutil import parser as dateutil_parser
 
 import gradio as gr
 import pandas as pd
-from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
+from utils.common_util import remove_comments
+from utils.llm_model_util import create_chat_model_dropdown
 from utils.vpd_management_util import build_vpd_management_tab
 from utils.vpd_util import require_admin
 
@@ -1350,10 +1351,8 @@ def build_management_tab(pool, vpd_pool=None):
                                 with gr.Column(scale=1):
                                     gr.Markdown("モデル*", elem_classes="input-label")
                                 with gr.Column(scale=5):
-                                    table_ai_model_input = gr.Dropdown(
+                                    table_ai_model_input = create_chat_model_dropdown(
                                         show_label=False,
-                                        choices=CHAT_MODEL_CHOICES,
-                                        value=DEFAULT_CHAT_MODEL,
                                         interactive=True,
                                         container=False,
                                     )
@@ -1705,10 +1704,8 @@ def build_management_tab(pool, vpd_pool=None):
                             with gr.Column(scale=1):
                                 gr.Markdown("モデル*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                view_analysis_model_input = gr.Dropdown(
+                                view_analysis_model_input = create_chat_model_dropdown(
                                     show_label=False,
-                                    choices=CHAT_MODEL_CHOICES,
-                                    value=DEFAULT_CHAT_MODEL,
                                     interactive=True,
                                     container=False,
                                 )
@@ -1784,10 +1781,8 @@ def build_management_tab(pool, vpd_pool=None):
                                 with gr.Column(scale=1):
                                     gr.Markdown("モデル*", elem_classes="input-label")
                                 with gr.Column(scale=5):
-                                    view_ai_model_input = gr.Dropdown(
+                                    view_ai_model_input = create_chat_model_dropdown(
                                         show_label=False,
-                                        choices=CHAT_MODEL_CHOICES,
-                                        value=DEFAULT_CHAT_MODEL,
                                         interactive=True,
                                         container=False,
                                     )
@@ -2368,10 +2363,8 @@ def build_management_tab(pool, vpd_pool=None):
                                 with gr.Column(scale=1):
                                     gr.Markdown("モデル*", elem_classes="input-label")
                                 with gr.Column(scale=5):
-                                    data_ai_model_input = gr.Dropdown(
+                                    data_ai_model_input = create_chat_model_dropdown(
                                         show_label=False,
-                                        choices=CHAT_MODEL_CHOICES,
-                                        value=DEFAULT_CHAT_MODEL,
                                         interactive=True,
                                         container=False,
                                     )

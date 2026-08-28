@@ -5,6 +5,7 @@
 
 import gradio as gr
 import logging
+from utils.llm_model_util import build_llm_model_settings_tab
 from utils.oci_util import (
     build_oci_genai_tab,
     build_oracle_ai_database_tab,
@@ -41,7 +42,14 @@ def build_settings_tab(pool):
                 pool
             )
 
+        with gr.TabItem(label="LLMモデル設定") as llm_model_settings_tab:
+            llm_model_settings_controls = build_llm_model_settings_tab(
+                llm_model_settings_tab
+            )
+
     # OpenAI設定タブ選択時に設定を読み込む
     openai_tab.select(
         load_openai_settings, outputs=[openai_base_url_input, openai_api_key_input]
     )
+
+    return llm_model_settings_controls

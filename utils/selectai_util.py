@@ -22,7 +22,8 @@ import oci
 from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import EmbedTextDetails
 
-from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL, remove_comments
+from utils.common_util import remove_comments
+from utils.llm_model_util import create_chat_model_dropdown
 from utils.gradio_util import admin_only_event as _admin_only_event
 from utils.oracle_sql_util import is_single_select, parse_oracle_script
 from utils.vpd_util import (
@@ -1180,10 +1181,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     with gr.Column(scale=1):
                                         gr.Markdown("Model*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        model_input = gr.Dropdown(
+                                        model_input = create_chat_model_dropdown(
                                             show_label=False,
-                                            choices=CHAT_MODEL_CHOICES,
-                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -2105,10 +2104,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                             with gr.Column(scale=1):
                                                 gr.Markdown("書き換え用モデル*", elem_classes="input-label")
                                             with gr.Column(scale=5):
-                                                dev_rewrite_model_select = gr.Dropdown(
+                                                dev_rewrite_model_select = create_chat_model_dropdown(
                                                     show_label=False,
-                                                    choices=CHAT_MODEL_CHOICES,
-                                                    value=DEFAULT_CHAT_MODEL,
                                                     interactive=True,
                                                     container=False,
                                                 )
@@ -2225,10 +2222,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                         with gr.Column(scale=1):
                                             gr.Markdown("モデル*", elem_classes="input-label")
                                         with gr.Column(scale=5):
-                                            dev_analysis_model_input = gr.Dropdown(
+                                            dev_analysis_model_input = create_chat_model_dropdown(
                                                 show_label=False,
-                                                choices=CHAT_MODEL_CHOICES,
-                                                value=DEFAULT_CHAT_MODEL,
                                                 interactive=True,
                                                 container=False,
                                             )
@@ -3399,10 +3394,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     with gr.Column(scale=1):
                                         gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        rev_analysis_model_input = gr.Dropdown(
+                                        rev_analysis_model_input = create_chat_model_dropdown(
                                             show_label=False,
-                                            choices=CHAT_MODEL_CHOICES,
-                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -3455,10 +3448,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     with gr.Column(scale=1):
                                         gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        rev_model_input = gr.Dropdown(
+                                        rev_model_input = create_chat_model_dropdown(
                                             show_label=False,
-                                            choices=CHAT_MODEL_CHOICES,
-                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -4427,10 +4418,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     with gr.Column(scale=1):
                                         gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        cm_model_input = gr.Dropdown(
+                                        cm_model_input = create_chat_model_dropdown(
                                             show_label=False,
-                                            choices=CHAT_MODEL_CHOICES,
-                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -4459,10 +4448,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                         with gr.Column(scale=1):
                                             gr.Markdown("モデル*", elem_classes="input-label")
                                         with gr.Column(scale=5):
-                                            cm_ai_model_input = gr.Dropdown(
+                                            cm_ai_model_input = create_chat_model_dropdown(
                                                 show_label=False,
-                                                choices=CHAT_MODEL_CHOICES,
-                                                value=DEFAULT_CHAT_MODEL,
                                                 interactive=True,
                                                 container=False,
                                             )
@@ -4932,10 +4919,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     with gr.Column(scale=1):
                                         gr.Markdown("モデル*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        am_model_input = gr.Dropdown(
+                                        am_model_input = create_chat_model_dropdown(
                                             show_label=False,
-                                            choices=CHAT_MODEL_CHOICES,
-                                            value=DEFAULT_CHAT_MODEL,
                                             interactive=True,
                                             container=False,
                                         )
@@ -4964,10 +4949,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                         with gr.Column(scale=1):
                                             gr.Markdown("モデル*", elem_classes="input-label")
                                         with gr.Column(scale=5):
-                                            am_ai_model_input = gr.Dropdown(
+                                            am_ai_model_input = create_chat_model_dropdown(
                                                 show_label=False,
-                                                choices=CHAT_MODEL_CHOICES,
-                                                value=DEFAULT_CHAT_MODEL,
                                                 interactive=True,
                                                 container=False,
                                             )
@@ -6217,10 +6200,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                             with gr.Column(scale=1):
                                                 gr.Markdown("書き換え用モデル*", elem_classes="input-label")
                                             with gr.Column(scale=5):
-                                                rewrite_model_select = gr.Dropdown(
+                                                rewrite_model_select = create_chat_model_dropdown(
                                                     show_label=False,
-                                                    choices=CHAT_MODEL_CHOICES,
-                                                    value=DEFAULT_CHAT_MODEL,
                                                     interactive=True,
                                                     container=False,
                                                 )

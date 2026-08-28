@@ -15,7 +15,7 @@ from dotenv import find_dotenv, get_key
 import asyncio
 import os
 import oci
-from utils.common_util import CHAT_MODEL_CHOICES, DEFAULT_CHAT_MODEL
+from utils.llm_model_util import create_chat_model_dropdown
 from utils.vpd_util import require_admin
 
 # Configure logging
@@ -472,10 +472,8 @@ def build_oci_chat_test_tab(pool):
                             with gr.Column(scale=1):
                                 gr.Markdown("モデル*", elem_classes="input-label")
                             with gr.Column(scale=5):
-                                chat_model_input = gr.Dropdown(
+                                chat_model_input = create_chat_model_dropdown(
                                     show_label=False,
-                                    choices=CHAT_MODEL_CHOICES,
-                                    value=DEFAULT_CHAT_MODEL,
                                     interactive=True,
                                     container=False,
                                 )
