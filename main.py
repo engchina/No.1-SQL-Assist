@@ -278,7 +278,7 @@ with gr.Blocks(css=custom_css, theme=theme, title="クエリできすぎくん")
         with gr.TabItem(label="AI チャット") as chat_tab:
             build_oci_chat_test_tab(pool)
 
-    bind_llm_model_settings_events(llm_model_settings_controls)
+    bind_llm_model_settings_events(app, llm_model_settings_controls)
 
     gr.Markdown(
         value="### 本ソフトウェアは検証評価用です。日常利用のための基本機能は備えていない点につきましてご理解をよろしくお願い申し上げます。",

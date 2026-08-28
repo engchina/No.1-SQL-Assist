@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import gradio as gr
+
 from utils.common_util import (
     BASE_DEFAULT_MODEL,
     CHAT_MODEL_CATALOG,
@@ -20,9 +22,14 @@ from utils.common_util import (
     validate_explicit_default_model,
 )
 from utils.llm_model_util import (
+    bind_llm_model_settings_events,
+    build_llm_model_settings_tab,
+    create_chat_model_dropdown,
     create_model_dropdown_updates,
+    create_persisted_llm_ui_updates,
     load_persisted_llm_model_settings,
     persist_llm_model_settings,
+    reset_model_dropdown_registry,
 )
 
 
@@ -167,6 +174,101 @@ class LlmModelSettingsTest(unittest.TestCase):
         self.assertTrue(
             all(update.value == BASE_DEFAULT_MODEL for update in updates)
         )
+
+    def test_page_load_updates_use_latest_persisted_settings(self):
+        cases = (
+            (False, False, "", BASE_DEFAULT_MODEL),
+            (False, True, "gpt-4o", "gpt-4o"),
+            (True, False, CHICAGO_DEFAULT_MODEL, CHICAGO_DEFAULT_MODEL),
+            (True, True, "gpt-5.1", "gpt-5.1"),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            env_path = Path(temporary_directory) / ".env"
+            for show_chicago, show_openai, explicit_default, expected in cases:
+                with self.subTest(
+                    show_chicago=show_chicago,
+                    show_openai=show_openai,
+                    explicit_default=explicit_default,
+                ):
+                    env_path.write_text(
+                        "\n".join(
+                            (
+                                "LLM_SHOW_US_CHICAGO_1_MODELS="
+                                f"{str(show_chicago).lower()}",
+                                "LLM_SHOW_OPENAI_MODELS="
+                                f"{str(show_openai).lower()}",
+                                f"LLM_DEFAULT_MODEL={explicit_default}",
+                                "",
+                            )
+                        ),
+                        encoding="utf-8",
+                    )
+                    stale_process_values = {
+                        LLM_SHOW_US_CHICAGO_1_MODELS_ENV: str(
+                            not show_chicago
+                        ).lower(),
+                        LLM_SHOW_OPENAI_MODELS_ENV: str(
+                            not show_openai
+                        ).lower(),
+                        LLM_DEFAULT_MODEL_ENV: "stale-model",
+                    }
+                    with patch.dict(
+                        os.environ, stale_process_values, clear=False
+                    ):
+                        updates = create_persisted_llm_ui_updates(2, env_path)
+
+                    self.assertEqual(
+                        updates[:3],
+                        [show_chicago, show_openai, explicit_default],
+                    )
+                    dropdown_updates = updates[3:]
+                    self.assertEqual(len(dropdown_updates), 2)
+                    for dropdown_update in dropdown_updates:
+                        choices = [
+                            value
+                            for _label, value in dropdown_update.choices
+                        ]
+                        self.assertEqual(
+                            CHICAGO_DEFAULT_MODEL in choices, show_chicago
+                        )
+                        self.assertEqual(
+                            "meta.llama-4-scout-17b-16e-instruct" in choices,
+                            show_chicago,
+                        )
+                        self.assertEqual("gpt-4o" in choices, show_openai)
+                        self.assertEqual("gpt-5.1" in choices, show_openai)
+                        self.assertIn(BASE_DEFAULT_MODEL, choices)
+                        self.assertEqual(dropdown_update.value, expected)
+
+    def test_page_load_event_refreshes_controls_and_registered_dropdowns(self):
+        reset_model_dropdown_registry()
+        self.addCleanup(reset_model_dropdown_registry)
+        with gr.Blocks() as demo:
+            with gr.TabItem(label="LLMモデル設定") as settings_tab:
+                controls = build_llm_model_settings_tab(settings_tab)
+            first_dropdown = create_chat_model_dropdown(label="Model 1")
+            second_dropdown = create_chat_model_dropdown(label="Model 2")
+            bind_llm_model_settings_events(demo, controls)
+
+        load_dependencies = [
+            dependency
+            for dependency in demo.config["dependencies"]
+            if any(target[1] == "load" for target in dependency["targets"])
+        ]
+        self.assertEqual(len(load_dependencies), 1)
+        load_dependency = load_dependencies[0]
+        self.assertEqual(
+            load_dependency["outputs"],
+            [
+                controls.show_chicago_checkbox._id,
+                controls.show_openai_checkbox._id,
+                controls.default_model_input._id,
+                first_dropdown._id,
+                second_dropdown._id,
+            ],
+        )
+        self.assertFalse(load_dependency["queue"])
+        self.assertEqual(load_dependency["show_progress"], "hidden")
 
 
 if __name__ == "__main__":

@@ -93,6 +93,17 @@ def load_persisted_llm_model_settings(env_path=None):
     return get_llm_model_settings(values)
 
 
+def create_persisted_llm_ui_updates(dropdown_count, env_path=None):
+    """Create page-load updates from the latest persisted LLM settings."""
+    settings = load_persisted_llm_model_settings(env_path)
+    return [
+        settings.show_us_chicago_1_models,
+        settings.show_openai_models,
+        settings.explicit_default_model,
+        *create_model_dropdown_updates(settings, dropdown_count),
+    ]
+
+
 def persist_llm_model_settings(settings, env_path=None):
     """Atomically persist settings and refresh the current process environment."""
     path = _dotenv_path(env_path)
@@ -200,9 +211,24 @@ def build_llm_model_settings_tab(tab):
     )
 
 
-def bind_llm_model_settings_events(controls):
+def bind_llm_model_settings_events(app, controls):
     """Bind load/save events after every model dropdown has been registered."""
     dropdowns = get_registered_model_dropdowns()
+
+    def refresh_from_persisted_settings():
+        return create_persisted_llm_ui_updates(len(dropdowns))
+
+    app.load(
+        refresh_from_persisted_settings,
+        outputs=[
+            controls.show_chicago_checkbox,
+            controls.show_openai_checkbox,
+            controls.default_model_input,
+            *dropdowns,
+        ],
+        queue=False,
+        show_progress="hidden",
+    )
 
     controls.tab.select(
         load_llm_model_settings,
