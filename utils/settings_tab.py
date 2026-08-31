@@ -42,7 +42,7 @@ def build_settings_tab(pool):
                 pool
             )
 
-        with gr.TabItem(label="LLMモデル設定") as llm_model_settings_tab:
+        with gr.TabItem(label="LLM設定") as llm_model_settings_tab:
             llm_model_settings_controls = build_llm_model_settings_tab(
                 llm_model_settings_tab
             )

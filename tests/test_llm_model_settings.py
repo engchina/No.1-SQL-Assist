@@ -34,6 +34,49 @@ from utils.llm_model_util import (
 
 
 class LlmModelSettingsTest(unittest.TestCase):
+    def test_llm_settings_ui_uses_requested_copy(self):
+        with gr.Blocks() as demo:
+            with gr.TabItem(label="LLM設定") as settings_tab:
+                controls = build_llm_model_settings_tab(settings_tab)
+
+        accordion = next(
+            component
+            for component in demo.config["components"]
+            if component["type"] == "accordion"
+        )
+        self.assertEqual(
+            accordion["props"]["label"],
+            "ℹ️ モデル一覧に表示するモデルグループと"
+            "デフォルトモデルを設定します。",
+        )
+        self.assertEqual(controls.tab.label, "LLM設定")
+        self.assertEqual(
+            controls.show_chicago_checkbox.label,
+            "シカゴリージョン提供モデルを表示",
+        )
+        self.assertEqual(
+            controls.show_chicago_checkbox.info,
+            "シカゴリージョン（us-chicago-1）にて利用できる "
+            "xai.grok-4.3 と meta.llama-4-scout-17b-16e-instruct "
+            "がモデル一覧に追加されます。",
+        )
+        self.assertEqual(
+            controls.show_openai_checkbox.label,
+            "OpenAI APIモデルを表示",
+        )
+        self.assertEqual(
+            controls.show_openai_checkbox.info,
+            "gpt-4o、gpt-5.1がモデル一覧に追加されます。"
+            "別途 OpenAI の APIキーが必要です"
+            "（「OpenAI設定」タブで設定）。",
+        )
+        self.assertEqual(
+            controls.default_model_input.info,
+            "未入力の場合は自動で選択されます"
+            "（シカゴリージョン提供モデルがオン: xai.grok-4.3 / "
+            "オフ: openai.gpt-oss-120b）",
+        )
+
     def test_missing_settings_use_requested_defaults(self):
         settings = get_llm_model_settings({})
 
@@ -244,7 +287,7 @@ class LlmModelSettingsTest(unittest.TestCase):
         reset_model_dropdown_registry()
         self.addCleanup(reset_model_dropdown_registry)
         with gr.Blocks() as demo:
-            with gr.TabItem(label="LLMモデル設定") as settings_tab:
+            with gr.TabItem(label="LLM設定") as settings_tab:
                 controls = build_llm_model_settings_tab(settings_tab)
             first_dropdown = create_chat_model_dropdown(label="Model 1")
             second_dropdown = create_chat_model_dropdown(label="Model 2")

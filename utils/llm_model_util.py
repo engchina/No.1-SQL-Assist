@@ -168,31 +168,40 @@ def load_llm_model_settings(request: gr.Request):
 def build_llm_model_settings_tab(tab):
     """Build the accessible LLM model settings form."""
     settings = get_llm_model_settings()
-    with gr.Accordion(label="", open=True):
-        gr.Markdown(
-            "モデル一覧に表示するモデルグループとデフォルトモデルを設定します。"
-        )
+    with gr.Accordion(
+        label=(
+            "ℹ️ モデル一覧に表示するモデルグループと"
+            "デフォルトモデルを設定します。"
+        ),
+        open=True,
+    ):
         show_chicago_checkbox = gr.Checkbox(
             value=settings.show_us_chicago_1_models,
-            label="us-chicago-1 専用モデルを表示",
+            label="シカゴリージョン提供モデルを表示",
             info=(
-                "xai.grok-4.3、meta.llama-4-scout-17b-16e-instruct "
-                "をモデル一覧に追加します。"
+                "シカゴリージョン（us-chicago-1）にて利用できる "
+                "xai.grok-4.3 と meta.llama-4-scout-17b-16e-instruct "
+                "がモデル一覧に追加されます。"
             ),
             interactive=True,
         )
         show_openai_checkbox = gr.Checkbox(
             value=settings.show_openai_models,
             label="OpenAI APIモデルを表示",
-            info="gpt-4o、gpt-5.1 をモデル一覧に追加します。",
+            info=(
+                "gpt-4o、gpt-5.1がモデル一覧に追加されます。"
+                "別途 OpenAI の APIキーが必要です"
+                "（「OpenAI設定」タブで設定）。"
+            ),
             interactive=True,
         )
         default_model_input = gr.Textbox(
             value=settings.explicit_default_model,
             label="デフォルトモデル",
             info=(
-                "空欄の場合、us-chicago-1 が有効なら xai.grok-4.3、"
-                "無効なら openai.gpt-oss-120b を使用します。"
+                "未入力の場合は自動で選択されます"
+                "（シカゴリージョン提供モデルがオン: xai.grok-4.3 / "
+                "オフ: openai.gpt-oss-120b）"
             ),
             placeholder="モデル名を入力（空欄の場合は自動選択）",
             lines=1,
