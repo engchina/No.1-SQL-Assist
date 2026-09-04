@@ -28,11 +28,11 @@ REPORT_COLUMNS = [
     "実行開始時間",
     "Select AI開始時間",
     "Select AI終了時間",
-    "Select AI経過時間",
+    "Select AI経過時間（秒）",
     "SELECT開始時間",
     "SELECT終了時間",
-    "SELECT経過時間",
-    "全体経過時間",
+    "SELECT経過時間（秒）",
+    "全体経過時間（秒）",
     "結果件数",
     "エラー内容",
 ]
@@ -43,6 +43,16 @@ DEFAULT_HISTORY_PATH = (
 REPORT_SCREEN_FILENAME_PARTS = {
     "開発者機能: チャット・分析": "developer_chat_analysis",
     "ユーザー機能: 基本機能": "user_basic",
+}
+ELAPSED_SECONDS_COLUMNS = [
+    "Select AI経過時間（秒）",
+    "SELECT経過時間（秒）",
+    "全体経過時間（秒）",
+]
+LEGACY_ELAPSED_COLUMNS = {
+    "Select AI経過時間（秒）": "Select AI経過時間",
+    "SELECT経過時間（秒）": "SELECT経過時間",
+    "全体経過時間（秒）": "全体経過時間",
 }
 _REPORT_LOCK = threading.Lock()
 
@@ -58,28 +68,45 @@ def new_execution_id() -> str:
     return f"{stamp}_{uuid.uuid4().hex[:8]}"
 
 
-def format_elapsed_clock(ms: float | int | None) -> str:
-    """Format elapsed milliseconds as mm:ss or h:mm:ss for stable UI layout."""
-    total_seconds = max(0, int((ms or 0) // 1000))
-    seconds = total_seconds % 60
-    total_minutes = total_seconds // 60
-    minutes = total_minutes % 60
-    hours = total_minutes // 60
-    if hours > 0:
-        return f"{hours}:{minutes:02d}:{seconds:02d}"
-    return f"{total_minutes:02d}:{seconds:02d}"
-
-
-def format_elapsed_duration(ms: float | int | None) -> str:
-    """Format elapsed milliseconds for saved technical history."""
+def format_elapsed_seconds(ms: float | int | None) -> str:
+    """Format elapsed milliseconds as seconds without a unit."""
     if ms is None:
         return ""
-    normalized = max(0.0, float(ms))
-    if normalized < 1000:
-        return f"{round(normalized)}ms"
-    if normalized < 60000:
-        return f"{normalized / 1000:.1f}秒"
-    return format_elapsed_clock(normalized)
+    return f"{max(0.0, float(ms)) / 1000:.3f}"
+
+
+def _format_seconds_value(seconds: float | int | None) -> str:
+    if seconds is None:
+        return ""
+    return f"{max(0.0, float(seconds)):.3f}"
+
+
+def _elapsed_seconds_from_value(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, (int, float)):
+        return _format_seconds_value(value)
+
+    text = str(value).strip()
+    if not text:
+        return ""
+    normalized_text = text.replace(",", "")
+    try:
+        if normalized_text.endswith("ms"):
+            return _format_seconds_value(float(normalized_text[:-2].strip()) / 1000)
+        if normalized_text.endswith("秒"):
+            return _format_seconds_value(float(normalized_text[:-1].strip()))
+        if ":" in normalized_text:
+            parts = [float(part) for part in normalized_text.split(":")]
+            if len(parts) == 2:
+                minutes, seconds = parts
+                return _format_seconds_value((minutes * 60) + seconds)
+            if len(parts) == 3:
+                hours, minutes, seconds = parts
+                return _format_seconds_value((hours * 3600) + (minutes * 60) + seconds)
+        return _format_seconds_value(float(normalized_text))
+    except (TypeError, ValueError):
+        return text
 
 
 def _stringify_report_value(value: Any) -> str:
@@ -95,10 +122,18 @@ def _stringify_report_value(value: Any) -> str:
 
 def normalize_execution_report_record(record: dict[str, Any]) -> dict[str, str]:
     """Return a record with exactly the public report columns in order."""
-    return {
-        column: _stringify_report_value((record or {}).get(column, ""))
-        for column in REPORT_COLUMNS
-    }
+    source = record or {}
+    normalized = {}
+    for column in REPORT_COLUMNS:
+        value = source.get(column, "")
+        if column in ELAPSED_SECONDS_COLUMNS:
+            legacy_column = LEGACY_ELAPSED_COLUMNS.get(column, "")
+            if value in (None, "") and legacy_column:
+                value = source.get(legacy_column, "")
+            normalized[column] = _elapsed_seconds_from_value(value)
+        else:
+            normalized[column] = _stringify_report_value(value)
+    return normalized
 
 
 def append_execution_report(
@@ -176,6 +211,13 @@ def execution_report_dataframe(
     return pd.DataFrame(normalized_records, columns=REPORT_COLUMNS)
 
 
+def _excel_report_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    excel_df = df.copy()
+    for column in ELAPSED_SECONDS_COLUMNS:
+        excel_df[column] = pd.to_numeric(excel_df[column], errors="coerce")
+    return excel_df
+
+
 def create_execution_report_excel(
     output_path: Path | str | None = None,
     history_path: Path | str = DEFAULT_HISTORY_PATH,
@@ -195,8 +237,18 @@ def create_execution_report_excel(
         output_path = Path("/tmp") / filename
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with pd.ExcelWriter(path) as writer:
-        df.to_excel(writer, sheet_name="SelectAI Report", index=False)
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        excel_df = _excel_report_dataframe(df)
+        excel_df.to_excel(writer, sheet_name="SelectAI Report", index=False)
+        worksheet = writer.sheets["SelectAI Report"]
+        for column_index, column_name in enumerate(excel_df.columns, start=1):
+            if column_name in ELAPSED_SECONDS_COLUMNS:
+                for row in worksheet.iter_rows(
+                    min_row=2,
+                    min_col=column_index,
+                    max_col=column_index,
+                ):
+                    row[0].number_format = "0.000"
     return path
 
 
@@ -216,7 +268,6 @@ def generate_execution_report_download(
                 gr.Markdown(
                     visible=True,
                     value=f"⚠️ 実行履歴がありません{target_label}",
-                    elem_classes=["operation-status", "operation-status--warning"],
                 ),
                 gr.DownloadButton(value=None, visible=False),
             )
@@ -224,7 +275,6 @@ def generate_execution_report_download(
             gr.Markdown(
                 visible=True,
                 value=f"✅ レポートを生成しました{target_label}: {report_path}",
-                elem_classes=["operation-status", "operation-status--success"],
             ),
             gr.DownloadButton(
                 label="レポートをダウンロード",
@@ -239,7 +289,6 @@ def generate_execution_report_download(
             gr.Markdown(
                 visible=True,
                 value=f"❌ レポート生成に失敗しました: {exc}",
-                elem_classes=["operation-status", "operation-status--error"],
             ),
             gr.DownloadButton(value=None, visible=False),
         )

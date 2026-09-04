@@ -55,8 +55,7 @@ from utils.management_util import (
 from utils.sql_learning_util import build_sql_learning_tab
 from utils.selectai_report_util import (
     append_execution_report,
-    format_elapsed_clock,
-    format_elapsed_duration,
+    format_elapsed_seconds,
     generate_execution_report_download,
     new_execution_id,
     now_local_iso,
@@ -901,20 +900,6 @@ def _map_domain_to_profile(predicted_domain, choices):
         return gr.Dropdown(choices=choices, value=choices[0][1])
 
 
-def _selectai_execution_status_classes(status: str) -> list[str]:
-    classes = ["operation-status"]
-    text = str(status or "")
-    if text.startswith("❌"):
-        classes.append("operation-status--error")
-    elif text.startswith("⚠️"):
-        classes.append("operation-status--warning")
-    elif text.startswith("✅"):
-        classes.append("operation-status--success")
-    elif text.startswith("⏳"):
-        classes.append("operation-status--loading")
-    return classes
-
-
 def _new_selectai_execution_timing(
     screen_name: str,
     prompt: str,
@@ -1006,9 +991,15 @@ def _display_report_timestamp(value: str) -> str:
     return text.replace("T", " ").split("+", 1)[0].split(".", 1)[0]
 
 
+def _display_elapsed_seconds(ms: float | int | None) -> str:
+    if ms is None:
+        return "-"
+    return format_elapsed_seconds(ms)
+
+
 def _timing_table_row(timing: dict, label: str, phase: str) -> str:
     elapsed = _phase_elapsed_ms(timing, phase)
-    elapsed_text = format_elapsed_clock(elapsed) if elapsed is not None else "-"
+    elapsed_text = _display_elapsed_seconds(elapsed)
     return (
         f"| {label} | "
         f"{_display_report_timestamp(timing.get(f'{phase}_started_at', ''))} | "
@@ -1021,13 +1012,13 @@ def _format_selectai_execution_status(status: str, timing: dict | None) -> str:
     if timing is None:
         return str(status or "")
     overall = _execution_elapsed_ms(timing)
-    overall_text = format_elapsed_clock(overall) if overall is not None else "-"
+    overall_text = _display_elapsed_seconds(overall)
     lines = [
         str(status or ""),
         "",
         f"実行ID: `{timing.get('execution_id', '')}`",
         "",
-        "| 項目 | 開始 | 終了 | 経過 |",
+        "| 項目 | 開始 | 終了 | 経過（秒） |",
         "|---|---|---|---:|",
         (
             "| 全体 | "
@@ -1045,7 +1036,6 @@ def _selectai_execution_status_update(status: str, timing: dict | None):
     return gr.Markdown(
         value=_format_selectai_execution_status(status, timing),
         visible=True,
-        elem_classes=_selectai_execution_status_classes(status),
     )
 
 
@@ -1090,13 +1080,13 @@ def _append_selectai_execution_report(
         "実行開始時間": timing.get("execution_started_at", ""),
         "Select AI開始時間": timing.get("select_ai_started_at", ""),
         "Select AI終了時間": timing.get("select_ai_finished_at", ""),
-        "Select AI経過時間": format_elapsed_duration(
+        "Select AI経過時間（秒）": format_elapsed_seconds(
             _phase_elapsed_ms(timing, "select_ai")
         ),
         "SELECT開始時間": timing.get("select_started_at", ""),
         "SELECT終了時間": timing.get("select_finished_at", ""),
-        "SELECT経過時間": format_elapsed_duration(_phase_elapsed_ms(timing, "select")),
-        "全体経過時間": format_elapsed_duration(_execution_elapsed_ms(timing)),
+        "SELECT経過時間（秒）": format_elapsed_seconds(_phase_elapsed_ms(timing, "select")),
+        "全体経過時間（秒）": format_elapsed_seconds(_execution_elapsed_ms(timing)),
         "結果件数": timing.get("result_count", ""),
         "エラー内容": report_error,
     }
@@ -2669,11 +2659,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                             with gr.Column():
                                 dev_chat_execute_btn = gr.Button("実行（時間がかかる場合があります）", variant="primary")
 
-                        with gr.Row():
-                            dev_chat_status_md = gr.Markdown(
-                                visible=False,
-                                elem_classes=["operation-status"],
-                            )
+                        with gr.Accordion(label="実行ステータス", open=True):
+                            dev_chat_status_md = gr.Markdown(visible=False)
 
                     with gr.Accordion(label="2. 生成SQL・分析", open=True):
                         with gr.Row():
@@ -2846,7 +2833,6 @@ def build_selectai_tab(pool, vpd_pool=None):
                         with gr.Row():
                             dev_execution_report_status = gr.Markdown(
                                 visible=False,
-                                elem_classes=["operation-status"],
                             )
 
                     def _build_showsql_stmt(prompt: str) -> str:
@@ -7250,11 +7236,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 chat_clear_btn = gr.Button("クリア", variant="secondary")
                             with gr.Column():
                                 chat_execute_btn = gr.Button("実行（時間がかかる場合があります）", variant="primary")
-                        with gr.Row():
-                            chat_status_md = gr.Markdown(
-                                visible=False,
-                                elem_classes=["operation-status"],
-                            )
+                        with gr.Accordion(label="実行ステータス", open=True):
+                            chat_status_md = gr.Markdown(visible=False)
 
                     with gr.Accordion(label="2. 生成SQL", open=True):
                         gr.Markdown(visible=False)
@@ -7299,7 +7282,6 @@ def build_selectai_tab(pool, vpd_pool=None):
                         with gr.Row():
                             user_execution_report_status = gr.Markdown(
                                 visible=False,
-                                elem_classes=["operation-status"],
                             )
 
                 (

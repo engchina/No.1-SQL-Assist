@@ -6,30 +6,26 @@ import unittest
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import load_workbook
 
 from utils.selectai_report_util import (
+    ELAPSED_SECONDS_COLUMNS,
     REPORT_COLUMNS,
     append_execution_report,
     create_execution_report_excel,
     execution_report_dataframe,
-    format_elapsed_clock,
-    format_elapsed_duration,
+    format_elapsed_seconds,
     load_execution_report_records,
 )
 
 
 class SelectAiReportUtilTest(unittest.TestCase):
-    def test_format_elapsed_clock_matches_reference_shape(self):
-        self.assertEqual(format_elapsed_clock(0), "00:00")
-        self.assertEqual(format_elapsed_clock(1500), "00:01")
-        self.assertEqual(format_elapsed_clock(65000), "01:05")
-        self.assertEqual(format_elapsed_clock(3661000), "1:01:01")
-
-    def test_format_elapsed_duration_keeps_short_precision(self):
-        self.assertEqual(format_elapsed_duration(None), "")
-        self.assertEqual(format_elapsed_duration(999), "999ms")
-        self.assertEqual(format_elapsed_duration(1500), "1.5秒")
-        self.assertEqual(format_elapsed_duration(65000), "01:05")
+    def test_format_elapsed_seconds_uses_three_decimal_places(self):
+        self.assertEqual(format_elapsed_seconds(None), "")
+        self.assertEqual(format_elapsed_seconds(0), "0.000")
+        self.assertEqual(format_elapsed_seconds(62), "0.062")
+        self.assertEqual(format_elapsed_seconds(1500), "1.500")
+        self.assertEqual(format_elapsed_seconds(65000), "65.000")
 
     def test_append_and_load_jsonl_keeps_non_ascii_and_column_order(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -43,6 +39,9 @@ class SelectAiReportUtilTest(unittest.TestCase):
                     "カテゴリ予測": "営業",
                     "生成されたSQL": "SELECT COUNT(*) FROM CUSTOMERS",
                     "試行回数": 2,
+                    "Select AI経過時間（秒）": "8.700",
+                    "SELECT経過時間（秒）": "0.062",
+                    "全体経過時間（秒）": "8.800",
                 },
                 history_path=history_path,
             )
@@ -57,6 +56,8 @@ class SelectAiReportUtilTest(unittest.TestCase):
             self.assertEqual(list(records[0].keys()), REPORT_COLUMNS)
             self.assertEqual(records[0]["自然言語の質問"], "大阪の顧客数を教えて")
             self.assertEqual(records[0]["試行回数"], "2")
+            self.assertEqual(records[0]["Select AI経過時間（秒）"], "8.700")
+            self.assertEqual(records[0]["SELECT経過時間（秒）"], "0.062")
 
             raw_line = history_path.read_text(encoding="utf-8").splitlines()[0]
             self.assertIn("大阪", raw_line)
@@ -73,6 +74,9 @@ class SelectAiReportUtilTest(unittest.TestCase):
                     "実行ID": "run-2",
                     "ステータス": "✅ 取得完了",
                     "結果件数": 3,
+                    "Select AI経過時間（秒）": "8.700",
+                    "SELECT経過時間（秒）": "0.062",
+                    "全体経過時間（秒）": "8.800",
                 },
                 history_path=history_path,
             )
@@ -94,6 +98,32 @@ class SelectAiReportUtilTest(unittest.TestCase):
                 excel_df.iloc[0]["画面名"],
                 "開発者機能: チャット・分析",
             )
+            self.assertEqual(excel_df.iloc[0]["SELECT経過時間（秒）"], 0.062)
+
+            workbook = load_workbook(output_path)
+            worksheet = workbook["SelectAI Report"]
+            headers = [cell.value for cell in worksheet[1]]
+            elapsed_column_index = headers.index("SELECT経過時間（秒）") + 1
+            elapsed_cell = worksheet.cell(row=2, column=elapsed_column_index)
+            self.assertEqual(elapsed_cell.value, 0.062)
+            self.assertEqual(elapsed_cell.number_format, "0.000")
+
+    def test_legacy_elapsed_values_are_normalized_to_seconds(self):
+        df = execution_report_dataframe(
+            records=[
+                {
+                    "画面名": "開発者機能: チャット・分析",
+                    "Select AI経過時間": "8.7秒",
+                    "SELECT経過時間": "62ms",
+                    "全体経過時間": "00:09",
+                }
+            ]
+        )
+        self.assertEqual(df.columns.tolist(), REPORT_COLUMNS)
+        self.assertNotIn("Select AI経過時間", df.columns)
+        self.assertEqual(df.iloc[0]["Select AI経過時間（秒）"], "8.700")
+        self.assertEqual(df.iloc[0]["SELECT経過時間（秒）"], "0.062")
+        self.assertEqual(df.iloc[0]["全体経過時間（秒）"], "9.000")
 
     def test_execution_report_excel_filters_by_screen(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -135,6 +165,8 @@ class SelectAiReportUtilTest(unittest.TestCase):
             user_excel_df = pd.read_excel(user_output_path)
             self.assertEqual(len(user_excel_df), 1)
             self.assertEqual(user_excel_df.iloc[0]["実行ID"], "user-run")
+            for column in ELAPSED_SECONDS_COLUMNS:
+                self.assertIn(column, user_excel_df.columns)
 
             self.assertIsNone(
                 create_execution_report_excel(
