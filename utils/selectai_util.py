@@ -55,6 +55,7 @@ from utils.management_util import (
 from utils.sql_learning_util import build_sql_learning_tab
 from utils.selectai_report_util import (
     append_execution_report,
+    disabled_report_download_button,
     format_elapsed_seconds,
     generate_execution_report_download,
     new_execution_id,
@@ -2825,10 +2826,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     variant="primary",
                                 )
                             with gr.Column():
-                                dev_execution_report_download_button = gr.DownloadButton(
-                                    label="レポートをダウンロード",
-                                    visible=False,
-                                    variant="secondary",
+                                dev_execution_report_download_button = (
+                                    disabled_report_download_button()
                                 )
                         with gr.Row():
                             dev_execution_report_status = gr.Markdown(
@@ -7274,10 +7273,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     variant="primary",
                                 )
                             with gr.Column():
-                                user_execution_report_download_button = gr.DownloadButton(
-                                    label="レポートをダウンロード",
-                                    visible=False,
-                                    variant="secondary",
+                                user_execution_report_download_button = (
+                                    disabled_report_download_button()
                                 )
                         with gr.Row():
                             user_execution_report_status = gr.Markdown(
