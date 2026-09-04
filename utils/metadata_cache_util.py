@@ -8,9 +8,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _METADATA_CACHE_VERSION = 1
-_CACHE_DIR = Path("profiles")
-_METADATA_CACHE_FILE = _CACHE_DIR / "metadata_cache.json"
-_LEGACY_PROFILE_CACHE_FILE = _CACHE_DIR / "selectai.json"
+_CACHE_DIR = Path("metadata_cache")
+_METADATA_CACHE_FILE = _CACHE_DIR / "list_metadata.json"
 
 
 def _now_iso() -> str:
@@ -127,52 +126,12 @@ def load_metadata_cache() -> dict:
 def save_metadata_cache(cache: dict) -> Path:
     normalized = _normalize_cache(cache)
     normalized["updated_at"] = _now_iso()
-    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    _METADATA_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = _METADATA_CACHE_FILE.with_suffix(".json.tmp")
     with tmp_path.open("w", encoding="utf-8") as f:
         json.dump(normalized, f, ensure_ascii=False, indent=2)
     tmp_path.replace(_METADATA_CACHE_FILE)
     return _METADATA_CACHE_FILE
-
-
-def _write_legacy_profile_cache(profiles: list) -> Path:
-    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    payload = [
-        {
-            "profile": profile.get("profile", ""),
-            "category": profile.get("category", ""),
-            "tables": profile.get("tables", []),
-            "views": profile.get("views", []),
-        }
-        for profile in profiles
-    ] or [{
-        "profile": "",
-        "category": "",
-        "tables": [],
-        "views": [],
-    }]
-    tmp_path = _LEGACY_PROFILE_CACHE_FILE.with_suffix(".json.tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    tmp_path.replace(_LEGACY_PROFILE_CACHE_FILE)
-    return _LEGACY_PROFILE_CACHE_FILE
-
-
-def _load_legacy_profile_cache() -> list:
-    if not _LEGACY_PROFILE_CACHE_FILE.exists():
-        return []
-    try:
-        with _LEGACY_PROFILE_CACHE_FILE.open("r", encoding="utf-8") as f:
-            payload = json.load(f) or []
-        profiles = []
-        for entry in payload:
-            normalized = _normalize_profile_entry(entry)
-            if normalized.get("profile"):
-                profiles.append(normalized)
-        return profiles
-    except Exception as e:
-        logger.error(f"_load_legacy_profile_cache error: {e}")
-        return []
 
 
 def get_table_cache_entries() -> list:
@@ -184,8 +143,7 @@ def get_view_cache_entries() -> list:
 
 
 def get_profile_cache_entries() -> list:
-    profiles = load_metadata_cache().get("profiles") or []
-    return profiles or _load_legacy_profile_cache()
+    return load_metadata_cache().get("profiles") or []
 
 
 def get_profile_cache_entry(display_or_name: str) -> dict:
@@ -214,9 +172,7 @@ def replace_profile_cache(profiles: list) -> Path:
     cache = load_metadata_cache()
     cache["profiles"] = profiles or []
     cache["profiles_updated_at"] = _now_iso()
-    path = save_metadata_cache(cache)
-    _write_legacy_profile_cache(load_metadata_cache().get("profiles") or [])
-    return path
+    return save_metadata_cache(cache)
 
 
 def _upsert_entry(entries: list, entry: dict, key: str) -> list:
@@ -252,8 +208,6 @@ def upsert_view_cache_entry(entry: dict) -> Path:
 
 def upsert_profile_cache_entry(entry: dict) -> Path:
     cache = load_metadata_cache()
-    if not cache.get("profiles"):
-        cache["profiles"] = _load_legacy_profile_cache()
     normalized_entry = _normalize_profile_entry(entry)
     if not normalized_entry["profile"]:
         return save_metadata_cache(cache)
@@ -263,9 +217,7 @@ def upsert_profile_cache_entry(entry: dict) -> Path:
         "profile",
     )
     cache["profiles_updated_at"] = _now_iso()
-    path = save_metadata_cache(cache)
-    _write_legacy_profile_cache(load_metadata_cache().get("profiles") or [])
-    return path
+    return save_metadata_cache(cache)
 
 
 def remove_table_cache_entry(name: str) -> Path:
@@ -294,8 +246,6 @@ def remove_view_cache_entry(name: str) -> Path:
 
 def remove_profile_cache_entry(name: str) -> Path:
     cache = load_metadata_cache()
-    if not cache.get("profiles"):
-        cache["profiles"] = _load_legacy_profile_cache()
     target = _normalize_name(name).upper()
     cache["profiles"] = [
         entry
@@ -303,6 +253,4 @@ def remove_profile_cache_entry(name: str) -> Path:
         if _normalize_name(entry.get("profile")).upper() != target
     ]
     cache["profiles_updated_at"] = _now_iso()
-    path = save_metadata_cache(cache)
-    _write_legacy_profile_cache(load_metadata_cache().get("profiles") or [])
-    return path
+    return save_metadata_cache(cache)

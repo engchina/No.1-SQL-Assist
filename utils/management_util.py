@@ -3120,7 +3120,7 @@ def build_management_tab(pool, vpd_pool=None):
                     )
                     from utils.selectai_util import refresh_profile_cache_from_db
 
-                    df, cache_path, saved_count, table_count, view_count, _raw_count = (
+                    df, cache_path, saved_count, _table_count, _view_count, _raw_count = (
                         refresh_profile_cache_from_db(pool)
                     )
                     count = len(df) if isinstance(df, pd.DataFrame) else 0
@@ -3129,7 +3129,7 @@ def build_management_tab(pool, vpd_pool=None):
                             visible=True,
                             value=(
                                 f"✅ JSON保存完了（プロファイル: {saved_count}、"
-                                f"テーブル: {table_count}、ビュー: {view_count}、保存先: {cache_path}）"
+                                f"保存先: {cache_path}）"
                             ),
                         ),
                         gr.Dataframe(

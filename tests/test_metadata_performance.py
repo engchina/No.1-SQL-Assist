@@ -133,16 +133,13 @@ def executed_sql(pool):
 class MetadataPerformanceTest(unittest.TestCase):
     def setUp(self):
         self._temp_dir = tempfile.TemporaryDirectory()
-        cache_dir = Path(self._temp_dir.name)
+        temp_root = Path(self._temp_dir.name)
+        cache_dir = temp_root / "metadata_cache"
         self._patchers = [
             patch("utils.metadata_cache_util._CACHE_DIR", cache_dir),
             patch(
                 "utils.metadata_cache_util._METADATA_CACHE_FILE",
-                cache_dir / "metadata_cache.json",
-            ),
-            patch(
-                "utils.metadata_cache_util._LEGACY_PROFILE_CACHE_FILE",
-                cache_dir / "selectai.json",
+                cache_dir / "list_metadata.json",
             ),
         ]
         for patcher in self._patchers:
@@ -339,7 +336,7 @@ class MetadataPerformanceTest(unittest.TestCase):
         self.assertIn("USER_CLOUD_AI_PROFILE_ATTRIBUTES", sql_text)
         self.assertNotIn("WHERE PROFILE_NAME = :NAME", sql_text)
 
-    def test_profile_json_stream_keeps_legacy_selectai_schema(self):
+    def test_profile_json_stream_uses_single_metadata_cache_file(self):
         attrs = json.dumps([
             {"owner": "ADMIN", "name": "CUSTOMERS"},
             {"owner": "ADMIN", "name": "V_CUSTOMERS"},
@@ -352,18 +349,22 @@ class MetadataPerformanceTest(unittest.TestCase):
         with patch("utils.selectai_util._get_table_names", return_value=["CUSTOMERS"]):
             with patch("utils.selectai_util._get_view_names", return_value=["V_CUSTOMERS"]):
                 messages = list(_save_profiles_to_json_stream(pool))
-        legacy_path = Path(self._temp_dir.name) / "selectai.json"
-        payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+        cache_path = Path(self._temp_dir.name) / "metadata_cache" / "list_metadata.json"
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
 
         self.assertTrue(messages[-1].startswith("✅ 1件のProfileを保存"))
+        self.assertEqual(payload["profiles"][0]["profile"], "PROFILE_A")
         self.assertEqual(
-            payload,
-            [{
+            {
+                key: payload["profiles"][0][key]
+                for key in ("profile", "category", "tables", "views")
+            },
+            {
                 "profile": "PROFILE_A",
                 "category": "sales",
                 "tables": ["CUSTOMERS"],
                 "views": ["V_CUSTOMERS"],
-            }],
+            },
         )
         self.assertEqual(len(pool.executed), 2)
         self.assertEqual(executed_sql(pool).upper().count("USER_CLOUD_AI_PROFILE_ATTRIBUTES"), 1)
