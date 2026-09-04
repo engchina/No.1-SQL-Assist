@@ -30,6 +30,7 @@ from utils.llm_model_util import (
 from utils.metadata_cache_util import (
     get_profile_cache_entries,
     get_profile_cache_entry,
+    metadata_cache_path,
     remove_profile_cache_entry,
     replace_profile_cache,
     upsert_profile_cache_entry,
@@ -563,8 +564,8 @@ def _build_profile_outputs(
 
 
 def _write_profiles_to_json(profiles_data: list) -> tuple:
-    json_path = replace_profile_cache(profiles_data or [])
-    return json_path, len(profiles_data or [])
+    replace_profile_cache(profiles_data or [])
+    return metadata_cache_path(), len(profiles_data or [])
 
 
 def _build_profile_snapshot(pool, refresh_object_cache_if_empty: bool = False) -> tuple:
@@ -613,7 +614,7 @@ def _profile_path(name: str) -> Path:
 
 
 def _save_profiles_to_json(pool):
-    """プロファイル情報をselectai.jsonファイルに保存する"""
+    """プロファイル情報を一覧メタデータキャッシュに保存する"""
     try:
         start_ts = time()
         logger.info("プロファイルJSON保存を開始")
@@ -827,11 +828,9 @@ def _predict_category_label(text):
 
 def _map_domain_to_profile(predicted_domain, choices):
     try:
-        profile_json_path = Path("./profiles/selectai.json")
-        if not predicted_domain or not profile_json_path.exists():
+        profiles = get_profile_cache_entries()
+        if not predicted_domain or not profiles:
             return gr.Dropdown(choices=choices, value=choices[0][1])
-        with profile_json_path.open("r", encoding="utf-8") as f:
-            profiles = json.load(f)
         matched_profile = ""
         for item in profiles:
             bd_item = str(item.get("category", "")).strip().lower()
@@ -1136,11 +1135,9 @@ def _predict_domain_and_set_profile(text):
             return str(prediction[0]).strip().lower()
 
         def _map_domain_to_profile(predicted_domain: str, choices):
-            profile_json_path = Path("./profiles/selectai.json")
-            if not predicted_domain or not profile_json_path.exists():
+            profiles = get_profile_cache_entries()
+            if not predicted_domain or not profiles:
                 return gr.Dropdown(choices=choices, value=choices[0][1])
-            with profile_json_path.open("r", encoding="utf-8") as f:
-                profiles = json.load(f)
             matched_profile = ""
             for item in profiles:
                 bd_item = str(item.get("category", "")).strip().lower()
