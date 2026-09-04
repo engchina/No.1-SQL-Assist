@@ -11,7 +11,7 @@ import asyncio
 from datetime import datetime
 from dotenv import find_dotenv, load_dotenv  # noqa: E402
 from pathlib import Path
-from time import time
+from time import perf_counter, time
 
 import gradio as gr
 import pandas as pd
@@ -53,6 +53,14 @@ from utils.management_util import (
 )
 
 from utils.sql_learning_util import build_sql_learning_tab
+from utils.selectai_report_util import (
+    append_execution_report,
+    format_elapsed_clock,
+    format_elapsed_duration,
+    generate_execution_report_download,
+    new_execution_id,
+    now_local_iso,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -851,6 +859,216 @@ def _map_domain_to_profile(predicted_domain, choices):
         return gr.Dropdown(choices=choices, value=choices[0][1])
     except Exception:
         return gr.Dropdown(choices=choices, value=choices[0][1])
+
+
+def _selectai_execution_status_classes(status: str) -> list[str]:
+    classes = ["operation-status"]
+    text = str(status or "")
+    if text.startswith("❌"):
+        classes.append("operation-status--error")
+    elif text.startswith("⚠️"):
+        classes.append("operation-status--warning")
+    elif text.startswith("✅"):
+        classes.append("operation-status--success")
+    elif text.startswith("⏳"):
+        classes.append("operation-status--loading")
+    return classes
+
+
+def _new_selectai_execution_timing(
+    screen_name: str,
+    prompt: str,
+    profile: str,
+) -> dict:
+    started_at = now_local_iso()
+    return {
+        "execution_id": new_execution_id(),
+        "screen_name": str(screen_name or ""),
+        "prompt": str(prompt or ""),
+        "selected_profile": str(profile or ""),
+        "profile": str(profile or ""),
+        "profile_category": "",
+        "prompt_used": "",
+        "generated_sql": "",
+        "attempts": 0,
+        "result_count": "",
+        "execution_started_at": started_at,
+        "execution_started_perf": perf_counter(),
+        "execution_finished_at": "",
+        "execution_finished_perf": None,
+        "select_ai_started_at": "",
+        "select_ai_finished_at": "",
+        "select_ai_elapsed_ms": 0.0,
+        "select_started_at": "",
+        "select_finished_at": "",
+        "select_elapsed_ms": 0.0,
+        "report_saved": False,
+    }
+
+
+def _start_selectai_report_phase(timing: dict | None, phase: str):
+    if timing is None:
+        return None
+    active_key = f"{phase}_active_perf"
+    timing[active_key] = perf_counter()
+    started_key = f"{phase}_started_at"
+    if not timing.get(started_key):
+        timing[started_key] = now_local_iso()
+    return timing[active_key]
+
+
+def _finish_selectai_report_phase(
+    timing: dict | None,
+    phase: str,
+    started_perf=None,
+):
+    if timing is None:
+        return
+    active_key = f"{phase}_active_perf"
+    start = started_perf if started_perf is not None else timing.get(active_key)
+    if start is not None:
+        elapsed_key = f"{phase}_elapsed_ms"
+        elapsed = max(0.0, (perf_counter() - float(start)) * 1000)
+        timing[elapsed_key] = float(timing.get(elapsed_key) or 0.0) + elapsed
+    timing[f"{phase}_finished_at"] = now_local_iso()
+    timing.pop(active_key, None)
+
+
+def _finish_selectai_execution_timing(timing: dict | None):
+    if timing is None or timing.get("execution_finished_at"):
+        return
+    timing["execution_finished_at"] = now_local_iso()
+    timing["execution_finished_perf"] = perf_counter()
+
+
+def _phase_elapsed_ms(timing: dict | None, phase: str):
+    if timing is None or not timing.get(f"{phase}_started_at"):
+        return None
+    elapsed = float(timing.get(f"{phase}_elapsed_ms") or 0.0)
+    active_start = timing.get(f"{phase}_active_perf")
+    if active_start is not None:
+        elapsed += max(0.0, (perf_counter() - float(active_start)) * 1000)
+    return elapsed
+
+
+def _execution_elapsed_ms(timing: dict | None):
+    if timing is None or timing.get("execution_started_perf") is None:
+        return None
+    finished = timing.get("execution_finished_perf")
+    end = float(finished) if finished is not None else perf_counter()
+    return max(0.0, (end - float(timing["execution_started_perf"])) * 1000)
+
+
+def _display_report_timestamp(value: str) -> str:
+    text = str(value or "")
+    if not text:
+        return "-"
+    return text.replace("T", " ").split("+", 1)[0].split(".", 1)[0]
+
+
+def _timing_table_row(timing: dict, label: str, phase: str) -> str:
+    elapsed = _phase_elapsed_ms(timing, phase)
+    elapsed_text = format_elapsed_clock(elapsed) if elapsed is not None else "-"
+    return (
+        f"| {label} | "
+        f"{_display_report_timestamp(timing.get(f'{phase}_started_at', ''))} | "
+        f"{_display_report_timestamp(timing.get(f'{phase}_finished_at', ''))} | "
+        f"{elapsed_text} |"
+    )
+
+
+def _format_selectai_execution_status(status: str, timing: dict | None) -> str:
+    if timing is None:
+        return str(status or "")
+    overall = _execution_elapsed_ms(timing)
+    overall_text = format_elapsed_clock(overall) if overall is not None else "-"
+    lines = [
+        str(status or ""),
+        "",
+        f"実行ID: `{timing.get('execution_id', '')}`",
+        "",
+        "| 項目 | 開始 | 終了 | 経過 |",
+        "|---|---|---|---:|",
+        (
+            "| 全体 | "
+            f"{_display_report_timestamp(timing.get('execution_started_at', ''))} | "
+            f"{_display_report_timestamp(timing.get('execution_finished_at', ''))} | "
+            f"{overall_text} |"
+        ),
+        _timing_table_row(timing, "Select AI", "select_ai"),
+        _timing_table_row(timing, "SELECT", "select"),
+    ]
+    return "\n".join(lines)
+
+
+def _selectai_execution_status_update(status: str, timing: dict | None):
+    return gr.Markdown(
+        value=_format_selectai_execution_status(status, timing),
+        visible=True,
+        elem_classes=_selectai_execution_status_classes(status),
+    )
+
+
+def _selectai_status_error_message(status: str) -> str:
+    text = str(status or "").strip()
+    if text.startswith(("❌", "⚠️", "⏳", "✅")):
+        return text[1:].strip()
+    return text
+
+
+def _append_selectai_execution_report(
+    timing: dict | None,
+    status: str,
+    generated_sql: str = "",
+    result_df: pd.DataFrame | None = None,
+    error_message: str = "",
+) -> str:
+    if timing is None or timing.get("report_saved"):
+        return status
+    _finish_selectai_execution_timing(timing)
+    if result_df is not None:
+        try:
+            timing["result_count"] = len(result_df)
+        except Exception:
+            timing["result_count"] = ""
+    if generated_sql:
+        timing["generated_sql"] = str(generated_sql or "")
+
+    is_error = str(status or "").startswith(("❌", "⚠️"))
+    report_error = error_message or (_selectai_status_error_message(status) if is_error else "")
+    record = {
+        "画面名": timing.get("screen_name", ""),
+        "実行ID": timing.get("execution_id", ""),
+        "作成日時": timing.get("execution_started_at", ""),
+        "自然言語の質問": timing.get("prompt", ""),
+        "実行に使用した質問": timing.get("prompt_used", ""),
+        "カテゴリ予測": timing.get("profile_category", ""),
+        "Profile": timing.get("profile") or timing.get("selected_profile", ""),
+        "生成されたSQL": timing.get("generated_sql") or generated_sql,
+        "ステータス": str(status or ""),
+        "試行回数": timing.get("attempts", ""),
+        "実行開始時間": timing.get("execution_started_at", ""),
+        "Select AI開始時間": timing.get("select_ai_started_at", ""),
+        "Select AI終了時間": timing.get("select_ai_finished_at", ""),
+        "Select AI経過時間": format_elapsed_duration(
+            _phase_elapsed_ms(timing, "select_ai")
+        ),
+        "SELECT開始時間": timing.get("select_started_at", ""),
+        "SELECT終了時間": timing.get("select_finished_at", ""),
+        "SELECT経過時間": format_elapsed_duration(_phase_elapsed_ms(timing, "select")),
+        "全体経過時間": format_elapsed_duration(_execution_elapsed_ms(timing)),
+        "結果件数": timing.get("result_count", ""),
+        "エラー内容": report_error,
+    }
+    try:
+        append_execution_report(record)
+        timing["report_saved"] = True
+        return status
+    except Exception as exc:
+        logger.error("SelectAI execution report save failed: %s", exc)
+        timing["report_saved"] = True
+        return f"{status}\n\n⚠️ 実行レポート保存に失敗しました: {exc}"
+
 
 def get_db_profiles(pool) -> pd.DataFrame:
     try:
@@ -2290,7 +2508,10 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 dev_chat_execute_btn = gr.Button("実行（時間がかかる場合があります）", variant="primary")
 
                         with gr.Row():
-                            dev_chat_status_md = gr.Markdown(visible=False)
+                            dev_chat_status_md = gr.Markdown(
+                                visible=False,
+                                elem_classes=["operation-status"],
+                            )
 
                     with gr.Accordion(label="2. 生成SQL・分析", open=True):
                         with gr.Row():
@@ -2782,7 +3003,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                             logger.error(traceback.format_exc())
                             yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False)
 
-                    def _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                    def _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, timing=None):
                         """SQLを生成する（リトライなし、エラー時は呼び出し元がハンドリング）.
                         
                         Yields:
@@ -2800,6 +3021,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                         if not base_question:
                             yield "⚠️ 質問を入力してください", ""
                             return
+                        if timing is not None:
+                            timing["prompt_used"] = base_question
                         ep = str(extra_prompt or "").strip()
                         inc = bool(include_extra)
                         final = base_question if not inc or not ep else (ep + "\n\n" + base_question)
@@ -2816,8 +3039,25 @@ def build_selectai_tab(pool, vpd_pool=None):
                         q = final
                         if q.endswith(";"):
                             q = q[:-1]
+                        if timing is not None:
+                            timing["profile"] = prof
+                            timing["profile_category"] = profile_category
+                            timing["prompt_used"] = q
                         
+                        select_ai_perf = None
+
+                        def _finish_select_ai_phase():
+                            nonlocal select_ai_perf
+                            if select_ai_perf is not None:
+                                _finish_selectai_report_phase(
+                                    timing, "select_ai", select_ai_perf
+                                )
+                                select_ai_perf = None
+
                         try:
+                            select_ai_perf = _start_selectai_report_phase(
+                                timing, "select_ai"
+                            )
                             yield "⏳ SQL生成中...", ""
                             with pool.acquire() as conn:
                                 with conn.cursor() as cursor:
@@ -2843,6 +3083,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                                                         show_cells.append(s2)
                                             show_text = "\n".join(show_cells)
                                     except Exception as e:
+                                        _finish_select_ai_phase()
                                         err_msg = str(e)
                                         try:
                                             import re as _re
@@ -2863,6 +3104,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                                             logger.error(f"inner error parse failed: {_inner_err}")
                                         yield f"❌ エラー: {err_msg}", ""
                                         return
+                                    _finish_select_ai_phase()
                                     
                                     def _extract_sql(text: str) -> str:
                                         if not text:
@@ -2903,6 +3145,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     if not generated_sql:
                                         yield "❌ エラー: SQL生成に失敗しました（空の結果）", ""
                                         return
+                                    if timing is not None:
+                                        timing["generated_sql"] = generated_sql
                                     
                                     # SQL生成失敗のエラーメッセージをチェック
                                     # "SELECT statement could not be generated" などが返される場合がある
@@ -2921,94 +3165,141 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     yield "✅ SQL生成完了", generated_sql
                                     return
                         except Exception as e:
+                            _finish_select_ai_phase()
                             logger.error(f"_common_step_generate error: {e}")
                             yield f"❌ エラー: {e}", ""
                             return
 
-                    def _step_generate_and_run_common(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, elem_id="selectai_dev_chat_result_df", include_feedback=True, login_user=None):
-                        """SQL生成と実行を統合し、実行エラー時にSQL生成から再試行する.
-                        
-                        Args:
-                            profile: プロファイル名
-                            prompt: ユーザー入力の質問
-                            extra_prompt: 追加プロンプト
-                            include_extra: 追加プロンプトを含めるか
-                            enable_rewrite: クエリ書き換えを有効にするか
-                            rewritten_query: 書き換えられたクエリ
-                            elem_id: Dataframeのelem_id
-                            include_feedback: feedback_sqlを出力に含めるか
-                        
-                        Yields:
-                            tuple: include_feedback=Trueの場合(status_md, generated_sql, result_df, result_style, feedback_sql)
-                                   include_feedback=Falseの場合(status_md, generated_sql, result_df, result_style)
-                        """
-                        def _extract_gradio_value(obj):
-                            """Gradioオブジェクトから値を抽出する."""
-                            if isinstance(obj, str):
-                                return obj
-                            # Gradioコンポーネントの value 属性に直接アクセス
-                            if hasattr(obj, 'value'):
-                                return str(obj.value or "")
-                            elif isinstance(obj, dict):
-                                # dict 形式の Gradio オブジェクト
-                                if 'value' in obj:
-                                    return str(obj['value'] or "")
-                            elif hasattr(obj, '__dict__'):
-                                obj_dict = obj.__dict__
-                                if 'value' in obj_dict:
-                                    return str(obj_dict['value'] or "")
-                            # フォールバック: str() で変換してみる
-                            try:
-                                return str(obj or "")
-                            except Exception as e:
-                                logger.warning(f"_extract_gradio_value failed to convert object: {e}")
-                                return ""
-                        
-                        # 最大3回のリトライ(SQL生成 + 実行の全プロセス)
+                    def _step_generate_and_run_common(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, elem_id="selectai_dev_chat_result_df", include_feedback=True, login_user=None, screen_name=""):
+                        """SQL生成と実行を統合し、実行時間を履歴に保存する."""
+
+                        def _empty_result_df(label="実行結果(件数: 0)"):
+                            return gr.Dataframe(
+                                visible=False,
+                                value=pd.DataFrame(),
+                                label=label,
+                                interactive=False,
+                                wrap=True,
+                                elem_id=elem_id,
+                            )
+
+                        def _yield_values(status_msg, sql_value="", result_df=None, result_style=None, feedback_sql=""):
+                            status_md = _selectai_execution_status_update(
+                                status_msg, timing
+                            )
+                            sql_box = gr.Textbox(
+                                value=sql_value,
+                                autoscroll=False,
+                            )
+                            df_component = (
+                                result_df
+                                if result_df is not None
+                                else _empty_result_df()
+                            )
+                            style_component = (
+                                result_style
+                                if result_style is not None
+                                else gr.HTML(visible=False, value="")
+                            )
+                            if include_feedback:
+                                return (
+                                    status_md,
+                                    sql_box,
+                                    df_component,
+                                    style_component,
+                                    gr.Textbox(value=feedback_sql),
+                                )
+                            return (
+                                status_md,
+                                sql_box,
+                                df_component,
+                                style_component,
+                            )
+
+                        timing = _new_selectai_execution_timing(
+                            screen_name, prompt, profile
+                        )
+                        try:
+                            prof, _t, _v, profile_category = (
+                                _resolve_profile_name_from_json(
+                                    pool, str(profile or "")
+                                )
+                            )
+                            timing["profile"] = prof or str(profile or "")
+                            timing["profile_category"] = profile_category
+                        except Exception as e:
+                            logger.error(f"report profile resolve error: {e}")
+
+                        yield _yield_values("⏳ 実行を開始しました")
+
                         max_retries = 3
+                        generated_sql = ""
                         logger.info(f"SQL生成・実行開始: max_retries={max_retries}")
                         for retry_count in range(max_retries):
+                            timing["attempts"] = retry_count + 1
                             logger.info(f"--- リトライ {retry_count + 1}/{max_retries} 開始 ---")
                             try:
-                                # ステップ1: SQL生成
-                                generated_sql = ""
-                                sql_gen_status = None
-                                
-                                # SQL生成プロセス
-                                for status_msg, sql_value in _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
+                                sql_gen_status = ""
+
+                                for status_msg, sql_value in _common_step_generate(
+                                    profile,
+                                    prompt,
+                                    extra_prompt,
+                                    include_extra,
+                                    enable_rewrite,
+                                    rewritten_query,
+                                    timing=timing,
+                                ):
                                     generated_sql = sql_value
                                     sql_gen_status = status_msg
-                                    # 生成中のステータスを表示
-                                    if include_feedback:
-                                        yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=generated_sql, autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value=""), gr.Textbox(value="")
-                                    else:
-                                        yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=generated_sql, autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
-                                
-                                # ステータスからエラーチェック
-                                status_text = sql_gen_status
-                                
-                                # SQL生成に失敗した場合
+                                    yield _yield_values(status_msg, generated_sql)
+
+                                status_text = str(sql_gen_status or "")
+                                if status_text.startswith("⚠️"):
+                                    final_status = _append_selectai_execution_report(
+                                        timing,
+                                        status_text,
+                                        generated_sql=generated_sql,
+                                        error_message=_selectai_status_error_message(
+                                            status_text
+                                        ),
+                                    )
+                                    yield _yield_values(final_status, generated_sql)
+                                    return
+
                                 if "❌" in status_text:
                                     if retry_count < max_retries - 1:
-                                        logger.warning(f"SQL生成失敗、再試行します (試行 {retry_count + 1}/{max_retries})")
+                                        logger.warning(
+                                            "SQL生成失敗、再試行します (試行 %s/%s)",
+                                            retry_count + 1,
+                                            max_retries,
+                                        )
                                         continue
-                                    else:
-                                        # 最終試行でも失敗
-                                        if include_feedback:
-                                            yield gr.Markdown(visible=True, value=sql_gen_status), gr.Textbox(value=generated_sql), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value=""), gr.Textbox(value="")
-                                        else:
-                                            yield gr.Markdown(visible=True, value=sql_gen_status), gr.Textbox(value=generated_sql, autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(件数: 0)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
-                                        return
-                                
-                                # ステップ2: SQL実行
+                                    final_status = _append_selectai_execution_report(
+                                        timing,
+                                        status_text,
+                                        generated_sql=generated_sql,
+                                        error_message=_selectai_status_error_message(
+                                            status_text
+                                        ),
+                                    )
+                                    yield _yield_values(final_status, generated_sql)
+                                    return
+
                                 sql_execution_failed = False
-                                logger.info(f"SQL実行開始: generated_sql={generated_sql[:100] if generated_sql else '(空)'}...")
-                                
+                                last_exec_status = ""
+                                logger.info(
+                                    "SQL実行開始: generated_sql=%s...",
+                                    generated_sql[:100] if generated_sql else "(空)",
+                                )
+
                                 for exec_status_msg, result_df, col_widths in _run_sql_common(
-                                    generated_sql, elem_id, login_user=login_user
+                                    generated_sql,
+                                    elem_id,
+                                    login_user=login_user,
+                                    timing=timing,
                                 ):
-                                    # Gradioオブジェクトを構築
-                                    exec_status_md = gr.Markdown(visible=True, value=exec_status_msg)
+                                    last_exec_status = str(exec_status_msg or "")
                                     if result_df is not None and len(result_df) > 0:
                                         exec_df = gr.Dataframe(
                                             visible=True,
@@ -3018,7 +3309,6 @@ def build_selectai_tab(pool, vpd_pool=None):
                                             wrap=True,
                                             elem_id=elem_id,
                                         )
-                                        # スタイルの構築
                                         style_value = ""
                                         if col_widths:
                                             rules = []
@@ -3030,54 +3320,103 @@ def build_selectai_tab(pool, vpd_pool=None):
                                                     f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
                                                 )
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
-                                        exec_style = gr.HTML(visible=bool(style_value), value=style_value)
+                                        exec_style = gr.HTML(
+                                            visible=bool(style_value),
+                                            value=style_value,
+                                        )
                                     else:
-                                        exec_df = gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果（件数: 0）", interactive=False, wrap=True, elem_id=elem_id)
+                                        exec_df = _empty_result_df("実行結果（件数: 0）")
                                         exec_style = gr.HTML(visible=False, value="")
-                                    
-                                    # 実行結果を表示
-                                    if include_feedback:
-                                        yield exec_status_md, gr.Textbox(value=generated_sql), exec_df, exec_style, gr.Textbox(value=generated_sql)
-                                    else:
-                                        yield exec_status_md, gr.Textbox(value=generated_sql, autoscroll=False), exec_df, exec_style
-                                    
-                                    # 実行エラーチェック（値を直接使用）
+
                                     logger.info(f"SQL実行ステータス: {exec_status_msg}")
-                                    if "❌" in exec_status_msg:
+                                    if "❌" in last_exec_status:
                                         sql_execution_failed = True
                                         logger.warning(f"SQL実行エラー検出: {exec_status_msg}")
-                                
-                                # SQL実行に失敗した場合、SQL生成から再試行
+
+                                    terminal_success = last_exec_status.startswith("✅")
+                                    terminal_final_error = (
+                                        "❌" in last_exec_status
+                                        and retry_count >= max_retries - 1
+                                    )
+                                    display_status = last_exec_status
+                                    if terminal_success or terminal_final_error:
+                                        display_status = _append_selectai_execution_report(
+                                            timing,
+                                            last_exec_status,
+                                            generated_sql=generated_sql,
+                                            result_df=result_df,
+                                            error_message=(
+                                                _selectai_status_error_message(
+                                                    last_exec_status
+                                                )
+                                                if terminal_final_error
+                                                else ""
+                                            ),
+                                        )
+
+                                    yield _yield_values(
+                                        display_status,
+                                        generated_sql,
+                                        exec_df,
+                                        exec_style,
+                                        generated_sql,
+                                    )
+
                                 if sql_execution_failed:
                                     if retry_count < max_retries - 1:
-                                        logger.warning(f"SQL実行失敗、SQL生成から再試行します (試行 {retry_count + 1}/{max_retries})")
-                                        logger.info(f"retry_count={retry_count}, max_retries={max_retries}, 次の試行を開始します")
+                                        logger.warning(
+                                            "SQL実行失敗、SQL生成から再試行します (試行 %s/%s)",
+                                            retry_count + 1,
+                                            max_retries,
+                                        )
                                         continue
-                                    else:
-                                        # 最終試行でも失敗した場合、そのまま終了(既にエラー表示済み)
-                                        logger.error(f"SQL実行失敗、最大リトライ回数({max_retries})に達しました")
-                                        return
-                                else:
-                                    # 成功したので終了
+                                    logger.error(
+                                        f"SQL実行失敗、最大リトライ回数({max_retries})に達しました"
+                                    )
+                                    if not timing.get("report_saved"):
+                                        final_status = _append_selectai_execution_report(
+                                            timing,
+                                            last_exec_status or "❌ エラー: SQL実行に失敗しました",
+                                            generated_sql=generated_sql,
+                                            error_message=_selectai_status_error_message(
+                                                last_exec_status
+                                            ),
+                                        )
+                                        yield _yield_values(final_status, generated_sql)
                                     return
-                            
+                                return
+
                             except Exception as e:
-                                logger.error(f"SQL生成・実行で予期しないエラー (試行 {retry_count + 1}/{max_retries}): {e}")
+                                logger.error(
+                                    "SQL生成・実行で予期しないエラー (試行 %s/%s): %s",
+                                    retry_count + 1,
+                                    max_retries,
+                                    e,
+                                )
                                 if retry_count < max_retries - 1:
                                     continue
-                                else:
-                                    if include_feedback:
-                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value=""), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(エラー)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value=""), gr.Textbox(value="")
-                                    else:
-                                        yield gr.Markdown(visible=True, value=f"❌ エラー: {e}"), gr.Textbox(value="", autoscroll=False), gr.Dataframe(visible=False, value=pd.DataFrame(), label="実行結果(エラー)", interactive=False, wrap=True, elem_id=elem_id), gr.HTML(visible=False, value="")
-                                    return
+                                final_status = _append_selectai_execution_report(
+                                    timing,
+                                    f"❌ エラー: {e}",
+                                    generated_sql=generated_sql,
+                                    error_message=str(e),
+                                )
+                                yield _yield_values(
+                                    final_status,
+                                    "",
+                                    _empty_result_df("実行結果(エラー)"),
+                                    gr.HTML(visible=False, value=""),
+                                )
+                                return
 
                     def _dev_step_generate_and_run(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query, request: gr.Request):
                         """開発者向けSQL生成と実行を統合し、実行エラー時にSQL生成から再試行する."""
                         require_admin(request)
                         yield from _step_generate_and_run_common(
                             profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
-                            elem_id="selectai_dev_chat_result_df", include_feedback=True
+                            elem_id="selectai_dev_chat_result_df",
+                            include_feedback=True,
+                            screen_name="開発者機能: チャット・分析",
                         )
 
                     def _dev_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
@@ -3085,7 +3424,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                         for status_msg, sql_value in _common_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
                             yield gr.Markdown(visible=True, value=status_msg), gr.Textbox(value=sql_value, autoscroll=False)
 
-                    def _run_sql_common(sql_text, elem_id, login_user=None):
+                    def _run_sql_common(sql_text, elem_id, login_user=None, timing=None):
                         """SQLを実行する（リトライなし、エラー時は呼び出し元がハンドリング）.
                         
                         Yields:
@@ -3099,7 +3438,20 @@ def build_selectai_tab(pool, vpd_pool=None):
                             yield "❌ エラー: SELECT/WITH 1文のみ実行できます", None, None
                             return
                         
+                        select_perf = None
+
+                        def _finish_select_phase():
+                            nonlocal select_perf
+                            if select_perf is not None:
+                                _finish_selectai_report_phase(
+                                    timing, "select", select_perf
+                                )
+                                select_perf = None
+
                         try:
+                            select_perf = _start_selectai_report_phase(
+                                timing, "select"
+                            )
                             yield "⏳ 実行中...", None, None
                             run_sql = parse_oracle_script(s)[0].text
                             execution_pool = vpd_pool if login_user else pool
@@ -3140,11 +3492,14 @@ def build_selectai_tab(pool, vpd_pool=None):
                                             diff = 100 - sum(col_widths)
                                             if diff != 0 and len(col_widths) > 0:
                                                 col_widths[0] = max(5, col_widths[0] + diff)
+                                        _finish_select_phase()
                                         yield "✅ 取得完了", df, col_widths
                                         return
+                                    _finish_select_phase()
                                     yield "✅ 表示完了（データなし）", pd.DataFrame(), None
                                     return
                         except Exception as e:
+                            _finish_select_phase()
                             logger.error(f"_run_sql_common error: {e}")
                             yield f"❌ エラー: {e}", None, None
                             return
@@ -6196,6 +6551,25 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 value=pd.DataFrame(columns=["CATEGORY", "RULE"]),
                             )
 
+                    with gr.Accordion(label="2. 実行レポート", open=True):
+                        with gr.Row():
+                            with gr.Column():
+                                report_generate_btn = gr.Button(
+                                    "レポート生成",
+                                    variant="primary",
+                                )
+                            with gr.Column():
+                                report_download_button = gr.DownloadButton(
+                                    label="レポートをダウンロード",
+                                    visible=False,
+                                    variant="secondary",
+                                )
+                        with gr.Row():
+                            report_generate_status = gr.Markdown(
+                                visible=False,
+                                elem_classes=["operation-status"],
+                            )
+
                     def _rule_list():
                         try:
                             p = Path("uploads") / "rules.xlsx"
@@ -6274,6 +6648,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                         fn=_rule_upload_excel,
                         inputs=[rule_upload_file],
                         outputs=[rule_upload_result],
+                    )
+
+                    report_generate_btn.click(
+                        fn=generate_execution_report_download,
+                        outputs=[report_generate_status, report_download_button],
                     )
 
         with gr.TabItem(label="ユーザー機能") as user_features_tab:
@@ -6400,7 +6779,10 @@ def build_selectai_tab(pool, vpd_pool=None):
                             with gr.Column():
                                 chat_execute_btn = gr.Button("実行（時間がかかる場合があります）", variant="primary")
                         with gr.Row():
-                            chat_status_md = gr.Markdown(visible=False)
+                            chat_status_md = gr.Markdown(
+                                visible=False,
+                                elem_classes=["operation-status"],
+                            )
 
                     with gr.Accordion(label="2. 生成SQL", open=True):
                         gr.Markdown(visible=False)
@@ -6449,6 +6831,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                     profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
                     elem_id="selectai_chat_result_df", include_feedback=False,
                     login_user=username if role == "vpd" else None,
+                    screen_name="ユーザー機能: 基本機能",
                 )
 
             def _on_chat_clear():
