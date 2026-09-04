@@ -8,12 +8,22 @@ import logging
 import traceback
 import re
 from datetime import datetime
+from time import time
 from dateutil import parser as dateutil_parser
 
 import gradio as gr
 import pandas as pd
 from utils.common_util import remove_comments
 from utils.llm_model_util import create_chat_model_dropdown
+from utils.metadata_cache_util import (
+    get_table_cache_entries,
+    get_view_cache_entries,
+    remove_table_cache_entry,
+    remove_view_cache_entry,
+    replace_table_view_cache,
+    upsert_table_cache_entry,
+    upsert_view_cache_entry,
+)
 from utils.vpd_management_util import build_vpd_management_tab
 from utils.vpd_util import require_admin
 
@@ -23,6 +33,130 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
+_ADMIN_SCHEMA = "ADMIN"
+_OBJECT_LIST_CACHE_TTL_SECONDS = 120
+_TABLE_LIST_CACHE = {"df": None, "ts": 0.0}
+_VIEW_LIST_CACHE = {"df": None, "ts": 0.0}
+
+
+def _read_oracle_value(value):
+    if value is None:
+        return ""
+    try:
+        return value.read() if hasattr(value, "read") else value
+    except Exception:
+        return str(value or "")
+
+
+def _configure_bulk_fetch(cursor, size=1000):
+    try:
+        cursor.arraysize = size
+    except Exception:
+        pass
+
+
+def invalidate_object_list_cache(kind=None):
+    target = str(kind or "all").strip().lower()
+    if target in ("all", "table", "tables"):
+        _TABLE_LIST_CACHE["df"] = None
+        _TABLE_LIST_CACHE["ts"] = 0.0
+    if target in ("all", "view", "views"):
+        _VIEW_LIST_CACHE["df"] = None
+        _VIEW_LIST_CACHE["ts"] = 0.0
+
+
+def _copy_df(df):
+    return df.copy() if isinstance(df, pd.DataFrame) else df
+
+
+def _table_entries_to_df(entries):
+    data = []
+    for entry in entries or []:
+        name = str((entry or {}).get("name") or "").strip()
+        if not name:
+            continue
+        rows = (entry or {}).get("rows", "")
+        if rows is None:
+            rows = ""
+        data.append((name, rows, str((entry or {}).get("comments") or "")))
+    return pd.DataFrame(data, columns=["Table Name", "Rows", "Comments"])
+
+
+def _view_entries_to_df(entries):
+    data = []
+    for entry in entries or []:
+        name = str((entry or {}).get("name") or "").strip()
+        if not name:
+            continue
+        data.append((name, str((entry or {}).get("comments") or "")))
+    return pd.DataFrame(data, columns=["View Name", "Comments"])
+
+
+def _table_df_to_cache_entries(df):
+    entries = []
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return entries
+    for _, row in df.iterrows():
+        rows = row.get("Rows", "")
+        if rows is None or (isinstance(rows, float) and pd.isna(rows)):
+            rows = ""
+        entries.append({
+            "name": str(row.get("Table Name") or "").strip(),
+            "rows": rows,
+            "comments": str(row.get("Comments") or ""),
+        })
+    return entries
+
+
+def _view_df_to_cache_entries(df):
+    entries = []
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return entries
+    for _, row in df.iterrows():
+        entries.append({
+            "name": str(row.get("View Name") or "").strip(),
+            "comments": str(row.get("Comments") or ""),
+        })
+    return entries
+
+
+def get_table_list_cached(pool, force=False, ttl=_OBJECT_LIST_CACHE_TTL_SECONDS):
+    try:
+        now = time()
+        cached_df = _TABLE_LIST_CACHE.get("df")
+        if (
+            not force
+            and cached_df is not None
+            and now - float(_TABLE_LIST_CACHE.get("ts", 0.0)) < int(ttl)
+        ):
+            return _copy_df(cached_df)
+        df = get_table_list(pool)
+        _TABLE_LIST_CACHE["df"] = _copy_df(df)
+        _TABLE_LIST_CACHE["ts"] = now
+        return _copy_df(df)
+    except Exception as e:
+        logger.error(f"get_table_list_cached error: {e}")
+        return pd.DataFrame(columns=["Table Name", "Rows", "Comments"])
+
+
+def get_view_list_cached(pool, force=False, ttl=_OBJECT_LIST_CACHE_TTL_SECONDS):
+    try:
+        now = time()
+        cached_df = _VIEW_LIST_CACHE.get("df")
+        if (
+            not force
+            and cached_df is not None
+            and now - float(_VIEW_LIST_CACHE.get("ts", 0.0)) < int(ttl)
+        ):
+            return _copy_df(cached_df)
+        df = get_view_list(pool)
+        _VIEW_LIST_CACHE["df"] = _copy_df(df)
+        _VIEW_LIST_CACHE["ts"] = now
+        return _copy_df(df)
+    except Exception as e:
+        logger.error(f"get_view_list_cached error: {e}")
+        return pd.DataFrame(columns=["View Name", "Comments"])
 
 
 def _convert_to_date(value):
@@ -127,8 +261,27 @@ def _convert_to_date(value):
     return None
 
 
-def get_table_list(pool):
-    """Get list of tables for ADMIN user.
+def get_table_list(pool=None):
+    """Get list of tables from the local metadata JSON cache.
+
+    Args:
+        pool: Kept for compatibility. This function does not query the DB.
+
+    Returns:
+        pd.DataFrame: DataFrame containing table information
+    """
+    try:
+        df = _table_entries_to_df(get_table_cache_entries())
+        logger.info(f"Retrieved {len(df)} cached tables for ADMIN user")
+        return df
+    except Exception as e:
+        logger.error(f"Error getting cached table list: {e}")
+        logger.error(traceback.format_exc())
+        return pd.DataFrame(columns=["Table Name", "Rows", "Comments"])
+
+
+def _fetch_table_list_from_db(pool):
+    """Get list of tables for ADMIN user from DB metadata.
     
     Args:
         pool: Oracle database connection pool
@@ -139,27 +292,31 @@ def get_table_list(pool):
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
+                _configure_bulk_fetch(cursor)
                 sql = """
                 SELECT 
-                    t.table_name AS "Table Name",
+                    o.object_name AS "Table Name",
+                    t.num_rows AS "Rows",
                     NVL(c.comments, ' ') AS "Comments"
-                FROM all_tables t
-                LEFT JOIN all_tab_comments c ON t.table_name = c.table_name AND t.owner = c.owner
-                WHERE t.owner = 'ADMIN' AND t.table_name NOT LIKE '%$%'
-                ORDER BY t.table_name
+                FROM all_objects o
+                LEFT JOIN all_tables t
+                    ON t.owner = o.owner
+                    AND t.table_name = o.object_name
+                LEFT JOIN all_tab_comments c
+                    ON c.owner = o.owner
+                    AND c.table_name = o.object_name
+                WHERE o.owner = :owner
+                    AND o.object_type = 'TABLE'
+                    AND o.object_name NOT LIKE '%$%'
+                ORDER BY o.object_name
                 """
-                cursor.execute(sql)
-                rows = cursor.fetchall()
+                cursor.execute(sql, owner=_ADMIN_SCHEMA)
+                rows = cursor.fetchall() or []
                 if rows:
                     data = []
-                    for tn, comment in rows:
-                        try:
-                            cursor.execute(f"SELECT COUNT(*) FROM ADMIN.{tn.upper()}")
-                            result = cursor.fetchone()
-                            cnt = result[0] if result else 0
-                        except Exception:
-                            cnt = 0
-                        cm = comment.read() if hasattr(comment, "read") else comment
+                    for tn, num_rows, comment in rows:
+                        cnt = "" if num_rows is None else num_rows
+                        cm = _read_oracle_value(comment)
                         data.append((tn, cnt, cm))
                     df = pd.DataFrame(data, columns=["Table Name", "Rows", "Comments"])
                     logger.info(f"Retrieved {len(df)} tables for ADMIN user")
@@ -171,6 +328,104 @@ def get_table_list(pool):
         logger.error(f"Error getting table list: {e}")
         logger.error(traceback.format_exc())
         return pd.DataFrame(columns=["Table Name", "Rows", "Comments"])
+
+
+def _normalize_cache_object_name(name: str) -> str:
+    s = str(name or "").strip().rstrip(";")
+    if not s:
+        return ""
+    if "." in s:
+        s = s.split(".")[-1]
+    s = s.strip().strip('"')
+    return s.upper()
+
+
+def _extract_cache_object_name(sql_stmt: str, pattern: str) -> str:
+    match = re.search(pattern, str(sql_stmt or "").strip(), flags=re.IGNORECASE)
+    if not match:
+        return ""
+    return _normalize_cache_object_name(match.group(1))
+
+
+def _fetch_table_cache_entry_from_db(pool, table_name: str) -> dict:
+    name = _normalize_cache_object_name(table_name)
+    if not name:
+        return {}
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                _configure_bulk_fetch(cursor)
+                cursor.execute(
+                    """
+                    SELECT
+                        o.object_name,
+                        t.num_rows,
+                        NVL(c.comments, ' ')
+                    FROM all_objects o
+                    LEFT JOIN all_tables t
+                        ON t.owner = o.owner
+                        AND t.table_name = o.object_name
+                    LEFT JOIN all_tab_comments c
+                        ON c.owner = o.owner
+                        AND c.table_name = o.object_name
+                    WHERE o.owner = :owner
+                        AND o.object_type = 'TABLE'
+                        AND o.object_name = :object_name
+                    """,
+                    owner=_ADMIN_SCHEMA,
+                    object_name=name,
+                )
+                rows = cursor.fetchall() or []
+        if not rows:
+            return {}
+        table_name, rows_count, comments = rows[0]
+        return {
+            "name": table_name,
+            "rows": "" if rows_count is None else rows_count,
+            "comments": _read_oracle_value(comments),
+        }
+    except Exception as e:
+        logger.error(f"_fetch_table_cache_entry_from_db error: {e}")
+        return {}
+
+
+def _sync_table_cache_entry_from_db(pool, table_name: str):
+    entry = _fetch_table_cache_entry_from_db(pool, table_name)
+    if entry:
+        upsert_table_cache_entry(entry)
+
+
+def _sync_table_cache_after_sql(pool, executed_statements):
+    create_pattern = (
+        r"^\s*CREATE\s+(?:GLOBAL\s+TEMPORARY\s+)?TABLE\s+"
+        r"((?:\"[^\"]+\"|[\w$#]+)(?:\.(?:\"[^\"]+\"|[\w$#]+))?)"
+    )
+    drop_pattern = (
+        r"^\s*DROP\s+TABLE\s+"
+        r"((?:\"[^\"]+\"|[\w$#]+)(?:\.(?:\"[^\"]+\"|[\w$#]+))?)"
+    )
+    comment_table_pattern = (
+        r"^\s*COMMENT\s+ON\s+TABLE\s+"
+        r"((?:\"[^\"]+\"|[\w$#]+)(?:\.(?:\"[^\"]+\"|[\w$#]+))?)"
+    )
+
+    for sql_stmt in executed_statements or []:
+        stmt = str(sql_stmt or "").strip()
+        up = stmt.upper()
+        try:
+            if up.startswith("DROP TABLE"):
+                name = _extract_cache_object_name(stmt, drop_pattern)
+                if name:
+                    remove_table_cache_entry(name)
+                    invalidate_object_list_cache("table")
+            elif up.startswith("CREATE") or up.startswith("COMMENT ON TABLE"):
+                pattern = create_pattern if up.startswith("CREATE") else comment_table_pattern
+                name = _extract_cache_object_name(stmt, pattern)
+                if name:
+                    _sync_table_cache_entry_from_db(pool, name)
+                    invalidate_object_list_cache("table")
+        except Exception as e:
+            logger.error(f"_sync_table_cache_after_sql error: {e}")
 
 
 def get_table_details(pool, table_name):
@@ -314,6 +569,8 @@ def drop_table(pool, table_name):
                 sql = f"DROP TABLE ADMIN.{table_name.upper()} PURGE"
                 cursor.execute(sql)
                 conn.commit()
+                remove_table_cache_entry(table_name)
+                invalidate_object_list_cache("table")
                 logger.info(f"Table dropped: {table_name}")
                 return f"✅ 成功: テーブル '{table_name}' を削除しました"
     except Exception as e:
@@ -365,12 +622,14 @@ def execute_create_table(pool, create_sql):
                 
                 executed_count = 0
                 error_messages = []
+                executed_statements = []
                 
                 # Execute each statement
                 for idx, sql_stmt in enumerate(sql_statements, 1):
                     try:
                         cursor.execute(sql_stmt)
                         executed_count += 1
+                        executed_statements.append(sql_stmt)
                         logger.info(f"Statement {idx}/{len(sql_statements)} executed successfully")
                     except Exception as stmt_error:
                         error_msg = f"文{idx}: {str(stmt_error)}"
@@ -381,6 +640,7 @@ def execute_create_table(pool, create_sql):
                 # Commit if at least one statement succeeded
                 if executed_count > 0:
                     conn.commit()
+                    _sync_table_cache_after_sql(pool, executed_statements)
                     
                 # Prepare result message
                 if error_messages:
@@ -399,7 +659,26 @@ def execute_create_table(pool, create_sql):
 
 
 def get_view_list(pool):
-    """Get list of views for ADMIN user.
+    """Get list of views from the local metadata JSON cache.
+
+    Args:
+        pool: Kept for compatibility. This function does not query the DB.
+
+    Returns:
+        pd.DataFrame: DataFrame containing view information
+    """
+    try:
+        df = _view_entries_to_df(get_view_cache_entries())
+        logger.info(f"Retrieved {len(df)} cached views for ADMIN user")
+        return df
+    except Exception as e:
+        logger.error(f"Error getting cached view list: {e}")
+        logger.error(traceback.format_exc())
+        return pd.DataFrame(columns=["View Name", "Comments"])
+
+
+def _fetch_view_list_from_db(pool):
+    """Get list of views for ADMIN user from DB metadata.
     
     Args:
         pool: Oracle database connection pool
@@ -410,25 +689,29 @@ def get_view_list(pool):
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
+                _configure_bulk_fetch(cursor)
                 # Query to get view list with comments
                 sql = """
                 SELECT 
-                    v.view_name AS "View Name",
+                    o.object_name AS "View Name",
                     NVL(c.comments, ' ') AS "Comments"
-                FROM all_views v
-                LEFT JOIN all_tab_comments c ON v.view_name = c.table_name AND v.owner = c.owner
-                WHERE v.owner = 'ADMIN' AND v.view_name NOT LIKE '%$%'
-                ORDER BY v.view_name
+                FROM all_objects o
+                LEFT JOIN all_tab_comments c
+                    ON c.owner = o.owner
+                    AND c.table_name = o.object_name
+                WHERE o.owner = :owner
+                    AND o.object_type = 'VIEW'
+                    AND o.object_name NOT LIKE '%$%'
+                ORDER BY o.object_name
                 """
-                cursor.execute(sql)
+                cursor.execute(sql, owner=_ADMIN_SCHEMA)
                 rows = cursor.fetchall()
                 
                 if rows:
                     cleaned_rows = []
-                    for r in rows:
-                        cleaned_rows.append([v.read() if hasattr(v, "read") else v for v in r])
-                    columns = [desc[0] for desc in cursor.description]
-                    df = pd.DataFrame(cleaned_rows, columns=columns)
+                    for view_name, comment in rows:
+                        cleaned_rows.append([view_name, _read_oracle_value(comment)])
+                    df = pd.DataFrame(cleaned_rows, columns=["View Name", "Comments"])
                     logger.info(f"Retrieved {len(df)} views for ADMIN user")
                     return df
                 else:
@@ -438,6 +721,112 @@ def get_view_list(pool):
         logger.error(f"Error getting view list: {e}")
         logger.error(traceback.format_exc())
         return pd.DataFrame(columns=["View Name", "Comments"])
+
+
+def _fetch_view_cache_entry_from_db(pool, view_name: str) -> dict:
+    name = _normalize_cache_object_name(view_name)
+    if not name:
+        return {}
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                _configure_bulk_fetch(cursor)
+                cursor.execute(
+                    """
+                    SELECT
+                        o.object_name,
+                        NVL(c.comments, ' ')
+                    FROM all_objects o
+                    LEFT JOIN all_tab_comments c
+                        ON c.owner = o.owner
+                        AND c.table_name = o.object_name
+                    WHERE o.owner = :owner
+                        AND o.object_type = 'VIEW'
+                        AND o.object_name = :object_name
+                    """,
+                    owner=_ADMIN_SCHEMA,
+                    object_name=name,
+                )
+                rows = cursor.fetchall() or []
+        if not rows:
+            return {}
+        view_name, comments = rows[0]
+        return {
+            "name": view_name,
+            "comments": _read_oracle_value(comments),
+        }
+    except Exception as e:
+        logger.error(f"_fetch_view_cache_entry_from_db error: {e}")
+        return {}
+
+
+def _sync_view_cache_entry_from_db(pool, view_name: str):
+    entry = _fetch_view_cache_entry_from_db(pool, view_name)
+    if entry:
+        upsert_view_cache_entry(entry)
+
+
+def _sync_view_cache_after_sql(pool, executed_statements):
+    create_pattern = (
+        r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:FORCE\s+)?"
+        r"(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?VIEW\s+"
+        r"((?:\"[^\"]+\"|[\w$#]+)(?:\.(?:\"[^\"]+\"|[\w$#]+))?)"
+    )
+    drop_pattern = (
+        r"^\s*DROP\s+VIEW\s+"
+        r"((?:\"[^\"]+\"|[\w$#]+)(?:\.(?:\"[^\"]+\"|[\w$#]+))?)"
+    )
+    comment_pattern = (
+        r"^\s*COMMENT\s+ON\s+(?:TABLE|VIEW)\s+"
+        r"((?:\"[^\"]+\"|[\w$#]+)(?:\.(?:\"[^\"]+\"|[\w$#]+))?)"
+    )
+
+    for sql_stmt in executed_statements or []:
+        stmt = str(sql_stmt or "").strip()
+        up = stmt.upper()
+        try:
+            if up.startswith("DROP VIEW"):
+                name = _extract_cache_object_name(stmt, drop_pattern)
+                if name:
+                    remove_view_cache_entry(name)
+                    invalidate_object_list_cache("view")
+            elif up.startswith("CREATE") or up.startswith("COMMENT ON"):
+                pattern = create_pattern if up.startswith("CREATE") else comment_pattern
+                name = _extract_cache_object_name(stmt, pattern)
+                if name:
+                    _sync_view_cache_entry_from_db(pool, name)
+                    invalidate_object_list_cache("view")
+        except Exception as e:
+            logger.error(f"_sync_view_cache_after_sql error: {e}")
+
+
+def _sync_object_comment_cache_after_sql(pool, executed_statements):
+    for sql_stmt in executed_statements or []:
+        stmt = str(sql_stmt or "").strip()
+        comment_pattern = (
+            r"^\s*COMMENT\s+ON\s+(?:TABLE|VIEW)\s+"
+            r"((?:\"[^\"]+\"|[\w$#]+)(?:\.(?:\"[^\"]+\"|[\w$#]+))?)"
+        )
+        name = _extract_cache_object_name(stmt, comment_pattern)
+        if name:
+            _sync_table_cache_entry_from_db(pool, name)
+            _sync_view_cache_entry_from_db(pool, name)
+            invalidate_object_list_cache()
+
+
+def refresh_table_view_cache_from_db(pool) -> tuple:
+    table_df = _fetch_table_list_from_db(pool)
+    view_df = _fetch_view_list_from_db(pool)
+    cache_path = replace_table_view_cache(
+        _table_df_to_cache_entries(table_df),
+        _view_df_to_cache_entries(view_df),
+    )
+    now = time()
+    _TABLE_LIST_CACHE["df"] = _copy_df(table_df)
+    _TABLE_LIST_CACHE["ts"] = now
+    _VIEW_LIST_CACHE["df"] = _copy_df(view_df)
+    _VIEW_LIST_CACHE["ts"] = now
+    return table_df, view_df, cache_path
 
 
 def get_view_details(pool, view_name):
@@ -661,6 +1050,8 @@ def drop_view(pool, view_name):
                 sql = f"DROP VIEW ADMIN.{view_name.upper()}"
                 cursor.execute(sql)
                 conn.commit()
+                remove_view_cache_entry(view_name)
+                invalidate_object_list_cache("view")
                 logger.info(f"View dropped: {view_name}")
                 return f"✅ 成功: ビュー '{view_name}' を削除しました"
     except Exception as e:
@@ -717,12 +1108,14 @@ def execute_create_view(pool, create_sql):
                 
                 executed_count = 0
                 error_messages = []
+                executed_statements = []
                 
                 # Execute each statement
                 for idx, sql_stmt in enumerate(sql_statements, 1):
                     try:
                         cursor.execute(sql_stmt)
                         executed_count += 1
+                        executed_statements.append(sql_stmt)
                         logger.info(f"Statement {idx}/{len(sql_statements)} executed successfully")
                     except Exception as stmt_error:
                         error_msg = f"文{idx}: {str(stmt_error)}"
@@ -733,6 +1126,7 @@ def execute_create_view(pool, create_sql):
                 # Commit if at least one statement succeeded
                 if executed_count > 0:
                     conn.commit()
+                    _sync_view_cache_after_sql(pool, executed_statements)
                     
                 # Prepare result message
                 if error_messages:
@@ -752,27 +1146,11 @@ def execute_create_view(pool, create_sql):
 
 def get_table_list_for_data(pool):
     try:
-        with pool.acquire() as conn:
-            with conn.cursor() as cursor:
-                sql = """
-                SELECT name
-                FROM (
-                    SELECT table_name AS name, 0 AS obj_type
-                    FROM all_tables 
-                    WHERE owner = 'ADMIN' AND table_name NOT LIKE '%$%'
-                    UNION ALL
-                    SELECT view_name AS name, 1 AS obj_type
-                    FROM all_views
-                    WHERE owner = 'ADMIN' AND view_name NOT LIKE '%$%'
-                )
-                GROUP BY name
-                ORDER BY MIN(obj_type), name
-                """
-                cursor.execute(sql)
-                rows = cursor.fetchall()
-                names = [row[0] for row in rows] if rows else []
-                logger.info(f"Retrieved {len(names)} tables and views for data management")
-                return names
+        table_names = [entry["name"] for entry in get_table_cache_entries()]
+        view_names = [entry["name"] for entry in get_view_cache_entries()]
+        names = table_names + view_names
+        logger.info(f"Retrieved {len(names)} cached tables and views for data management")
+        return names
     except Exception as e:
         logger.error(f"Error getting table/view list for data: {e}")
         logger.error(traceback.format_exc())
@@ -789,21 +1167,14 @@ def get_table_list_for_upload(pool):
         list: List of table names eligible for upload
     """
     try:
-        with pool.acquire() as conn:
-            with conn.cursor() as cursor:
-                sql = """
-                SELECT table_name FROM all_tables 
-                WHERE owner = 'ADMIN' 
-                  AND table_name NOT LIKE '%$%'
-                  AND table_name NOT LIKE 'DR$%'
-                  AND table_name NOT LIKE 'VECTOR$%'
-                ORDER BY 1
-                """
-                cursor.execute(sql)
-                rows = cursor.fetchall()
-                names = [row[0] for row in rows] if rows else []
-                logger.info(f"Retrieved {len(names)} uploadable tables for ADMIN user")
-                return names
+        names = []
+        for entry in get_table_cache_entries():
+            name = str((entry or {}).get("name") or "")
+            if not name or "$" in name or name.startswith("DR$") or name.startswith("VECTOR$"):
+                continue
+            names.append(name)
+        logger.info(f"Retrieved {len(names)} cached uploadable tables for ADMIN user")
+        return names
     except Exception as e:
         logger.error(f"Error getting uploadable table list: {e}")
         logger.error(traceback.format_exc())
@@ -1138,10 +1509,12 @@ def execute_comment_sql(pool, sql_statements):
                     return f"❌ エラー: {error_msg}"
                 executed_count = 0
                 error_messages = []
+                executed_statements = []
                 for idx, sql_stmt in enumerate(statements, 1):
                     try:
                         cursor.execute(sql_stmt)
                         executed_count += 1
+                        executed_statements.append(sql_stmt)
                         logger.info(f"Statement {idx}/{len(statements)} executed successfully")
                     except Exception as stmt_error:
                         error_msg = f"文{idx}: {str(stmt_error)}"
@@ -1150,6 +1523,7 @@ def execute_comment_sql(pool, sql_statements):
                         logger.error(f"Failed SQL: {sql_stmt[:100]}...")
                 if executed_count > 0:
                     conn.commit()
+                    _sync_object_comment_cache_after_sql(pool, executed_statements)
                 if error_messages:
                     result = f"⚠️ 部分的に成功: {executed_count}/{len(statements)}件の文を実行しました\n\nエラー:\n" + "\n".join(error_messages)
                     logger.warning(f"Partial success: {executed_count}/{len(statements)} statements executed")
@@ -1249,7 +1623,7 @@ def build_management_tab(pool, vpd_pool=None):
         with gr.TabItem(label="テーブルの管理"):
             # Feature 1: Table List
             with gr.Accordion(label="1. テーブル一覧", open=True):
-                table_refresh_btn = gr.Button("テーブル一覧を取得（時間がかかる場合があります）", variant="primary")
+                table_refresh_btn = gr.Button("テーブル一覧を取得（ローカルJSON）", variant="primary")
                 table_refresh_status = gr.Markdown(visible=False)
                 table_list_df = gr.Dataframe(
                     label="テーブル一覧（件数: 0）",
@@ -1426,9 +1800,13 @@ def build_management_tab(pool, vpd_pool=None):
                 try:
                     logger.info("テーブル一覧を取得ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ テーブル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
-                    df = get_table_list(pool)
+                    df = get_table_list_cached(pool)
                     cnt = len(df) if isinstance(df, pd.DataFrame) else 0
-                    status_text = "✅ 取得完了（データなし）" if cnt == 0 else "✅ 取得完了"
+                    status_text = (
+                        "⚠️ ローカルJSONにテーブル情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
+                        if cnt == 0
+                        else "✅ 取得完了"
+                    )
                     yield gr.Markdown(value=status_text, visible=True), gr.Dataframe(value=df, visible=True, label=f"テーブル一覧（件数: {cnt}）")
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]), label="テーブル一覧（件数: 0）")
@@ -1642,7 +2020,7 @@ def build_management_tab(pool, vpd_pool=None):
         with gr.TabItem(label="ビューの管理"):
             # Feature 1: View List
             with gr.Accordion(label="1. ビュー一覧", open=True):
-                view_refresh_btn = gr.Button("ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
+                view_refresh_btn = gr.Button("ビュー一覧を取得（ローカルJSON）", variant="primary")
                 view_refresh_status = gr.Markdown(visible=False)
                 view_list_df = gr.Dataframe(
                     label="ビュー一覧（件数: 0）",
@@ -1856,9 +2234,13 @@ def build_management_tab(pool, vpd_pool=None):
                 try:
                     logger.info("ビュー一覧を取得ボタンがクリックされました")
                     yield gr.Markdown(value="⏳ ビュー一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
-                    df = get_view_list(pool)
+                    df = get_view_list_cached(pool)
                     cnt = len(df) if isinstance(df, pd.DataFrame) else 0
-                    status_text = "✅ 取得完了（データなし）" if cnt == 0 else "✅ 取得完了"
+                    status_text = (
+                        "⚠️ ローカルJSONにビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
+                        if cnt == 0
+                        else "✅ 取得完了"
+                    )
                     yield gr.Markdown(value=status_text, visible=True), gr.Dataframe(value=df, visible=True, label=f"ビュー一覧（件数: {cnt}）")
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["View Name", "Comments"]), label="ビュー一覧（件数: 0）")
@@ -2184,7 +2566,7 @@ def build_management_tab(pool, vpd_pool=None):
         with gr.TabItem(label="データの管理"):
             # Feature 1: Table Data Display
             with gr.Accordion(label="1. テーブル・ビューデータの表示", open=True):
-                data_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
+                data_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（ローカルJSON）", variant="primary")
                 data_refresh_status = gr.Markdown(visible=False)
                 
                 with gr.Row():
@@ -2384,7 +2766,11 @@ def build_management_tab(pool, vpd_pool=None):
                     yield gr.Markdown(value="⏳ テーブル・ビュー一覧を取得中...", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[], visible=False)
                     data_names = get_table_list_for_data(pool)
                     upload_tables = get_table_list_for_upload(pool)
-                    status_text = "✅ 取得完了（データなし）" if (not data_names and not upload_tables) else "✅ 取得完了"
+                    status_text = (
+                        "⚠️ ローカルJSONにテーブル・ビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
+                        if (not data_names and not upload_tables)
+                        else "✅ 取得完了"
+                    )
                     yield gr.Markdown(value=status_text, visible=True), gr.Dropdown(choices=data_names, visible=True), gr.Dropdown(choices=upload_tables, visible=True)
                 except Exception as e:
                     yield gr.Markdown(value=f"❌ 取得に失敗しました: {str(e)}", visible=True), gr.Dropdown(choices=[]), gr.Dropdown(choices=[], visible=False)
@@ -2616,6 +3002,161 @@ def build_management_tab(pool, vpd_pool=None):
                 fn=data_ai_analyze,
                 inputs=[data_ai_model_input, data_sql_input, data_sql_result],
                 outputs=[data_ai_status_md, data_ai_result_md],
+            )
+
+        # Metadata Cache Management Tab
+        with gr.TabItem(label="一覧キャッシュ管理"):
+            with gr.Accordion(label="1. テーブル・ビュー情報JSON", open=True):
+                table_view_cache_btn = gr.Button(
+                    "テーブル・ビュー情報をDBから取得してJSON保存（時間がかかる場合があります）",
+                    variant="primary",
+                )
+                table_view_cache_status = gr.Markdown(visible=False)
+                with gr.Row():
+                    table_cache_df = gr.Dataframe(
+                        label="テーブル一覧（件数: 0）",
+                        interactive=False,
+                        wrap=True,
+                        value=pd.DataFrame(columns=["Table Name", "Rows", "Comments"]),
+                        visible=False,
+                        max_height=300,
+                    )
+                    view_cache_df = gr.Dataframe(
+                        label="ビュー一覧（件数: 0）",
+                        interactive=False,
+                        wrap=True,
+                        value=pd.DataFrame(columns=["View Name", "Comments"]),
+                        visible=False,
+                        max_height=300,
+                    )
+
+            with gr.Accordion(label="2. プロファイル一覧JSON", open=True):
+                profile_cache_btn = gr.Button(
+                    "プロファイル一覧をDBから取得してJSON保存（時間がかかる場合があります）",
+                    variant="primary",
+                )
+                profile_cache_status = gr.Markdown(visible=False)
+                profile_cache_df = gr.Dataframe(
+                    label="プロファイル一覧（件数: 0）",
+                    interactive=False,
+                    wrap=True,
+                    value=pd.DataFrame(
+                        columns=[
+                            "Profile Name",
+                            "Category",
+                            "Tables",
+                            "Views",
+                            "Region",
+                            "Model",
+                            "Embedding Model",
+                        ]
+                    ),
+                    visible=False,
+                    max_height=300,
+                )
+
+            def refresh_table_view_metadata_cache(request: gr.Request):
+                require_admin(request)
+                empty_table_df = pd.DataFrame(columns=["Table Name", "Rows", "Comments"])
+                empty_view_df = pd.DataFrame(columns=["View Name", "Comments"])
+                try:
+                    yield (
+                        gr.Markdown(visible=True, value="⏳ テーブル・ビュー情報をDBから取得中..."),
+                        gr.Dataframe(visible=False, value=empty_table_df, label="テーブル一覧（件数: 0）"),
+                        gr.Dataframe(visible=False, value=empty_view_df, label="ビュー一覧（件数: 0）"),
+                    )
+                    table_df, view_df, cache_path = refresh_table_view_cache_from_db(pool)
+                    table_count = len(table_df) if isinstance(table_df, pd.DataFrame) else 0
+                    view_count = len(view_df) if isinstance(view_df, pd.DataFrame) else 0
+                    yield (
+                        gr.Markdown(
+                            visible=True,
+                            value=(
+                                f"✅ JSON保存完了（テーブル: {table_count}、ビュー: {view_count}、"
+                                f"保存先: {cache_path}）"
+                            ),
+                        ),
+                        gr.Dataframe(
+                            visible=True,
+                            value=table_df,
+                            label=f"テーブル一覧（件数: {table_count}）",
+                        ),
+                        gr.Dataframe(
+                            visible=True,
+                            value=view_df,
+                            label=f"ビュー一覧（件数: {view_count}）",
+                        ),
+                    )
+                except Exception as e:
+                    logger.error(f"refresh_table_view_metadata_cache error: {e}")
+                    logger.error(traceback.format_exc())
+                    yield (
+                        gr.Markdown(visible=True, value=f"❌ JSON保存に失敗しました: {e}"),
+                        gr.Dataframe(visible=False, value=empty_table_df, label="テーブル一覧（件数: 0）"),
+                        gr.Dataframe(visible=False, value=empty_view_df, label="ビュー一覧（件数: 0）"),
+                    )
+
+            def refresh_profile_metadata_cache(request: gr.Request):
+                require_admin(request)
+                empty_profile_df = pd.DataFrame(
+                    columns=[
+                        "Profile Name",
+                        "Category",
+                        "Tables",
+                        "Views",
+                        "Region",
+                        "Model",
+                        "Embedding Model",
+                    ]
+                )
+                try:
+                    yield (
+                        gr.Markdown(visible=True, value="⏳ プロファイル一覧をDBから取得中..."),
+                        gr.Dataframe(
+                            visible=False,
+                            value=empty_profile_df,
+                            label="プロファイル一覧（件数: 0）",
+                        ),
+                    )
+                    from utils.selectai_util import refresh_profile_cache_from_db
+
+                    df, cache_path, saved_count, table_count, view_count, _raw_count = (
+                        refresh_profile_cache_from_db(pool)
+                    )
+                    count = len(df) if isinstance(df, pd.DataFrame) else 0
+                    yield (
+                        gr.Markdown(
+                            visible=True,
+                            value=(
+                                f"✅ JSON保存完了（プロファイル: {saved_count}、"
+                                f"テーブル: {table_count}、ビュー: {view_count}、保存先: {cache_path}）"
+                            ),
+                        ),
+                        gr.Dataframe(
+                            visible=True,
+                            value=df,
+                            label=f"プロファイル一覧（件数: {count}）",
+                        ),
+                    )
+                except Exception as e:
+                    logger.error(f"refresh_profile_metadata_cache error: {e}")
+                    logger.error(traceback.format_exc())
+                    yield (
+                        gr.Markdown(visible=True, value=f"❌ JSON保存に失敗しました: {e}"),
+                        gr.Dataframe(
+                            visible=False,
+                            value=empty_profile_df,
+                            label="プロファイル一覧（件数: 0）",
+                        ),
+                    )
+
+            table_view_cache_btn.click(
+                fn=refresh_table_view_metadata_cache,
+                outputs=[table_view_cache_status, table_cache_df, view_cache_df],
+            )
+            profile_cache_btn.click(
+                fn=refresh_profile_metadata_cache,
+                outputs=[profile_cache_status, profile_cache_df],
             )
 
         # Oracle VPD Management Tab (ADMIN only; parent tab visibility is

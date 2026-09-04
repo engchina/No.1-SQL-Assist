@@ -16,9 +16,52 @@ import pandas as pd
 from utils.query_util import execute_sql_general, execute_select_sql
 from utils.common_util import remove_comments
 from utils.gradio_util import admin_only_event as _admin_only_event
+from utils.metadata_cache_util import (
+    remove_table_cache_entry,
+    remove_view_cache_entry,
+    upsert_table_cache_entry,
+    upsert_view_cache_entry,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+_SAMPLE_TABLE_NAMES = ["DEPARTMENT", "EMPLOYEE", "PROJECT"]
+_SAMPLE_VIEW_NAMES = ["V_EMP_DEPT", "V_DEPT_PROJECT"]
+
+
+def _sql_learning_success(info_md) -> bool:
+    value = str(getattr(info_md, "value", "") or "")
+    return value.startswith("✅") and "失敗: 0件" in value
+
+
+def _invalidate_metadata_cache():
+    try:
+        from utils.management_util import invalidate_object_list_cache
+
+        invalidate_object_list_cache()
+    except Exception as e:
+        logger.error(f"_invalidate_metadata_cache error: {e}")
+
+
+def _upsert_sample_tables_cache():
+    for name in _SAMPLE_TABLE_NAMES:
+        upsert_table_cache_entry({"name": name, "rows": "", "comments": ""})
+    _invalidate_metadata_cache()
+
+
+def _upsert_sample_views_cache():
+    for name in _SAMPLE_VIEW_NAMES:
+        upsert_view_cache_entry({"name": name, "comments": ""})
+    _invalidate_metadata_cache()
+
+
+def _remove_sample_objects_cache(tables=None, views=None):
+    for name in views if views is not None else _SAMPLE_VIEW_NAMES:
+        remove_view_cache_entry(name)
+    for name in tables if tables is not None else _SAMPLE_TABLE_NAMES:
+        remove_table_cache_entry(name)
+    _invalidate_metadata_cache()
 
 
 def _schema_sql() -> Tuple[str, str]:
@@ -370,6 +413,8 @@ def build_sql_learning_tab(pool):
         def _exec_tables():
             try:
                 info_md, df_comp, style_html = execute_sql_general(pool, tables_sql, limit=0)
+                if _sql_learning_success(info_md):
+                    _upsert_sample_tables_cache()
                 return info_md
             except Exception as e:
                 return gr.Markdown(visible=True, value=f"❌ 表作成に失敗しました: {e}")
@@ -383,6 +428,8 @@ def build_sql_learning_tab(pool):
         def _exec_views():
             try:
                 info_md, df_comp, style_html = execute_sql_general(pool, views_sql, limit=0)
+                if _sql_learning_success(info_md):
+                    _upsert_sample_views_cache()
                 return info_md
             except Exception as e:
                 return gr.Markdown(visible=True, value=f"❌ ビュー作成に失敗しました: {e}")
@@ -417,15 +464,31 @@ def build_sql_learning_tab(pool):
                 ]
 
                 error_count = 0
+                removed_tables = []
+                removed_views = []
                 with pool.acquire() as conn:
                     with conn.cursor() as cursor:
                         for sql in drop_sqls:
                             try:
                                 cursor.execute(sql)
+                                up = sql.upper()
+                                if up.startswith("DROP VIEW"):
+                                    removed_views.append(up.split()[2])
+                                elif up.startswith("DROP TABLE"):
+                                    removed_tables.append(up.split()[2])
                             except Exception as e:
                                 # 失敗しても続行。エラーはログに出力し、カウントする
                                 logger.warning(f"Drop/Truncate ignored error: {e} [SQL: {sql}]")
-                                error_count += 1
+                                if "ORA-00942" in str(e) or "ORA-04043" in str(e):
+                                    up = sql.upper()
+                                    if up.startswith("DROP VIEW"):
+                                        removed_views.append(up.split()[2])
+                                    elif up.startswith("DROP TABLE"):
+                                        removed_tables.append(up.split()[2])
+                                else:
+                                    error_count += 1
+
+                _remove_sample_objects_cache(removed_tables, removed_views)
                 
                 msg = "✅ 初期化（削除処理）が完了しました"
                 if error_count > 0:

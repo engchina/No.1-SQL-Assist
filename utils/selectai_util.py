@@ -23,7 +23,17 @@ from oci.generative_ai_inference import GenerativeAiInferenceClient
 from oci.generative_ai_inference.models import EmbedTextDetails
 
 from utils.common_util import remove_comments
-from utils.llm_model_util import create_chat_model_dropdown
+from utils.llm_model_util import (
+    create_chat_model_dropdown,
+    create_profile_region_dropdown,
+)
+from utils.metadata_cache_util import (
+    get_profile_cache_entries,
+    get_profile_cache_entry,
+    remove_profile_cache_entry,
+    replace_profile_cache,
+    upsert_profile_cache_entry,
+)
 from utils.gradio_util import admin_only_event as _admin_only_event
 from utils.oracle_sql_util import is_single_select, parse_oracle_script
 from utils.vpd_util import (
@@ -34,8 +44,9 @@ from utils.vpd_util import (
 )
 
 from utils.management_util import (
-    get_table_list,
-    get_view_list,
+    get_table_list_cached,
+    get_view_list_cached,
+    refresh_table_view_cache_from_db,
     get_table_details,
     get_view_details,
 )
@@ -308,31 +319,16 @@ _SQL_STRUCTURE_ANALYSIS_PROMPT = (
     "    - WHERE: ORDER_STATUS.active = 1\n"
 )
 
-_TABLE_DF_CACHE = {"df": None, "ts": 0.0}
-_VIEW_DF_CACHE = {"df": None, "ts": 0.0}
-
 def _get_table_df_cached(pool, force: bool = False, ttl: int = 120) -> pd.DataFrame:
     try:
-        now = time()
-        if (not force) and _TABLE_DF_CACHE.get("df") is not None and now - float(_TABLE_DF_CACHE.get("ts", 0.0)) < ttl:
-            return _TABLE_DF_CACHE["df"]
-        df = get_table_list(pool)
-        _TABLE_DF_CACHE["df"] = df
-        _TABLE_DF_CACHE["ts"] = now
-        return df
+        return get_table_list_cached(pool, force=force, ttl=ttl)
     except Exception as e:
         logger.error(f"_get_table_df_cached error: {e}")
         return pd.DataFrame(columns=["Table Name"])  
 
 def _get_view_df_cached(pool, force: bool = False, ttl: int = 120) -> pd.DataFrame:
     try:
-        now = time()
-        if (not force) and _VIEW_DF_CACHE.get("df") is not None and now - float(_VIEW_DF_CACHE.get("ts", 0.0)) < ttl:
-            return _VIEW_DF_CACHE["df"]
-        df = get_view_list(pool)
-        _VIEW_DF_CACHE["df"] = df
-        _VIEW_DF_CACHE["ts"] = now
-        return df
+        return get_view_list_cached(pool, force=force, ttl=ttl)
     except Exception as e:
         logger.error(f"_get_view_df_cached error: {e}")
         return pd.DataFrame(columns=["View Name"])  
@@ -357,6 +353,248 @@ def _get_view_names(pool):
     return []
 
 
+_PROFILE_LIST_COLUMNS = [
+    "Profile Name",
+    "Category",
+    "Tables",
+    "Views",
+    "Region",
+    "Model",
+    "Embedding Model",
+]
+
+
+def _empty_profile_list_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=_PROFILE_LIST_COLUMNS)
+
+
+def _read_db_text(value) -> str:
+    if value is None:
+        return ""
+    try:
+        return value.read() if hasattr(value, "read") else str(value)
+    except Exception:
+        return str(value or "")
+
+
+def _configure_bulk_fetch(cursor, size: int = 1000):
+    try:
+        cursor.arraysize = size
+    except Exception:
+        pass
+
+
+def _parse_profile_attribute_value(value):
+    s = _read_db_text(value)
+    try:
+        return json.loads(s)
+    except Exception:
+        return s
+
+
+def _fetch_profile_rows_from_cursor(cursor) -> list:
+    cursor.execute(
+        "SELECT PROFILE_NAME, DESCRIPTION, STATUS FROM USER_CLOUD_AI_PROFILES ORDER BY PROFILE_NAME"
+    )
+    rows = cursor.fetchall() or []
+    profiles = []
+    for r in rows:
+        try:
+            name = str(r[0] or "").strip()
+            if not name:
+                continue
+            profiles.append({
+                "name": name,
+                "category": _read_db_text(r[1]),
+                "status": _read_db_text(r[2]),
+            })
+        except Exception as e:
+            logger.error(f"_fetch_profile_rows_from_cursor row error: {e}")
+    return profiles
+
+
+def _fetch_all_profile_attributes_from_cursor(cursor) -> dict:
+    cursor.execute(
+        """
+        SELECT PROFILE_NAME, ATTRIBUTE_NAME, ATTRIBUTE_VALUE
+        FROM USER_CLOUD_AI_PROFILE_ATTRIBUTES
+        ORDER BY PROFILE_NAME, ATTRIBUTE_NAME
+        """
+    )
+    rows = cursor.fetchall() or []
+    attrs_by_profile = {}
+    for profile_name, attr_name, attr_value in rows:
+        profile_key = str(profile_name or "").strip()
+        attr_key = str(attr_name or "").strip().lower()
+        if not profile_key or not attr_key:
+            continue
+        attrs_by_profile.setdefault(profile_key, {})[attr_key] = (
+            _parse_profile_attribute_value(attr_value)
+        )
+    return attrs_by_profile
+
+
+def _get_all_profile_attributes(pool) -> dict:
+    try:
+        with pool.acquire() as conn:
+            with conn.cursor() as cursor:
+                _configure_bulk_fetch(cursor)
+                return _fetch_all_profile_attributes_from_cursor(cursor)
+    except Exception as e:
+        logger.error(f"_get_all_profile_attributes error: {e}")
+        return {}
+
+
+def _fetch_profile_rows_and_attributes(pool) -> tuple:
+    with pool.acquire() as conn:
+        with conn.cursor() as cursor:
+            _configure_bulk_fetch(cursor)
+            profiles = _fetch_profile_rows_from_cursor(cursor)
+            try:
+                attrs_by_profile = _fetch_all_profile_attributes_from_cursor(cursor)
+            except Exception as e:
+                logger.error(f"_fetch_profile_rows_and_attributes attrs error: {e}")
+                attrs_by_profile = {}
+            return profiles, attrs_by_profile
+
+
+def _profile_attrs_for(attrs_by_profile: dict, name: str) -> dict:
+    s = str(name or "").strip()
+    return (
+        attrs_by_profile.get(s)
+        or attrs_by_profile.get(s.upper())
+        or attrs_by_profile.get(s.lower())
+        or {}
+    )
+
+
+def _iter_profile_object_names(attrs: dict) -> list:
+    obj_list = attrs.get("object_list") or []
+    if isinstance(obj_list, str):
+        try:
+            obj_list = json.loads(obj_list)
+        except Exception:
+            obj_list = []
+    if isinstance(obj_list, dict):
+        obj_list = [obj_list]
+    if not isinstance(obj_list, list):
+        return []
+
+    names = []
+    for obj in obj_list:
+        try:
+            if isinstance(obj, dict):
+                obj_name = str((obj or {}).get("name") or "").strip()
+            else:
+                obj_name = str(obj or "").strip()
+            if obj_name:
+                names.append(obj_name)
+        except Exception as e:
+            logger.error(f"_iter_profile_object_names object error: {e}")
+    return names
+
+
+def _split_profile_objects(attrs: dict, table_names: set, view_names: set) -> tuple:
+    table_name_map = {str(name).upper(): str(name) for name in table_names}
+    view_name_map = {str(name).upper(): str(name) for name in view_names}
+    table_name_set = {str(name) for name in table_names}
+    view_name_set = {str(name) for name in view_names}
+    tables = []
+    views = []
+
+    for obj_name in _iter_profile_object_names(attrs):
+        if obj_name in table_name_set:
+            tables.append(obj_name)
+            continue
+        if obj_name in view_name_set:
+            views.append(obj_name)
+            continue
+        obj_key = obj_name.upper()
+        if obj_key in table_name_map:
+            tables.append(table_name_map[obj_key])
+        elif obj_key in view_name_map:
+            views.append(view_name_map[obj_key])
+
+    return sorted(set(tables)), sorted(set(views))
+
+
+def _build_profile_outputs(
+    profile_rows: list,
+    attrs_by_profile: dict,
+    table_names: set,
+    view_names: set,
+) -> tuple:
+    rows = []
+    profiles_data = []
+    for profile in profile_rows:
+        try:
+            name = str((profile or {}).get("name") or "").strip()
+            if not name or name.upper() == "OCI_CRED$PROF":
+                continue
+            category = str((profile or {}).get("category") or "")
+            attrs = _profile_attrs_for(attrs_by_profile, name)
+            tables, views = _split_profile_objects(attrs, table_names, view_names)
+            rows.append([
+                name,
+                category,
+                ", ".join(tables),
+                ", ".join(views),
+                str(attrs.get("region") or ""),
+                str(attrs.get("model") or ""),
+                str(attrs.get("embedding_model") or ""),
+            ])
+            profiles_data.append({
+                "profile": name,
+                "category": category,
+                "tables": tables,
+                "views": views,
+                "region": str(attrs.get("region") or ""),
+                "model": str(attrs.get("model") or ""),
+                "embedding_model": str(attrs.get("embedding_model") or ""),
+                "attributes": attrs,
+            })
+        except Exception as e:
+            logger.error(f"_build_profile_outputs row error: {e}")
+
+    if not rows:
+        return _empty_profile_list_df(), profiles_data
+    df = pd.DataFrame(rows, columns=_PROFILE_LIST_COLUMNS).sort_values("Profile Name")
+    return df, profiles_data
+
+
+def _write_profiles_to_json(profiles_data: list) -> tuple:
+    json_path = replace_profile_cache(profiles_data or [])
+    return json_path, len(profiles_data or [])
+
+
+def _build_profile_snapshot(pool, refresh_object_cache_if_empty: bool = False) -> tuple:
+    table_names = set(_get_table_names(pool))
+    view_names = set(_get_view_names(pool))
+    if refresh_object_cache_if_empty and not table_names and not view_names:
+        table_df, view_df, _cache_path = refresh_table_view_cache_from_db(pool)
+        if isinstance(table_df, pd.DataFrame) and "Table Name" in table_df.columns:
+            table_names = set(table_df["Table Name"].tolist())
+        if isinstance(view_df, pd.DataFrame) and "View Name" in view_df.columns:
+            view_names = set(view_df["View Name"].tolist())
+    profiles, attrs_by_profile = _fetch_profile_rows_and_attributes(pool)
+    df, profiles_data = _build_profile_outputs(
+        profiles,
+        attrs_by_profile,
+        table_names,
+        view_names,
+    )
+    return df, profiles_data, len(table_names), len(view_names), len(profiles)
+
+
+def refresh_profile_cache_from_db(pool) -> tuple:
+    df, profiles_data, table_count, view_count, raw_profile_count = _build_profile_snapshot(
+        pool,
+        refresh_object_cache_if_empty=True,
+    )
+    json_path, saved_count = _write_profiles_to_json(profiles_data)
+    return df, json_path, saved_count, table_count, view_count, raw_profile_count
+
+
 def _profiles_dir() -> Path:
     d = Path("profiles")
     d.mkdir(parents=True, exist_ok=True)
@@ -379,63 +617,15 @@ def _save_profiles_to_json(pool):
     try:
         start_ts = time()
         logger.info("プロファイルJSON保存を開始")
-        profiles_data = []
-        table_names = set(_get_table_names(pool))
-        view_names = set(_get_view_names(pool))
-        logger.info(f"キャッシュ済みテーブル: {len(table_names)}件 / ビュー: {len(view_names)}件")
-        with pool.acquire() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT PROFILE_NAME, DESCRIPTION FROM USER_CLOUD_AI_PROFILES ORDER BY PROFILE_NAME"
-                )
-                rows = cursor.fetchall() or []
-                logger.info(f"DBから{len(rows)}件のProfileを取得")
-                for r in rows:
-                    try:
-                        name = r[0]
-                        if str(name).strip().upper() == "OCI_CRED$PROF":
-                            continue
-                        desc_val = r[1]
-                        desc = desc_val.read() if hasattr(desc_val, "read") else str(desc_val or "")
-                        logger.info(f"解析中: {name}")
-                        attrs = _get_profile_attributes(pool, str(name)) or {}
-                        obj_list = attrs.get("object_list") or []
-                        logger.info(f"対象オブジェクト: {len(obj_list)}件")
-                        tables = []
-                        views = []
-                        for o in obj_list:
-                            try:
-                                obj_name = str((o or {}).get("name") or "")
-                                if not obj_name:
-                                    continue
-                                if obj_name in table_names:
-                                    tables.append(obj_name)
-                                elif obj_name in view_names:
-                                    views.append(obj_name)
-                            except Exception as e:
-                                logger.error(f"_save_profiles_to_json object error: {e}")
-                        logger.info(f"解決結果: テーブル{len(tables)}件 / ビュー{len(views)}件")
-                        profiles_data.append({
-                            "profile": str(name),
-                            "category": str(desc),
-                            "tables": sorted(set(tables)),
-                            "views": sorted(set(views)),
-                        })
-                    except Exception as e:
-                        logger.error(f"_save_profiles_to_json row error: {e}")
-        if not profiles_data:
-            logger.info("Profileが見つかりません。プレースホルダーを出力")
-            profiles_data = [{
-                "profile": "",
-                "category": "",
-                "tables": [],
-                "views": [],
-            }]
-        json_path = _profiles_dir() / "selectai.json"
-        with json_path.open("w", encoding="utf-8") as f:
-            json.dump(profiles_data, f, ensure_ascii=False, indent=2)
+        _df, profiles_data, table_count, view_count, raw_profile_count = _build_profile_snapshot(
+            pool,
+            refresh_object_cache_if_empty=True,
+        )
+        logger.info(f"キャッシュ済みテーブル: {table_count}件 / ビュー: {view_count}件")
+        logger.info(f"DBから{raw_profile_count}件のProfileを取得")
+        json_path, saved_count = _write_profiles_to_json(profiles_data)
         elapsed = time() - start_ts
-        logger.info(f"{len(profiles_data)}件のProfileを {json_path} に保存（経過: {elapsed:.3f}s）")
+        logger.info(f"{saved_count}件のProfileを {json_path} に保存（経過: {elapsed:.3f}s）")
     except Exception as e:
         logger.error(f"_save_profiles_to_json error: {e}")
 
@@ -444,139 +634,83 @@ def _save_profiles_to_json_stream(pool):
     try:
         start_ts = time()
         yield "⏳ プロファイルJSON保存を開始"
-        profiles_data = []
-        table_names = set(_get_table_names(pool))
-        view_names = set(_get_view_names(pool))
-        yield f"ℹ️ キャッシュ済みテーブル: {len(table_names)}件 / ビュー: {len(view_names)}件"
-        with pool.acquire() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT PROFILE_NAME, DESCRIPTION FROM USER_CLOUD_AI_PROFILES ORDER BY PROFILE_NAME"
-                )
-                rows = cursor.fetchall() or []
-                yield f"ℹ️ DBから{len(rows)}件のProfileを取得"
-                for r in rows:
-                    try:
-                        name = r[0]
-                        if str(name).strip().upper() == "OCI_CRED$PROF":
-                            continue
-                        desc_val = r[1]
-                        desc = desc_val.read() if hasattr(desc_val, "read") else str(desc_val or "")
-                        yield f"⏳ 解析中: {name}"
-                        attrs = _get_profile_attributes(pool, str(name)) or {}
-                        obj_list = attrs.get("object_list") or []
-                        yield f"ℹ️ 対象オブジェクト: {len(obj_list)}件"
-                        tables = []
-                        views = []
-                        for o in obj_list:
-                            try:
-                                obj_name = str((o or {}).get("name") or "")
-                                if not obj_name:
-                                    continue
-                                if obj_name in table_names:
-                                    tables.append(obj_name)
-                                elif obj_name in view_names:
-                                    views.append(obj_name)
-                            except Exception as e:
-                                logger.error(f"_save_profiles_to_json_stream object error: {e}")
-                        yield f"✅ {name}: テーブル{len(tables)} / ビュー{len(views)}"
-                        profiles_data.append({
-                            "profile": str(name),
-                            "category": str(desc),
-                            "tables": sorted(set(tables)),
-                            "views": sorted(set(views)),
-                        })
-                    except Exception as e:
-                        logger.error(f"_save_profiles_to_json_stream row error: {e}")
-        if not profiles_data:
+        _df, profiles_data, table_count, view_count, raw_profile_count = _build_profile_snapshot(
+            pool,
+            refresh_object_cache_if_empty=True,
+        )
+        yield f"ℹ️ キャッシュ済みテーブル: {table_count}件 / ビュー: {view_count}件"
+        yield f"ℹ️ DBから{raw_profile_count}件のProfileを取得"
+        if profiles_data:
+            for profile in profiles_data:
+                yield f"✅ {profile['profile']}: テーブル{len(profile['tables'])} / ビュー{len(profile['views'])}"
+        else:
             yield "ℹ️ Profileが見つかりません。プレースホルダーを出力"
-            profiles_data = [{
-                "profile": "",
-                "category": "",
-                "tables": [],
-                "views": [],
-            }]
-        json_path = _profiles_dir() / "selectai.json"
-        with json_path.open("w", encoding="utf-8") as f:
-            json.dump(profiles_data, f, ensure_ascii=False, indent=2)
+        json_path, saved_count = _write_profiles_to_json(profiles_data)
         elapsed = time() - start_ts
-        yield f"✅ {len(profiles_data)}件のProfileを保存（経過: {elapsed:.1f}s）"
+        yield f"✅ {saved_count}件のProfileを保存（経過: {elapsed:.1f}s）"
     except Exception as e:
         logger.error(f"_save_profiles_to_json_stream error: {e}")
         yield f"❌ エラー: {e}"
 
 
-def _save_profile_to_json(pool, name: str, category: str, original_name: str = ""):
+def _upsert_profile_cache_from_attrs(
+    pool,
+    name: str,
+    category: str,
+    attrs: dict,
+    original_name: str = "",
+    selected_tables=None,
+    selected_views=None,
+):
     try:
-        json_path = _profiles_dir() / "selectai.json"
-        if json_path.exists():
-            with json_path.open("r", encoding="utf-8") as f:
-                profiles_data = json.load(f) or []
+        if selected_tables is not None or selected_views is not None:
+            tables = sorted(set(str(t) for t in (selected_tables or []) if str(t).strip()))
+            views = sorted(set(str(v) for v in (selected_views or []) if str(v).strip()))
         else:
-            profiles_data = []
-        table_names = set(_get_table_names(pool))
-        view_names = set(_get_view_names(pool))
-        attrs = _get_profile_attributes(pool, str(name)) or {}
-        obj_list = attrs.get("object_list") or []
-        tables = []
-        views = []
-        for o in obj_list:
-            obj_name = str((o or {}).get("name") or "")
-            if not obj_name:
-                continue
-            if obj_name in table_names:
-                tables.append(obj_name)
-            elif obj_name in view_names:
-                views.append(obj_name)
-        updated = {
+            table_names = set(_get_table_names(pool))
+            view_names = set(_get_view_names(pool))
+            tables, views = _split_profile_objects(attrs or {}, table_names, view_names)
+
+        orig = str(original_name or "").strip()
+        if orig and orig != str(name).strip():
+            remove_profile_cache_entry(orig)
+        upsert_profile_cache_entry({
             "profile": str(name),
             "category": str(category or ""),
-            "tables": sorted(set(tables)),
-            "views": sorted(set(views)),
-        }
-        out = []
-        orig = str(original_name or "").strip()
-        for p in profiles_data:
-            pf = str((p or {}).get("profile", "") or "").strip()
-            if pf and pf and pf != str(name).strip() and (not orig or pf != orig):
-                out.append(p)
-        out.append(updated)
-        with json_path.open("w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, indent=2)
+            "tables": tables,
+            "views": views,
+            "region": str((attrs or {}).get("region") or ""),
+            "model": str((attrs or {}).get("model") or ""),
+            "embedding_model": str((attrs or {}).get("embedding_model") or ""),
+            "attributes": attrs or {},
+        })
+    except Exception as e:
+        logger.error(f"_upsert_profile_cache_from_attrs error: {e}")
+
+
+def _save_profile_to_json(pool, name: str, category: str, original_name: str = ""):
+    try:
+        attrs = _get_profile_attributes(pool, str(name)) or {}
+        _upsert_profile_cache_from_attrs(pool, name, category, attrs, original_name)
     except Exception as e:
         logger.error(f"_save_profile_to_json error: {e}")
 
 def _remove_profile_from_json(name: str):
     try:
-        json_path = _profiles_dir() / "selectai.json"
-        if not json_path.exists():
-            return
-        with json_path.open("r", encoding="utf-8") as f:
-            profiles_data = json.load(f) or []
-        target = str(name or "").strip().lower()
-        out = []
-        for p in profiles_data:
-            pf = str((p or {}).get("profile", "") or "").strip().lower()
-            if pf != target:
-                out.append(p)
-        with json_path.open("w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, indent=2)
+        remove_profile_cache_entry(name)
     except Exception as e:
         logger.error(f"_remove_profile_from_json error: {e}")
 
 
 def _load_profiles_from_json():
     try:
-        json_path = _profiles_dir() / "selectai.json"
-        if not json_path.exists():
-            return [("", "")]
-        with json_path.open("r", encoding="utf-8") as f:
-            profiles_data = json.load(f)
+        profiles_data = get_profile_cache_entries()
         result = []
         for p in profiles_data:
             bd = str((p or {}).get("category", "") or "").strip()
             pf = str((p or {}).get("profile", "") or "").strip()
-            result.append((bd, pf))
+            if pf:
+                result.append((bd, pf))
         if not result:
             return [("", "")]
         return result
@@ -586,21 +720,19 @@ def _load_profiles_from_json():
 
 def _get_profile_json_entry(display_or_name: str) -> dict:
     try:
-        s = str(display_or_name or "").strip()
-        json_path = _profiles_dir() / "selectai.json"
-        if not json_path.exists():
-            return {}
-        with json_path.open("r", encoding="utf-8") as f:
-            profiles = json.load(f) or []
-        for p in profiles:
-            if str((p or {}).get("profile", "")).strip() == s:
-                return p
-        for p in profiles:
-            if str((p or {}).get("category", "")).strip() == s:
-                return p
-        return {}
+        return get_profile_cache_entry(display_or_name)
     except Exception:
         return {}
+
+
+def _get_profile_attributes_from_json(display_or_name: str) -> dict:
+    try:
+        p = _get_profile_json_entry(display_or_name)
+        attrs = (p or {}).get("attributes") or {}
+        return attrs if isinstance(attrs, dict) else {}
+    except Exception:
+        return {}
+
 
 def _get_profile_objects_from_json(display_or_name: str) -> tuple:
     try:
@@ -723,64 +855,30 @@ def _map_domain_to_profile(predicted_domain, choices):
 
 def get_db_profiles(pool) -> pd.DataFrame:
     try:
-        logger.info("DBプロファイル一覧の取得を開始")
-        with pool.acquire() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT PROFILE_NAME, DESCRIPTION, STATUS FROM USER_CLOUD_AI_PROFILES ORDER BY PROFILE_NAME"
-                )
-                rows = cursor.fetchall() or []
-                logger.info(f"RAW取得件数: {len(rows)}")
-                plain_rows = []
-                for r in rows:
-                    try:
-                        name = r[0]
-                        desc_val = r[1]
-                        st = r[2]
-                        desc = desc_val.read() if hasattr(desc_val, "read") else str(desc_val or "")
-                        plain_rows.append([name, desc, st])
-                    except Exception:
-                        plain_rows.append([str(r[0]), str(r[1] or ""), str(r[2] or "")])
-                if plain_rows:
-                    df = pd.DataFrame(plain_rows, columns=["Profile Name", "Category", "Status"]).sort_values("Profile Name")
-                else:
-                    df = pd.DataFrame(columns=["Profile Name", "Category", "Status"]).sort_values("Profile Name")
-                df = df[df["Profile Name"].astype(str).str.strip().str.upper() != "OCI_CRED$PROF"]
-
-        table_names = set(_get_table_names(pool))
-        view_names = set(_get_view_names(pool))
-        logger.info(f"付加情報の解決: tables={len(table_names)}, views={len(view_names)}")
-        tables_col = []
-        views_col = []
-        regions_col = []
-        models_col = []
-        embed_models_col = []
-        for _, r in df.iterrows():
-            name = str(r["Profile Name"]) if "Profile Name" in df.columns else str(r.iloc[0])
-            attrs = _get_profile_attributes(pool, name) or {}
-            obj_list = attrs.get("object_list") or []
-            t_list = sorted([o.get("name") for o in obj_list if o.get("name") in table_names])
-            v_list = sorted([o.get("name") for o in obj_list if o.get("name") in view_names])
-            tables_col.append(", ".join(t_list))
-            views_col.append(", ".join(v_list))
-            regions_col.append(str(attrs.get("region") or ""))
-            models_col.append(str(attrs.get("model") or ""))
-            embed_models_col.append(str(attrs.get("embedding_model") or ""))
-        if len(df) > 0:
-            df.insert(2, "Tables", tables_col)
-            df.insert(3, "Views", views_col)
-            df.insert(4, "Region", regions_col)
-            df.insert(5, "Model", models_col)
-            df.insert(6, "Embedding Model", embed_models_col)
-            if "Status" in df.columns:
-                df = df.drop(columns=["Status"])
+        logger.info("ローカルJSONからプロファイル一覧の取得を開始")
+        rows = []
+        for profile in get_profile_cache_entries():
+            name = str((profile or {}).get("profile") or "").strip()
+            if not name or name.upper() == "OCI_CRED$PROF":
+                continue
+            rows.append([
+                name,
+                str((profile or {}).get("category") or ""),
+                ", ".join((profile or {}).get("tables") or []),
+                ", ".join((profile or {}).get("views") or []),
+                str((profile or {}).get("region") or ""),
+                str((profile or {}).get("model") or ""),
+                str((profile or {}).get("embedding_model") or ""),
+            ])
+        if rows:
+            df = pd.DataFrame(rows, columns=_PROFILE_LIST_COLUMNS).sort_values("Profile Name")
         else:
-            df = pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])  
-        logger.info(f"DBプロファイル一覧の取得完了: {len(df)}件")
+            df = _empty_profile_list_df()
+        logger.info(f"ローカルJSONからプロファイル一覧の取得完了: {len(df)}件")
         return df
     except Exception as e:
         logger.error(f"get_db_profiles error: {e}")
-        return pd.DataFrame(columns=["Profile Name", "Tables", "Views", "Region", "Model", "Embedding Model", "Status"]) 
+        return _empty_profile_list_df()
 
 
 def _get_profile_attributes(pool, name: str) -> dict:
@@ -788,20 +886,14 @@ def _get_profile_attributes(pool, name: str) -> dict:
     try:
         with pool.acquire() as conn:
             with conn.cursor() as cursor:
+                _configure_bulk_fetch(cursor)
                 cursor.execute(
                     "SELECT ATTRIBUTE_NAME, ATTRIBUTE_VALUE FROM USER_CLOUD_AI_PROFILE_ATTRIBUTES WHERE PROFILE_NAME = :name",
                     name=name,
                 )
                 rows = cursor.fetchall() or []
                 for k, v in rows:
-                    try:
-                        s = v.read() if hasattr(v, "read") else str(v)
-                    except Exception:
-                        s = str(v)
-                    try:
-                        attrs[k.lower()] = json.loads(s)
-                    except Exception:
-                        attrs[k.lower()] = s
+                    attrs[str(k).lower()] = _parse_profile_attribute_value(v)
     except Exception as e:
         logger.error(f"_get_profile_attributes error: {e}")
     return attrs
@@ -1003,6 +1095,14 @@ def create_db_profile(
                 desc=str(category or ""),
             )
             logger.info(f"Created profile: {name}")
+    _upsert_profile_cache_from_attrs(
+        pool,
+        name,
+        category,
+        attrs,
+        selected_tables=tables,
+        selected_views=views,
+    )
 
 
 def _predict_domain_and_set_profile(text):
@@ -1072,7 +1172,7 @@ def build_selectai_tab(pool, vpd_pool=None):
             with gr.Tabs():
                 with gr.TabItem(label="プロファイル管理"):
                     with gr.Accordion(label="1. プロファイル一覧", open=True):
-                        profile_refresh_btn = gr.Button("プロファイル一覧を取得（時間がかかる場合があります）", variant="primary")
+                        profile_refresh_btn = gr.Button("プロファイル一覧を取得（ローカルJSON）", variant="primary")
                         profile_refresh_status = gr.Markdown(visible=False)
                         profile_list_df = gr.Dataframe(
                             label="プロファイル一覧（件数: 0）",
@@ -1138,7 +1238,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                                         category_input = gr.Textbox(show_label=False, placeholder="例: 顧客管理、売上分析 等", container=False, autoscroll=False)
 
                         with gr.Row():
-                            refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
+                            refresh_btn = gr.Button("テーブル・ビュー一覧を取得（ローカルJSON）", variant="primary")
                         with gr.Row():
                             refresh_status = gr.Markdown(visible=False)
 
@@ -1162,11 +1262,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     with gr.Column(scale=1):
                                         gr.Markdown("Region*", elem_classes="input-label")
                                     with gr.Column(scale=5):
-                                        region_input = gr.Dropdown(
+                                        region_input = create_profile_region_dropdown(
                                             show_label=False,
-                                            choices=["ap-osaka-1", "us-chicago-1"],
-                                            # choices=["us-chicago-1"],
-                                            value="us-chicago-1",
                                             interactive=True,
                                             container=False,
                                         )
@@ -1300,17 +1397,13 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                 def refresh_profiles():
                     try:
-                        yield gr.Markdown(value="⏳ プロファイル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
-                        yield gr.Markdown(value="⏳ DBのプロファイルメタデータを取得中...", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
+                        empty_df = _empty_profile_list_df()
+                        yield gr.Markdown(value="⏳ ローカルJSONからプロファイル一覧を取得中...", visible=True), gr.Dataframe(visible=False, value=empty_df), gr.HTML(visible=False)
                         df = get_db_profiles(pool)
-                        yield gr.Markdown(value=f"✅ DBプロファイル取得完了（件数: {0 if df is None else len(df)}）", visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
-                        for msg in _save_profiles_to_json_stream(pool):
-                            yield gr.Markdown(value=msg, visible=True), gr.Dataframe(visible=False, value=pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])), gr.HTML(visible=False)
                         if df is None or df.empty:
-                            empty_df = pd.DataFrame(columns=["Profile Name", "Category", "Tables", "Views", "Region", "Model", "Embedding Model"])
                             count = 0
                             label_text = f"プロファイル一覧（件数: {count}）"
-                            yield gr.Markdown(value="✅ 取得完了（データなし）", visible=True), gr.Dataframe(value=empty_df, visible=True, label=label_text), gr.HTML(visible=False)
+                            yield gr.Markdown(value="⚠️ ローカルJSONにプロファイル情報がありません。「データベース管理 > 一覧キャッシュ管理」でJSON保存を実行してください。", visible=True), gr.Dataframe(value=empty_df, visible=True, label=label_text), gr.HTML(visible=False)
                             return
                         sample = df.head(5)
                         widths = []
@@ -1357,22 +1450,32 @@ def build_selectai_tab(pool, vpd_pool=None):
                         if len(current_df) > row_index:
                             name = str(current_df.iloc[row_index, 0])
                             logger.info(f"on_profile_select: selected profile name column value='{name}'")
-                            attrs = _get_profile_attributes(pool, name) or {}
+                            attrs = (
+                                _get_profile_attributes_from_json(name)
+                                or _get_profile_attributes(pool, name)
+                                or {}
+                            )
                             logger.info(f"on_profile_select: fetched attributes keys={list(attrs.keys())}")
                             if compartment_id:
                                 attrs.setdefault("oci_compartment_id", compartment_id)
                                 logger.info("on_profile_select: set oci_compartment_id from UI state")
                             desc = ""
                             try:
-                                with pool.acquire() as conn2:
-                                    with conn2.cursor() as cursor2:
-                                        logger.info("on_profile_select: querying DESCRIPTION from USER_CLOUD_AI_PROFILES")
-                                        cursor2.execute("SELECT DESCRIPTION FROM USER_CLOUD_AI_PROFILES WHERE PROFILE_NAME = :name", name=name)
-                                        r2 = cursor2.fetchone()
-                                        if r2:
-                                            v = r2[0]
-                                            desc = v.read() if hasattr(v, "read") else str(v)
-                                        logger.info(f"on_profile_select: resolved description length={len(str(desc or ''))}")
+                                if "Category" in current_df.columns:
+                                    desc = str(current_df.iloc[row_index]["Category"] or "")
+                            except Exception:
+                                desc = ""
+                            try:
+                                if not str(desc or "").strip():
+                                    with pool.acquire() as conn2:
+                                        with conn2.cursor() as cursor2:
+                                            logger.info("on_profile_select: querying DESCRIPTION from USER_CLOUD_AI_PROFILES")
+                                            cursor2.execute("SELECT DESCRIPTION FROM USER_CLOUD_AI_PROFILES WHERE PROFILE_NAME = :name", name=name)
+                                            r2 = cursor2.fetchone()
+                                            if r2:
+                                                v = r2[0]
+                                                desc = v.read() if hasattr(v, "read") else str(v)
+                                logger.info(f"on_profile_select: resolved description length={len(str(desc or ''))}")
                             except Exception:
                                 desc = ""
                                 logger.info("on_profile_select: description query failed; using empty string")
@@ -1410,10 +1513,18 @@ def build_selectai_tab(pool, vpd_pool=None):
                         if not new:
                             new = orig
                         if not bd:
-                            attrs = _get_profile_attributes(pool, orig) or {}
+                            attrs = (
+                                _get_profile_attributes_from_json(orig)
+                                or _get_profile_attributes(pool, orig)
+                                or {}
+                            )
                             sql = _generate_create_sql_from_attrs(orig, attrs, "")
                             return gr.Markdown(visible=True, value="⚠️ カテゴリを入力してください"), new, gr.Textbox(value=bd, autoscroll=False), sql, orig
-                        attrs = _get_profile_attributes(pool, orig) or {}
+                        attrs = (
+                            _get_profile_attributes_from_json(orig)
+                            or _get_profile_attributes(pool, orig)
+                            or {}
+                        )
                         attr_str = json.dumps(attrs, ensure_ascii=False)
                         with pool.acquire() as conn:
                             with conn.cursor() as cursor:
@@ -1424,13 +1535,16 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 cursor.execute("BEGIN DBMS_CLOUD_AI.CREATE_PROFILE(profile_name => :name, attributes => :attrs, description => :desc); END;", name=new, attrs=attr_str, desc=bd)
                                 if new != orig:
                                     cursor.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :name); END;", name=orig)
-                        # JSONファイルを更新（対象のprofileのみ）
-                        _save_profile_to_json(pool, new, bd, original_name=orig)
+                        _upsert_profile_cache_from_attrs(pool, new, bd, attrs, original_name=orig)
                         sql = _generate_create_sql_from_attrs(new, attrs, bd)
                         return gr.Markdown(visible=True, value=f"✅ 更新しました: {new}"), new, gr.Textbox(value=bd, autoscroll=False), sql, new
                     except Exception as e:
                         logger.error(f"update_selected_profile error: {e}")
-                        attrs = _get_profile_attributes(pool, orig or edited_name) or {}
+                        attrs = (
+                            _get_profile_attributes_from_json(orig or edited_name)
+                            or _get_profile_attributes(pool, orig or edited_name)
+                            or {}
+                        )
                         sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
                         return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), edited_name, gr.Textbox(value=bd, autoscroll=False), sql, (new or orig or "")
 
@@ -1465,8 +1579,6 @@ def build_selectai_tab(pool, vpd_pool=None):
                             views or [],
                             str(category or ""),
                         )
-                        # JSONファイルを更新
-                        _save_profiles_to_json(pool)
                         yield gr.Markdown(visible=True, value=f"✅ 作成しました: {name}")
                     except Exception as e:
                         msg = f"❌ 作成に失敗しました: {str(e)}"
@@ -1543,7 +1655,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                         yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
                         t = _get_table_names(pool)
                         v = _get_view_names(pool)
-                        status_text = "✅ 取得完了（データなし）" if (not t and not v) else "✅ 取得完了"
+                        status_text = (
+                            "⚠️ ローカルJSONにテーブル・ビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
+                            if (not t and not v)
+                            else "✅ 取得完了"
+                        )
                         yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=t, visible=True), gr.CheckboxGroup(choices=v, visible=True)
                     except Exception as e:
                         logger.error(f"refresh_sources_handler error: {e}")
@@ -2355,7 +2471,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                             if str(s).strip():
                                 return s
                             prof_name = _resolve_profile_name(pool, profile_name)
-                            attrs = _get_profile_attributes(pool, prof_name) or {}
+                            attrs = (
+                                _get_profile_attributes_from_json(prof_name)
+                                or _get_profile_attributes(pool, prof_name)
+                                or {}
+                            )
                             obj_list = attrs.get("object_list") or []
                             if not obj_list:
                                 return ""
@@ -4348,7 +4468,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                     with gr.Accordion(label="1. オブジェクト選択", open=True):
                         with gr.Row():
                             with gr.Column():                        
-                                cm_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
+                                cm_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（ローカルJSON）", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 cm_refresh_status = gr.Markdown(visible=False)
@@ -4465,8 +4585,8 @@ def build_selectai_tab(pool, vpd_pool=None):
                     def _cm_refresh_objects():
                         try:
                             yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
-                            df_tab = _get_table_df_cached(pool, force=True)
-                            df_view = _get_view_df_cached(pool, force=True)
+                            df_tab = _get_table_df_cached(pool)
+                            df_view = _get_view_df_cached(pool)
                             names = []
                             if not df_tab.empty and "Table Name" in df_tab.columns:
                                 names.extend([str(x) for x in df_tab["Table Name"].tolist()])
@@ -4474,7 +4594,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 names.extend([str(x) for x in df_view["View Name"].tolist()])
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            status_text = "✅ 取得完了（データなし）" if (not table_names and not view_names) else "✅ 取得完了"
+                            status_text = (
+                                "⚠️ ローカルJSONにテーブル・ビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
+                                if (not table_names and not view_names)
+                                else "✅ 取得完了"
+                            )
                             yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
                             logger.error(f"_cm_refresh_objects error: {e}")
@@ -4841,7 +4965,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                 with gr.TabItem(label="アノテーション管理"):
                     with gr.Accordion(label="1. オブジェクト選択", open=True):
                         with gr.Row():
-                            am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（時間がかかる場合があります）", variant="primary")
+                            am_refresh_btn = gr.Button("テーブル・ビュー一覧を取得（ローカルJSON）", variant="primary")
                         with gr.Row():
                             am_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
@@ -4966,11 +5090,15 @@ def build_selectai_tab(pool, vpd_pool=None):
                     def _am_refresh_objects():
                         try:
                             yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
-                            df_tab = _get_table_df_cached(pool, force=True)
-                            df_view = _get_view_df_cached(pool, force=True)
+                            df_tab = _get_table_df_cached(pool)
+                            df_view = _get_view_df_cached(pool)
                             table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
                             view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
-                            status_text = "✅ 取得完了（データなし）" if (not table_names and not view_names) else "✅ 取得完了"
+                            status_text = (
+                                "⚠️ ローカルJSONにテーブル・ビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
+                                if (not table_names and not view_names)
+                                else "✅ 取得完了"
+                            )
                             yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
                         except Exception as e:
                             yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
@@ -5441,7 +5569,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     container=False
                                 )
                             with gr.Column(scale=5):
-                                syn_refresh_btn = gr.Button("テーブル一覧を取得（時間がかかる場合があります）", variant="primary")
+                                syn_refresh_btn = gr.Button("テーブル一覧を取得（ローカルJSON）", variant="primary")
                         with gr.Row():
                             with gr.Column():
                                 syn_refresh_status = gr.Markdown(visible=False)
@@ -5530,11 +5658,15 @@ def build_selectai_tab(pool, vpd_pool=None):
                             tables, _ = _get_profile_objects_from_json(profile_name)
                             if not tables:
                                 prof = _resolve_profile_name(pool, str(profile_name or ""))
-                                df_tab = _get_table_df_cached(pool, force=True)
+                                df_tab = _get_table_df_cached(pool)
                                 all_table_names = [str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]
                                 table_names = sorted(set(all_table_names))
                                 try:
-                                    attrs = _get_profile_attributes(pool, prof) or {}
+                                    attrs = (
+                                        _get_profile_attributes_from_json(prof)
+                                        or _get_profile_attributes(pool, prof)
+                                        or {}
+                                    )
                                     obj_list = attrs.get("object_list") or []
                                     prof_tables = sorted(set([str(o.get("name")) for o in obj_list if o and o.get("name")]))
                                     if prof_tables:
@@ -5542,7 +5674,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 except Exception as e:
                                     logger.error(f"_syn_refresh_objects filter by profile error: {e}")
                                 tables = table_names
-                            status_text = "✅ 取得完了(データなし)" if (not tables) else "✅ 取得完了"
+                            status_text = (
+                                "⚠️ ローカルJSONにテーブル情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
+                                if (not tables)
+                                else "✅ 取得完了"
+                            )
                             # テーブル選択を空にリセット
                             yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=tables, visible=True, value=[]), gr.Dropdown(choices=tables, visible=True, value=None)
                         except Exception as e:
