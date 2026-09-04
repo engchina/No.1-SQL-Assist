@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 _METADATA_CACHE_VERSION = 1
 _CACHE_DIR = Path("metadata_cache")
 _METADATA_CACHE_FILE = _CACHE_DIR / "list_metadata.json"
-_LEGACY_PROFILE_CACHE_FILE = Path("profiles") / "selectai.json"
 
 
 def _now_iso() -> str:
@@ -115,9 +114,7 @@ def _normalize_cache(cache: dict) -> dict:
 
 def load_metadata_cache() -> dict:
     if not _METADATA_CACHE_FILE.exists():
-        cache = _empty_cache()
-        cache["profiles"] = _load_legacy_profile_cache()
-        return _normalize_cache(cache)
+        return _empty_cache()
     try:
         with _METADATA_CACHE_FILE.open("r", encoding="utf-8") as f:
             return _normalize_cache(json.load(f) or {})
@@ -135,24 +132,6 @@ def save_metadata_cache(cache: dict) -> Path:
         json.dump(normalized, f, ensure_ascii=False, indent=2)
     tmp_path.replace(_METADATA_CACHE_FILE)
     return _METADATA_CACHE_FILE
-
-
-def _load_legacy_profile_cache() -> list:
-    """Read old profiles/selectai.json only for migration compatibility."""
-    if not _LEGACY_PROFILE_CACHE_FILE.exists():
-        return []
-    try:
-        with _LEGACY_PROFILE_CACHE_FILE.open("r", encoding="utf-8") as f:
-            payload = json.load(f) or []
-        profiles = []
-        for entry in payload:
-            normalized = _normalize_profile_entry(entry)
-            if normalized.get("profile"):
-                profiles.append(normalized)
-        return profiles
-    except Exception as e:
-        logger.error(f"_load_legacy_profile_cache error: {e}")
-        return []
 
 
 def get_table_cache_entries() -> list:

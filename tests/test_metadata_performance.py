@@ -63,7 +63,6 @@ from utils.management_util import (
     refresh_table_view_cache_from_db,
 )
 from utils.metadata_cache_util import (
-    get_profile_cache_entries,
     replace_profile_cache,
     replace_table_view_cache,
 )
@@ -136,16 +135,11 @@ class MetadataPerformanceTest(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         temp_root = Path(self._temp_dir.name)
         cache_dir = temp_root / "metadata_cache"
-        legacy_dir = temp_root / "profiles"
         self._patchers = [
             patch("utils.metadata_cache_util._CACHE_DIR", cache_dir),
             patch(
                 "utils.metadata_cache_util._METADATA_CACHE_FILE",
                 cache_dir / "list_metadata.json",
-            ),
-            patch(
-                "utils.metadata_cache_util._LEGACY_PROFILE_CACHE_FILE",
-                legacy_dir / "selectai.json",
             ),
         ]
         for patcher in self._patchers:
@@ -356,11 +350,9 @@ class MetadataPerformanceTest(unittest.TestCase):
             with patch("utils.selectai_util._get_view_names", return_value=["V_CUSTOMERS"]):
                 messages = list(_save_profiles_to_json_stream(pool))
         cache_path = Path(self._temp_dir.name) / "metadata_cache" / "list_metadata.json"
-        legacy_path = Path(self._temp_dir.name) / "profiles" / "selectai.json"
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
 
         self.assertTrue(messages[-1].startswith("✅ 1件のProfileを保存"))
-        self.assertFalse(legacy_path.exists())
         self.assertEqual(payload["profiles"][0]["profile"], "PROFILE_A")
         self.assertEqual(
             {
@@ -376,26 +368,6 @@ class MetadataPerformanceTest(unittest.TestCase):
         )
         self.assertEqual(len(pool.executed), 2)
         self.assertEqual(executed_sql(pool).upper().count("USER_CLOUD_AI_PROFILE_ATTRIBUTES"), 1)
-
-    def test_profile_cache_reads_legacy_selectai_json_for_migration_only(self):
-        legacy_path = Path(self._temp_dir.name) / "profiles" / "selectai.json"
-        legacy_path.parent.mkdir(parents=True, exist_ok=True)
-        legacy_path.write_text(
-            json.dumps([
-                {
-                    "profile": "PROFILE_LEGACY",
-                    "category": "legacy",
-                    "tables": ["CUSTOMERS"],
-                    "views": ["V_CUSTOMERS"],
-                }
-            ]),
-            encoding="utf-8",
-        )
-
-        profiles = get_profile_cache_entries()
-
-        self.assertEqual(profiles[0]["profile"], "PROFILE_LEGACY")
-        self.assertFalse((Path(self._temp_dir.name) / "metadata_cache" / "list_metadata.json").exists())
 
 
 if __name__ == "__main__":

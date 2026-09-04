@@ -597,7 +597,7 @@ def refresh_profile_cache_from_db(pool) -> tuple:
 
 
 def _profiles_dir() -> Path:
-    d = Path("profiles")
+    d = Path("metadata_cache") / "profile_details"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
