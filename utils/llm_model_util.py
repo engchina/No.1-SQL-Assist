@@ -15,9 +15,12 @@ from utils.common_util import (
     LLM_SHOW_OPENAI_MODELS_ENV,
     LLM_SHOW_US_CHICAGO_1_MODELS_ENV,
     LlmModelSettings,
+    BASE_PROFILE_DEFAULT_REGION,
+    CHICAGO_PROFILE_DEFAULT_REGION,
     get_chat_model_choices,
     get_effective_default_model,
     get_llm_model_settings,
+    get_profile_default_region,
     validate_explicit_default_model,
 )
 from utils.vpd_util import require_admin
@@ -25,6 +28,11 @@ from utils.vpd_util import require_admin
 logger = logging.getLogger(__name__)
 
 _MODEL_DROPDOWNS = []
+_PROFILE_REGION_DROPDOWNS = []
+_PROFILE_REGION_CHOICES = [
+    BASE_PROFILE_DEFAULT_REGION,
+    CHICAGO_PROFILE_DEFAULT_REGION,
+]
 
 
 @dataclass(frozen=True)
@@ -40,8 +48,9 @@ class LlmModelSettingsControls:
 
 
 def reset_model_dropdown_registry():
-    """Clear model component registrations before constructing an app."""
+    """Clear model-related component registrations before constructing an app."""
     _MODEL_DROPDOWNS.clear()
+    _PROFILE_REGION_DROPDOWNS.clear()
 
 
 def create_chat_model_dropdown(**kwargs):
@@ -56,9 +65,26 @@ def create_chat_model_dropdown(**kwargs):
     return dropdown
 
 
+def create_profile_region_dropdown(**kwargs):
+    """Create and register a SelectAI profile region dropdown."""
+    settings = get_llm_model_settings()
+    dropdown = gr.Dropdown(
+        choices=_PROFILE_REGION_CHOICES,
+        value=get_profile_default_region(settings),
+        **kwargs,
+    )
+    _PROFILE_REGION_DROPDOWNS.append(dropdown)
+    return dropdown
+
+
 def get_registered_model_dropdowns():
     """Return a stable snapshot of all registered model dropdowns."""
     return tuple(_MODEL_DROPDOWNS)
+
+
+def get_registered_profile_region_dropdowns():
+    """Return a stable snapshot of registered SelectAI profile region dropdowns."""
+    return tuple(_PROFILE_REGION_DROPDOWNS)
 
 
 def create_model_dropdown_updates(settings, count):
@@ -67,6 +93,15 @@ def create_model_dropdown_updates(settings, count):
     default_model = get_effective_default_model(settings)
     return [
         gr.Dropdown(choices=choices, value=default_model) for _ in range(count)
+    ]
+
+
+def create_profile_region_dropdown_updates(settings, count):
+    """Create identical Gradio updates for every registered profile region."""
+    default_region = get_profile_default_region(settings)
+    return [
+        gr.Dropdown(choices=_PROFILE_REGION_CHOICES, value=default_region)
+        for _ in range(count)
     ]
 
 
@@ -93,7 +128,9 @@ def load_persisted_llm_model_settings(env_path=None):
     return get_llm_model_settings(values)
 
 
-def create_persisted_llm_ui_updates(dropdown_count, env_path=None):
+def create_persisted_llm_ui_updates(
+    dropdown_count, env_path=None, profile_region_count=0
+):
     """Create page-load updates from the latest persisted LLM settings."""
     settings = load_persisted_llm_model_settings(env_path)
     return [
@@ -101,6 +138,7 @@ def create_persisted_llm_ui_updates(dropdown_count, env_path=None):
         settings.show_openai_models,
         settings.explicit_default_model,
         *create_model_dropdown_updates(settings, dropdown_count),
+        *create_profile_region_dropdown_updates(settings, profile_region_count),
     ]
 
 
@@ -223,9 +261,12 @@ def build_llm_model_settings_tab(tab):
 def bind_llm_model_settings_events(app, controls):
     """Bind load/save events after every model dropdown has been registered."""
     dropdowns = get_registered_model_dropdowns()
+    profile_region_dropdowns = get_registered_profile_region_dropdowns()
 
     def refresh_from_persisted_settings():
-        return create_persisted_llm_ui_updates(len(dropdowns))
+        return create_persisted_llm_ui_updates(
+            len(dropdowns), profile_region_count=len(profile_region_dropdowns)
+        )
 
     app.load(
         refresh_from_persisted_settings,
@@ -234,6 +275,7 @@ def bind_llm_model_settings_events(app, controls):
             controls.show_openai_checkbox,
             controls.default_model_input,
             *dropdowns,
+            *profile_region_dropdowns,
         ],
         queue=False,
         show_progress="hidden",
@@ -252,7 +294,9 @@ def bind_llm_model_settings_events(app, controls):
         show_chicago, show_openai, explicit_default_model, request: gr.Request
     ):
         require_admin(request)
-        skipped_updates = [gr.skip() for _ in dropdowns]
+        skipped_updates = [
+            gr.skip() for _ in (*dropdowns, *profile_region_dropdowns)
+        ]
         yield [
             gr.Markdown(visible=True, value="⏳ LLMモデル設定を保存しています..."),
             *skipped_updates,
@@ -300,6 +344,9 @@ def bind_llm_model_settings_events(app, controls):
                 ),
             ),
             *create_model_dropdown_updates(settings, len(dropdowns)),
+            *create_profile_region_dropdown_updates(
+                settings, len(profile_region_dropdowns)
+            ),
         ]
 
     controls.save_button.click(
@@ -309,5 +356,5 @@ def bind_llm_model_settings_events(app, controls):
             controls.show_openai_checkbox,
             controls.default_model_input,
         ],
-        outputs=[controls.status_markdown, *dropdowns],
+        outputs=[controls.status_markdown, *dropdowns, *profile_region_dropdowns],
     )

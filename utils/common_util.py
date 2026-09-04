@@ -16,6 +16,9 @@ LLM_DEFAULT_MODEL_ENV = "LLM_DEFAULT_MODEL"
 CHICAGO_DEFAULT_MODEL = "xai.grok-4.3"
 BASE_DEFAULT_MODEL = "openai.gpt-oss-120b"
 
+CHICAGO_PROFILE_DEFAULT_REGION = "us-chicago-1"
+BASE_PROFILE_DEFAULT_REGION = "ap-osaka-1"
+
 MODEL_GROUP_BASE = "base"
 MODEL_GROUP_CHICAGO = "us-chicago-1"
 MODEL_GROUP_OPENAI = "openai"
@@ -98,6 +101,14 @@ def get_automatic_default_model(settings=None):
     if current.show_us_chicago_1_models:
         return CHICAGO_DEFAULT_MODEL
     return BASE_DEFAULT_MODEL
+
+
+def get_profile_default_region(settings=None):
+    """Resolve the SelectAI profile default region from Chicago visibility."""
+    current = settings or get_llm_model_settings()
+    if current.show_us_chicago_1_models:
+        return CHICAGO_PROFILE_DEFAULT_REGION
+    return BASE_PROFILE_DEFAULT_REGION
 
 
 def validate_explicit_default_model(settings):
