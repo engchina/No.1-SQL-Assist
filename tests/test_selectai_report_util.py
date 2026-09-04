@@ -13,8 +13,10 @@ from utils.selectai_report_util import (
     REPORT_COLUMNS,
     append_execution_report,
     create_execution_report_excel,
+    disabled_report_download_button,
     execution_report_dataframe,
     format_elapsed_seconds,
+    generate_execution_report_download,
     load_execution_report_records,
 )
 
@@ -176,6 +178,39 @@ class SelectAiReportUtilTest(unittest.TestCase):
                 )
             )
             self.assertFalse(missing_output_path.exists())
+
+    def test_download_button_is_visible_but_disabled_until_report_generated(self):
+        initial_button = disabled_report_download_button()
+        self.assertTrue(initial_button.visible)
+        self.assertFalse(initial_button.interactive)
+        self.assertIsNone(initial_button.value)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            history_path = Path(temp_dir) / "history.jsonl"
+            _status, missing_button = generate_execution_report_download(
+                history_path=history_path,
+                screen_name="ユーザー機能: 基本機能",
+            )
+            self.assertTrue(missing_button.visible)
+            self.assertFalse(missing_button.interactive)
+            self.assertIsNone(missing_button.value)
+
+            append_execution_report(
+                {
+                    "画面名": "ユーザー機能: 基本機能",
+                    "実行ID": "user-run",
+                    "全体経過時間（秒）": "1.234",
+                },
+                history_path=history_path,
+            )
+            _status, generated_button = generate_execution_report_download(
+                history_path=history_path,
+                screen_name="ユーザー機能: 基本機能",
+            )
+            self.assertTrue(generated_button.visible)
+            self.assertTrue(generated_button.interactive)
+            self.assertIsInstance(generated_button.value, dict)
+            self.assertTrue(Path(generated_button.value["path"]).exists())
 
 
 if __name__ == "__main__":

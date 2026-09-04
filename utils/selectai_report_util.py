@@ -57,6 +57,17 @@ LEGACY_ELAPSED_COLUMNS = {
 _REPORT_LOCK = threading.Lock()
 
 
+def disabled_report_download_button():
+    """Return the initial/inactive report download button state."""
+    return gr.DownloadButton(
+        label="レポートをダウンロード",
+        value=None,
+        visible=True,
+        interactive=False,
+        variant="secondary",
+    )
+
+
 def now_local_iso() -> str:
     """Return a local timezone-aware timestamp for report display."""
     return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -269,7 +280,7 @@ def generate_execution_report_download(
                     visible=True,
                     value=f"⚠️ 実行履歴がありません{target_label}",
                 ),
-                gr.DownloadButton(value=None, visible=False),
+                disabled_report_download_button(),
             )
         return (
             gr.Markdown(
@@ -280,6 +291,7 @@ def generate_execution_report_download(
                 label="レポートをダウンロード",
                 value=str(report_path),
                 visible=True,
+                interactive=True,
                 variant="secondary",
             ),
         )
@@ -290,5 +302,5 @@ def generate_execution_report_download(
                 visible=True,
                 value=f"❌ レポート生成に失敗しました: {exc}",
             ),
-            gr.DownloadButton(value=None, visible=False),
+            disabled_report_download_button(),
         )
