@@ -75,6 +75,9 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+DEV_CHAT_ANALYSIS_SCREEN_NAME = "開発者機能: チャット・分析"
+USER_BASIC_SCREEN_NAME = "ユーザー機能: 基本機能"
+
 
 # Load environment variables
 load_dotenv(find_dotenv())
@@ -2827,6 +2830,25 @@ def build_selectai_tab(pool, vpd_pool=None):
                         with gr.Row():
                             dev_feedback_result = gr.Markdown(visible=False)
 
+                    with gr.Accordion(label="5. 実行レポート", open=True):
+                        with gr.Row():
+                            with gr.Column():
+                                dev_execution_report_generate_btn = gr.Button(
+                                    "レポート生成",
+                                    variant="primary",
+                                )
+                            with gr.Column():
+                                dev_execution_report_download_button = gr.DownloadButton(
+                                    label="レポートをダウンロード",
+                                    visible=False,
+                                    variant="secondary",
+                                )
+                        with gr.Row():
+                            dev_execution_report_status = gr.Markdown(
+                                visible=False,
+                                elem_classes=["operation-status"],
+                            )
+
                     def _build_showsql_stmt(prompt: str) -> str:
                         s = str(prompt or "")
                         # singles = ["!", "~", "^", "@", "#", "$", "%", "&", ";", ":"]
@@ -3575,7 +3597,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                             profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
                             elem_id="selectai_dev_chat_result_df",
                             include_feedback=True,
-                            screen_name="開発者機能: チャット・分析",
+                            screen_name=DEV_CHAT_ANALYSIS_SCREEN_NAME,
                         )
 
                     def _dev_step_generate(profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query):
@@ -3965,6 +3987,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                         except Exception as e:
                             yield gr.Markdown(visible=False), gr.Markdown(visible=True, value=f"❌ フィードバック送信に失敗しました: {str(e)}"), gr.Textbox(value=plsql)
 
+                    def _generate_dev_execution_report():
+                        return generate_execution_report_download(
+                            screen_name=DEV_CHAT_ANALYSIS_SCREEN_NAME
+                        )
+
                     dev_chat_execute_btn.click(
                         fn=_dev_step_generate_and_run,
                         inputs=[dev_profile_select, dev_prompt_input, dev_extra_prompt, dev_include_extra_prompt, dev_enable_query_rewrite, dev_rewritten_query],
@@ -3993,6 +4020,14 @@ def build_selectai_tab(pool, vpd_pool=None):
                         fn=_admin_only_event(_dev_rewrite_query),
                         inputs=[dev_rewrite_model_select, dev_profile_select, dev_prompt_input, dev_rewrite_use_glossary, dev_rewrite_use_schema],
                         outputs=[dev_rewrite_status, dev_rewritten_query],
+                    )
+
+                    dev_execution_report_generate_btn.click(
+                        fn=_admin_only_event(_generate_dev_execution_report),
+                        outputs=[
+                            dev_execution_report_status,
+                            dev_execution_report_download_button,
+                        ],
                     )
 
                 with gr.TabItem(label="SQL分析→質問 逆生成") as reverse_tab:
@@ -7012,25 +7047,6 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 value=pd.DataFrame(columns=["CATEGORY", "RULE"]),
                             )
 
-                    with gr.Accordion(label="2. 実行レポート", open=True):
-                        with gr.Row():
-                            with gr.Column():
-                                report_generate_btn = gr.Button(
-                                    "レポート生成",
-                                    variant="primary",
-                                )
-                            with gr.Column():
-                                report_download_button = gr.DownloadButton(
-                                    label="レポートをダウンロード",
-                                    visible=False,
-                                    variant="secondary",
-                                )
-                        with gr.Row():
-                            report_generate_status = gr.Markdown(
-                                visible=False,
-                                elem_classes=["operation-status"],
-                            )
-
                     def _rule_list():
                         try:
                             p = Path("uploads") / "rules.xlsx"
@@ -7109,11 +7125,6 @@ def build_selectai_tab(pool, vpd_pool=None):
                         fn=_rule_upload_excel,
                         inputs=[rule_upload_file],
                         outputs=[rule_upload_result],
-                    )
-
-                    report_generate_btn.click(
-                        fn=generate_execution_report_download,
-                        outputs=[report_generate_status, report_download_button],
                     )
 
         with gr.TabItem(label="ユーザー機能") as user_features_tab:
@@ -7272,6 +7283,25 @@ def build_selectai_tab(pool, vpd_pool=None):
                         )
                         chat_result_style = gr.HTML(visible=False)
 
+                    with gr.Accordion(label="4. 実行レポート", open=True):
+                        with gr.Row():
+                            with gr.Column():
+                                user_execution_report_generate_btn = gr.Button(
+                                    "レポート生成",
+                                    variant="primary",
+                                )
+                            with gr.Column():
+                                user_execution_report_download_button = gr.DownloadButton(
+                                    label="レポートをダウンロード",
+                                    visible=False,
+                                    variant="secondary",
+                                )
+                        with gr.Row():
+                            user_execution_report_status = gr.Markdown(
+                                visible=False,
+                                elem_classes=["operation-status"],
+                            )
+
                 (
                     sql_learning_schema_setup,
                     sql_learning_select_lessons,
@@ -7292,7 +7322,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                     profile, prompt, extra_prompt, include_extra, enable_rewrite, rewritten_query,
                     elem_id="selectai_chat_result_df", include_feedback=False,
                     login_user=username if role == "vpd" else None,
-                    screen_name="ユーザー機能: 基本機能",
+                    screen_name=USER_BASIC_SCREEN_NAME,
                 )
 
             def _on_chat_clear():
@@ -7323,6 +7353,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                     ch = _profile_names() or [("", "")]
                     return gr.Dropdown(choices=ch, value=ch[0][1])
 
+            def _generate_user_execution_report():
+                return generate_execution_report_download(
+                    screen_name=USER_BASIC_SCREEN_NAME
+                )
+
             chat_execute_btn.click(
                 fn=_user_step_generate_and_run,
                 inputs=[profile_select, prompt_input, extra_prompt, include_extra_prompt, enable_query_rewrite, rewritten_query],
@@ -7345,6 +7380,14 @@ def build_selectai_tab(pool, vpd_pool=None):
                 fn=_user_rewrite_query,
                 inputs=[rewrite_model_select, profile_select, prompt_input, rewrite_use_glossary, rewrite_use_schema],
                 outputs=[rewrite_status, rewritten_query],
+            )
+
+            user_execution_report_generate_btn.click(
+                fn=_generate_user_execution_report,
+                outputs=[
+                    user_execution_report_status,
+                    user_execution_report_download_button,
+                ],
             )
 
         # 各タブ選択時のProfileドロップダウン更新イベントハンドラー

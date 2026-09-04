@@ -95,6 +95,56 @@ class SelectAiReportUtilTest(unittest.TestCase):
                 "開発者機能: チャット・分析",
             )
 
+    def test_execution_report_excel_filters_by_screen(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            history_path = temp_root / "history.jsonl"
+            user_output_path = temp_root / "user_report.xlsx"
+            missing_output_path = temp_root / "missing_report.xlsx"
+
+            append_execution_report(
+                {
+                    "画面名": "開発者機能: チャット・分析",
+                    "実行ID": "dev-run",
+                    "自然言語の質問": "東京の顧客数を教えて",
+                },
+                history_path=history_path,
+            )
+            append_execution_report(
+                {
+                    "画面名": "ユーザー機能: 基本機能",
+                    "実行ID": "user-run",
+                    "自然言語の質問": "大阪の顧客数を教えて",
+                },
+                history_path=history_path,
+            )
+
+            dev_df = execution_report_dataframe(
+                history_path=history_path,
+                screen_name="開発者機能: チャット・分析",
+            )
+            self.assertEqual(len(dev_df), 1)
+            self.assertEqual(dev_df.iloc[0]["実行ID"], "dev-run")
+
+            created_path = create_execution_report_excel(
+                output_path=user_output_path,
+                history_path=history_path,
+                screen_name="ユーザー機能: 基本機能",
+            )
+            self.assertEqual(created_path, user_output_path)
+            user_excel_df = pd.read_excel(user_output_path)
+            self.assertEqual(len(user_excel_df), 1)
+            self.assertEqual(user_excel_df.iloc[0]["実行ID"], "user-run")
+
+            self.assertIsNone(
+                create_execution_report_excel(
+                    output_path=missing_output_path,
+                    history_path=history_path,
+                    screen_name="存在しない画面",
+                )
+            )
+            self.assertFalse(missing_output_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

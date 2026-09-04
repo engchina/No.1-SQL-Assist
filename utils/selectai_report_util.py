@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import threading
 import uuid
 from datetime import datetime
@@ -39,6 +40,10 @@ REPORT_COLUMNS = [
 DEFAULT_HISTORY_PATH = (
     Path("runtime") / "selectai_reports" / "selectai_execution_history.jsonl"
 )
+REPORT_SCREEN_FILENAME_PARTS = {
+    "開発者機能: チャット・分析": "developer_chat_analysis",
+    "ユーザー機能: 基本機能": "user_basic",
+}
 _REPORT_LOCK = threading.Lock()
 
 
@@ -138,9 +143,28 @@ def load_execution_report_records(
     return records
 
 
+def _filter_records_by_screen(
+    records: list[dict[str, str]],
+    screen_name: str | None,
+) -> list[dict[str, str]]:
+    if not screen_name:
+        return records
+    return [record for record in records if record.get("画面名") == screen_name]
+
+
+def _report_filename_screen_suffix(screen_name: str | None) -> str:
+    if not screen_name:
+        return ""
+    configured = REPORT_SCREEN_FILENAME_PARTS.get(screen_name)
+    if configured:
+        return configured
+    return re.sub(r"[^0-9A-Za-z]+", "_", str(screen_name)).strip("_").lower()[:80]
+
+
 def execution_report_dataframe(
     records: list[dict[str, Any]] | None = None,
     history_path: Path | str = DEFAULT_HISTORY_PATH,
+    screen_name: str | None = None,
 ) -> pd.DataFrame:
     """Build the public report DataFrame with stable column order."""
     normalized_records = (
@@ -148,20 +172,24 @@ def execution_report_dataframe(
         if records is not None
         else load_execution_report_records(history_path)
     )
+    normalized_records = _filter_records_by_screen(normalized_records, screen_name)
     return pd.DataFrame(normalized_records, columns=REPORT_COLUMNS)
 
 
 def create_execution_report_excel(
     output_path: Path | str | None = None,
     history_path: Path | str = DEFAULT_HISTORY_PATH,
+    screen_name: str | None = None,
 ) -> Path | None:
     """Create an Excel report from JSONL history and return its path."""
-    df = execution_report_dataframe(history_path=history_path)
+    df = execution_report_dataframe(history_path=history_path, screen_name=screen_name)
     if df.empty:
         return None
     if output_path is None:
+        screen_suffix = _report_filename_screen_suffix(screen_name)
+        screen_part = f"_{screen_suffix}" if screen_suffix else ""
         filename = (
-            "selectai_execution_report_"
+            f"selectai_execution_report{screen_part}_"
             f"{datetime.now().astimezone().strftime('%Y%m%d_%H%M%S')}.xlsx"
         )
         output_path = Path("/tmp") / filename
@@ -174,15 +202,20 @@ def create_execution_report_excel(
 
 def generate_execution_report_download(
     history_path: Path | str = DEFAULT_HISTORY_PATH,
+    screen_name: str | None = None,
 ):
     """Return Gradio updates for report generation status and download button."""
     try:
-        report_path = create_execution_report_excel(history_path=history_path)
+        report_path = create_execution_report_excel(
+            history_path=history_path,
+            screen_name=screen_name,
+        )
+        target_label = f"（{screen_name}）" if screen_name else ""
         if report_path is None:
             return (
                 gr.Markdown(
                     visible=True,
-                    value="⚠️ 実行履歴がありません",
+                    value=f"⚠️ 実行履歴がありません{target_label}",
                     elem_classes=["operation-status", "operation-status--warning"],
                 ),
                 gr.DownloadButton(value=None, visible=False),
@@ -190,7 +223,7 @@ def generate_execution_report_download(
         return (
             gr.Markdown(
                 visible=True,
-                value=f"✅ レポートを生成しました: {report_path}",
+                value=f"✅ レポートを生成しました{target_label}: {report_path}",
                 elem_classes=["operation-status", "operation-status--success"],
             ),
             gr.DownloadButton(
