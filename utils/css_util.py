@@ -5,10 +5,10 @@ GradioアプリケーションのカスタムCSSスタイルを提供します�
 
 custom_css = """
 :root {
-  --global-font-family: 
-    "Noto Sans JP", 
-    "Roboto", 
-    Arial, 
+  --global-font-family:
+    "Noto Sans JP",
+    "Roboto",
+    Arial,
     sans-serif;
     --primary-color: #196fb4;
     --secondary-color: #f38141;
@@ -18,6 +18,7 @@ custom_css = """
     --checkbox-border-color-focus: #2563eb;
     --text-light: #fff;
     --shadow-sm: 0 2px 5px -1px rgba(50, 50, 93, 0.25), 0 1px 3px -1px rgba(0, 0, 0, 0.3);
+    --object-selector-list-max-height: 392px;
 }
 
 /* ======= Base Styles ======= */
@@ -139,6 +140,38 @@ textarea {
   }
 }
 
+/* Shared searchable object selector */
+.block.object-selector-search {
+  margin-bottom: 8px !important;
+}
+
+.block.object-selector-search input,
+.block.object-selector-search textarea {
+  min-height: 44px;
+}
+
+.block.object-selector-list {
+  width: 100%;
+}
+
+.block.object-selector-list .wrap,
+.block.object-selector-list fieldset,
+.block.object-selector-list [role="group"] {
+  max-height: var(--object-selector-list-max-height);
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin;
+}
+
+.block.object-selector-list label {
+  max-width: 100%;
+}
+
+.block.object-selector-list label span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* Shared operation feedback */
 .block.operation-status {
   box-sizing: border-box;
@@ -248,6 +281,10 @@ textarea {
 }
 
 @media (max-width: 768px) {
+  :root {
+    --object-selector-list-max-height: 280px;
+  }
+
   .vpd-form-row {
     gap: 8px;
   }

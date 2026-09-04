@@ -61,6 +61,13 @@ from utils.selectai_report_util import (
     new_execution_id,
     now_local_iso,
 )
+from utils.object_selector_util import (
+    effective_object_selector_selection as _effective_object_selector_selection,
+    filter_object_selector_choices as _filter_object_selector_choices,
+    merge_object_selector_selection as _merge_object_selector_selection,
+    normalize_object_selector_choices as _normalize_object_selector_choices,
+    visible_object_selector_value as _visible_object_selector_value,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -360,6 +367,36 @@ def _get_view_names(pool):
     except Exception as e:
         logger.error(f"_get_view_names error: {e}")
     return []
+
+
+_OBJECT_SELECTOR_LIST_CLASS = "object-selector-list"
+_OBJECT_SELECTOR_SEARCH_CLASS = "object-selector-search"
+
+
+def _object_selector_search_update(search_text, all_choices, selected_state):
+    normalized_all_choices = _normalize_object_selector_choices(all_choices)
+    visible_choices = _filter_object_selector_choices(normalized_all_choices, search_text)
+    return (
+        gr.update(
+            choices=visible_choices,
+            value=_visible_object_selector_value(visible_choices, selected_state),
+            visible=bool(normalized_all_choices),
+        ),
+        visible_choices,
+    )
+
+
+def _object_selector_textbox(label, placeholder):
+    return gr.Textbox(
+        label=label,
+        show_label=True,
+        placeholder=placeholder,
+        lines=1,
+        max_lines=1,
+        container=True,
+        elem_classes=_OBJECT_SELECTOR_SEARCH_CLASS,
+        autoscroll=False,
+    )
 
 
 _PROFILE_LIST_COLUMNS = [
@@ -1459,11 +1496,33 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                         with gr.Row():
                             with gr.Column():
+                                tables_search_input = _object_selector_textbox("テーブル検索", "テーブル名で検索")
                                 gr.Markdown("###### テーブル選択*")
-                                tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
+                                tables_input = gr.CheckboxGroup(
+                                    label="テーブル選択",
+                                    show_label=False,
+                                    choices=[],
+                                    value=[],
+                                    visible=False,
+                                    elem_classes=_OBJECT_SELECTOR_LIST_CLASS,
+                                )
                             with gr.Column():
+                                views_search_input = _object_selector_textbox("ビュー検索", "ビュー名で検索")
                                 gr.Markdown("###### ビュー選択*")
-                                views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
+                                views_input = gr.CheckboxGroup(
+                                    label="ビュー選択",
+                                    show_label=False,
+                                    choices=[],
+                                    value=[],
+                                    visible=False,
+                                    elem_classes=_OBJECT_SELECTOR_LIST_CLASS,
+                                )
+                        tables_all_state = gr.State([])
+                        tables_visible_state = gr.State([])
+                        tables_selected_state = gr.State([])
+                        views_all_state = gr.State([])
+                        views_visible_state = gr.State([])
+                        views_selected_state = gr.State([])
 
                         with gr.Row(visible=False):
                             with gr.Column(scale=1):
@@ -1763,7 +1822,35 @@ def build_selectai_tab(pool, vpd_pool=None):
                         sql = _generate_create_sql_from_attrs(new or orig, attrs, bd)
                         return gr.Markdown(visible=True, value=f"❌ 取得に失敗しました: {str(e)}"), edited_name, gr.Textbox(value=bd, autoscroll=False), sql, (new or orig or "")
 
-                def build_profile(name, tables, views, compartment_id, region, model, embedding_model, max_tokens, enforce_object_list, comments, annotations, constraints, category):
+                def build_profile(
+                    name,
+                    tables_visible_value,
+                    tables_visible_choices,
+                    tables_selected_state_value,
+                    views_visible_value,
+                    views_visible_choices,
+                    views_selected_state_value,
+                    compartment_id,
+                    region,
+                    model,
+                    embedding_model,
+                    max_tokens,
+                    enforce_object_list,
+                    comments,
+                    annotations,
+                    constraints,
+                    category,
+                ):
+                    tables = _effective_object_selector_selection(
+                        tables_visible_value,
+                        tables_visible_choices,
+                        tables_selected_state_value,
+                    )
+                    views = _effective_object_selector_selection(
+                        views_visible_value,
+                        views_visible_choices,
+                        views_selected_state_value,
+                    )
                     if not tables and not views:
                         yield gr.Markdown(visible=True, value="⚠️ テーブルまたはビューを選択してください")
                         return
@@ -1867,22 +1954,90 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                 def refresh_sources_handler():
                     try:
-                        yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
-                        t = _get_table_names(pool)
-                        v = _get_view_names(pool)
+                        yield (
+                            gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."),
+                            gr.update(visible=False, choices=[], value=[]),
+                            gr.update(visible=False, choices=[], value=[]),
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                            gr.update(value=""),
+                            gr.update(value=""),
+                        )
+                        t = _normalize_object_selector_choices(_get_table_names(pool))
+                        v = _normalize_object_selector_choices(_get_view_names(pool))
                         status_text = (
                             "⚠️ ローカルJSONにテーブル・ビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
                             if (not t and not v)
                             else "✅ 取得完了"
                         )
-                        yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=t, visible=True), gr.CheckboxGroup(choices=v, visible=True)
+                        yield (
+                            gr.Markdown(visible=True, value=status_text),
+                            gr.update(choices=t, value=[], visible=True),
+                            gr.update(choices=v, value=[], visible=True),
+                            t,
+                            t,
+                            [],
+                            v,
+                            v,
+                            [],
+                            gr.update(value=""),
+                            gr.update(value=""),
+                        )
                     except Exception as e:
                         logger.error(f"refresh_sources_handler error: {e}")
-                        yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+                        yield (
+                            gr.Markdown(visible=True, value=f"❌ 失敗: {e}"),
+                            gr.update(choices=[], value=[]),
+                            gr.update(choices=[], value=[]),
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                            gr.update(value=""),
+                            gr.update(value=""),
+                        )
 
                 refresh_btn.click(
                     fn=_admin_only_event(refresh_sources_handler),
-                    outputs=[refresh_status, tables_input, views_input],
+                    outputs=[
+                        refresh_status,
+                        tables_input,
+                        views_input,
+                        tables_all_state,
+                        tables_visible_state,
+                        tables_selected_state,
+                        views_all_state,
+                        views_visible_state,
+                        views_selected_state,
+                        tables_search_input,
+                        views_search_input,
+                    ],
+                )
+                tables_search_input.input(
+                    fn=_admin_only_event(_object_selector_search_update),
+                    inputs=[tables_search_input, tables_all_state, tables_selected_state],
+                    outputs=[tables_input, tables_visible_state],
+                )
+                views_search_input.input(
+                    fn=_admin_only_event(_object_selector_search_update),
+                    inputs=[views_search_input, views_all_state, views_selected_state],
+                    outputs=[views_input, views_visible_state],
+                )
+                tables_input.change(
+                    fn=_admin_only_event(_merge_object_selector_selection),
+                    inputs=[tables_selected_state, tables_visible_state, tables_input],
+                    outputs=[tables_selected_state],
+                )
+                views_input.change(
+                    fn=_admin_only_event(_merge_object_selector_selection),
+                    inputs=[views_selected_state, views_visible_state, views_input],
+                    outputs=[views_selected_state],
                 )
 
                 profile_build_event = build_btn.click(
@@ -1890,7 +2045,11 @@ def build_selectai_tab(pool, vpd_pool=None):
                     inputs=[
                         profile_name,
                         tables_input,
+                        tables_visible_state,
+                        tables_selected_state,
                         views_input,
+                        views_visible_state,
+                        views_selected_state,
                         compartment_id_input,
                         region_input,
                         model_input,
@@ -4826,11 +4985,33 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 cm_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
+                                cm_tables_search_input = _object_selector_textbox("テーブル検索", "テーブル名で検索")
                                 gr.Markdown("###### テーブル選択*")
-                                cm_tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
+                                cm_tables_input = gr.CheckboxGroup(
+                                    label="テーブル選択",
+                                    show_label=False,
+                                    choices=[],
+                                    value=[],
+                                    visible=False,
+                                    elem_classes=_OBJECT_SELECTOR_LIST_CLASS,
+                                )
                             with gr.Column():
+                                cm_views_search_input = _object_selector_textbox("ビュー検索", "ビュー名で検索")
                                 gr.Markdown("###### ビュー選択*")
-                                cm_views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
+                                cm_views_input = gr.CheckboxGroup(
+                                    label="ビュー選択",
+                                    show_label=False,
+                                    choices=[],
+                                    value=[],
+                                    visible=False,
+                                    elem_classes=_OBJECT_SELECTOR_LIST_CLASS,
+                                )
+                        cm_tables_all_state = gr.State([])
+                        cm_tables_visible_state = gr.State([])
+                        cm_tables_selected_state = gr.State([])
+                        cm_views_all_state = gr.State([])
+                        cm_views_visible_state = gr.State([])
+                        cm_views_selected_state = gr.State([])
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -4936,30 +5117,77 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     def _cm_refresh_objects():
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
+                            yield (
+                                gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."),
+                                gr.update(visible=False, choices=[], value=[]),
+                                gr.update(visible=False, choices=[], value=[]),
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                gr.update(value=""),
+                                gr.update(value=""),
+                            )
                             df_tab = _get_table_df_cached(pool)
                             df_view = _get_view_df_cached(pool)
-                            names = []
-                            if not df_tab.empty and "Table Name" in df_tab.columns:
-                                names.extend([str(x) for x in df_tab["Table Name"].tolist()])
-                            if not df_view.empty and "View Name" in df_view.columns:
-                                names.extend([str(x) for x in df_view["View Name"].tolist()])
-                            table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
-                            view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
+                            table_names = _normalize_object_selector_choices(sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])])))
+                            view_names = _normalize_object_selector_choices(sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])])))
                             status_text = (
                                 "⚠️ ローカルJSONにテーブル・ビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
                                 if (not table_names and not view_names)
                                 else "✅ 取得完了"
                             )
-                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
+                            yield (
+                                gr.Markdown(visible=True, value=status_text),
+                                gr.update(choices=table_names, value=[], visible=True),
+                                gr.update(choices=view_names, value=[], visible=True),
+                                table_names,
+                                table_names,
+                                [],
+                                view_names,
+                                view_names,
+                                [],
+                                gr.update(value=""),
+                                gr.update(value=""),
+                            )
                         except Exception as e:
                             logger.error(f"_cm_refresh_objects error: {e}")
-                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+                            yield (
+                                gr.Markdown(visible=True, value=f"❌ 失敗: {e}"),
+                                gr.update(choices=[], value=[]),
+                                gr.update(choices=[], value=[]),
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                gr.update(value=""),
+                                gr.update(value=""),
+                            )
 
-                    def _cm_fetch_stream(tables_selected, views_selected, sample_limit):
+                    def _cm_fetch_stream(
+                        tables_visible_value,
+                        tables_visible_choices,
+                        tables_selected_state_value,
+                        views_visible_value,
+                        views_visible_choices,
+                        views_selected_state_value,
+                        sample_limit,
+                    ):
                         try:
-                            tbls = tables_selected or []
-                            vws = views_selected or []
+                            tbls = _effective_object_selector_selection(
+                                tables_visible_value,
+                                tables_visible_choices,
+                                tables_selected_state_value,
+                            )
+                            vws = _effective_object_selector_selection(
+                                views_visible_value,
+                                views_visible_choices,
+                                views_selected_state_value,
+                            )
                             lim = int(sample_limit) if sample_limit is not None else 10
                             if lim < 0:
                                 lim = 0
@@ -5194,7 +5422,39 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     cm_refresh_btn.click(
                         fn=_admin_only_event(_cm_refresh_objects),
-                        outputs=[cm_refresh_status, cm_tables_input, cm_views_input],
+                        outputs=[
+                            cm_refresh_status,
+                            cm_tables_input,
+                            cm_views_input,
+                            cm_tables_all_state,
+                            cm_tables_visible_state,
+                            cm_tables_selected_state,
+                            cm_views_all_state,
+                            cm_views_visible_state,
+                            cm_views_selected_state,
+                            cm_tables_search_input,
+                            cm_views_search_input,
+                        ],
+                    )
+                    cm_tables_search_input.input(
+                        fn=_admin_only_event(_object_selector_search_update),
+                        inputs=[cm_tables_search_input, cm_tables_all_state, cm_tables_selected_state],
+                        outputs=[cm_tables_input, cm_tables_visible_state],
+                    )
+                    cm_views_search_input.input(
+                        fn=_admin_only_event(_object_selector_search_update),
+                        inputs=[cm_views_search_input, cm_views_all_state, cm_views_selected_state],
+                        outputs=[cm_views_input, cm_views_visible_state],
+                    )
+                    cm_tables_input.change(
+                        fn=_admin_only_event(_merge_object_selector_selection),
+                        inputs=[cm_tables_selected_state, cm_tables_visible_state, cm_tables_input],
+                        outputs=[cm_tables_selected_state],
+                    )
+                    cm_views_input.change(
+                        fn=_admin_only_event(_merge_object_selector_selection),
+                        inputs=[cm_views_selected_state, cm_views_visible_state, cm_views_input],
+                        outputs=[cm_views_selected_state],
                     )
 
                     def _cm_fetch_structure(tables_selected, views_selected):
@@ -5274,7 +5534,15 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     cm_fetch_btn.click(
                         fn=_admin_only_event(_cm_fetch_stream),
-                        inputs=[cm_tables_input, cm_views_input, cm_sample_limit],
+                        inputs=[
+                            cm_tables_input,
+                            cm_tables_visible_state,
+                            cm_tables_selected_state,
+                            cm_views_input,
+                            cm_views_visible_state,
+                            cm_views_selected_state,
+                            cm_sample_limit,
+                        ],
                         outputs=[cm_fetch_status_md, cm_input_confirm_acc, cm_structure_text, cm_pk_text, cm_fk_text, cm_samples_text],
                     )
 
@@ -5322,11 +5590,33 @@ def build_selectai_tab(pool, vpd_pool=None):
                             am_refresh_status = gr.Markdown(visible=False)
                         with gr.Row():
                             with gr.Column():
+                                am_tables_search_input = _object_selector_textbox("テーブル検索", "テーブル名で検索")
                                 gr.Markdown("###### テーブル選択*")
-                                am_tables_input = gr.CheckboxGroup(label="テーブル選択", show_label=False, choices=[], visible=False)
+                                am_tables_input = gr.CheckboxGroup(
+                                    label="テーブル選択",
+                                    show_label=False,
+                                    choices=[],
+                                    value=[],
+                                    visible=False,
+                                    elem_classes=_OBJECT_SELECTOR_LIST_CLASS,
+                                )
                             with gr.Column():
+                                am_views_search_input = _object_selector_textbox("ビュー検索", "ビュー名で検索")
                                 gr.Markdown("###### ビュー選択*")
-                                am_views_input = gr.CheckboxGroup(label="ビュー選択", show_label=False, choices=[], visible=False)
+                                am_views_input = gr.CheckboxGroup(
+                                    label="ビュー選択",
+                                    show_label=False,
+                                    choices=[],
+                                    value=[],
+                                    visible=False,
+                                    elem_classes=_OBJECT_SELECTOR_LIST_CLASS,
+                                )
+                        am_tables_all_state = gr.State([])
+                        am_tables_visible_state = gr.State([])
+                        am_tables_selected_state = gr.State([])
+                        am_views_all_state = gr.State([])
+                        am_views_visible_state = gr.State([])
+                        am_views_selected_state = gr.State([])
                         with gr.Row():
                             with gr.Column(scale=5):
                                 with gr.Row():
@@ -5441,19 +5731,55 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     def _am_refresh_objects():
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[]), gr.CheckboxGroup(visible=False, choices=[])
+                            yield (
+                                gr.Markdown(visible=True, value="⏳ テーブル・ビュー一覧を取得中..."),
+                                gr.update(visible=False, choices=[], value=[]),
+                                gr.update(visible=False, choices=[], value=[]),
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                gr.update(value=""),
+                                gr.update(value=""),
+                            )
                             df_tab = _get_table_df_cached(pool)
                             df_view = _get_view_df_cached(pool)
-                            table_names = sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])]))
-                            view_names = sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])]))
+                            table_names = _normalize_object_selector_choices(sorted(set([str(x) for x in (df_tab["Table Name"].tolist() if (not df_tab.empty and "Table Name" in df_tab.columns) else [])])))
+                            view_names = _normalize_object_selector_choices(sorted(set([str(x) for x in (df_view["View Name"].tolist() if (not df_view.empty and "View Name" in df_view.columns) else [])])))
                             status_text = (
                                 "⚠️ ローカルJSONにテーブル・ビュー情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
                                 if (not table_names and not view_names)
                                 else "✅ 取得完了"
                             )
-                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=table_names, visible=True), gr.CheckboxGroup(choices=view_names, visible=True)
+                            yield (
+                                gr.Markdown(visible=True, value=status_text),
+                                gr.update(choices=table_names, value=[], visible=True),
+                                gr.update(choices=view_names, value=[], visible=True),
+                                table_names,
+                                table_names,
+                                [],
+                                view_names,
+                                view_names,
+                                [],
+                                gr.update(value=""),
+                                gr.update(value=""),
+                            )
                         except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[]), gr.CheckboxGroup(choices=[])
+                            yield (
+                                gr.Markdown(visible=True, value=f"❌ 失敗: {e}"),
+                                gr.update(choices=[], value=[]),
+                                gr.update(choices=[], value=[]),
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                [],
+                                gr.update(value=""),
+                                gr.update(value=""),
+                            )
 
                     def _am_fetch_structure(tables_selected, views_selected):
                         tables_selected = tables_selected or []
@@ -5831,13 +6157,61 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     am_refresh_btn.click(
                         fn=_admin_only_event(_am_refresh_objects),
-                        outputs=[am_refresh_status, am_tables_input, am_views_input],
+                        outputs=[
+                            am_refresh_status,
+                            am_tables_input,
+                            am_views_input,
+                            am_tables_all_state,
+                            am_tables_visible_state,
+                            am_tables_selected_state,
+                            am_views_all_state,
+                            am_views_visible_state,
+                            am_views_selected_state,
+                            am_tables_search_input,
+                            am_views_search_input,
+                        ],
+                    )
+                    am_tables_search_input.input(
+                        fn=_admin_only_event(_object_selector_search_update),
+                        inputs=[am_tables_search_input, am_tables_all_state, am_tables_selected_state],
+                        outputs=[am_tables_input, am_tables_visible_state],
+                    )
+                    am_views_search_input.input(
+                        fn=_admin_only_event(_object_selector_search_update),
+                        inputs=[am_views_search_input, am_views_all_state, am_views_selected_state],
+                        outputs=[am_views_input, am_views_visible_state],
+                    )
+                    am_tables_input.change(
+                        fn=_admin_only_event(_merge_object_selector_selection),
+                        inputs=[am_tables_selected_state, am_tables_visible_state, am_tables_input],
+                        outputs=[am_tables_selected_state],
+                    )
+                    am_views_input.change(
+                        fn=_admin_only_event(_merge_object_selector_selection),
+                        inputs=[am_views_selected_state, am_views_visible_state, am_views_input],
+                        outputs=[am_views_selected_state],
                     )
 
-                    def _am_fetch_stream(tables_selected, views_selected, sample_limit):
+                    def _am_fetch_stream(
+                        tables_visible_value,
+                        tables_visible_choices,
+                        tables_selected_state_value,
+                        views_visible_value,
+                        views_visible_choices,
+                        views_selected_state_value,
+                        sample_limit,
+                    ):
                         try:
-                            tbls = tables_selected or []
-                            vws = views_selected or []
+                            tbls = _effective_object_selector_selection(
+                                tables_visible_value,
+                                tables_visible_choices,
+                                tables_selected_state_value,
+                            )
+                            vws = _effective_object_selector_selection(
+                                views_visible_value,
+                                views_visible_choices,
+                                views_selected_state_value,
+                            )
                             lim = int(sample_limit) if sample_limit is not None else 10
                             if lim < 0:
                                 lim = 0
@@ -5859,7 +6233,15 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     am_fetch_btn.click(
                         fn=_admin_only_event(_am_fetch_stream),
-                        inputs=[am_tables_input, am_views_input, am_sample_limit],
+                        inputs=[
+                            am_tables_input,
+                            am_tables_visible_state,
+                            am_tables_selected_state,
+                            am_views_input,
+                            am_views_visible_state,
+                            am_views_selected_state,
+                            am_sample_limit,
+                        ],
                         outputs=[am_fetch_status_md, am_input_confirm_acc, am_structure_text, am_pk_text, am_fk_text, am_samples_text],
                     )
 
@@ -5929,7 +6311,14 @@ def build_selectai_tab(pool, vpd_pool=None):
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
-                                        syn_tables_input = gr.CheckboxGroup(label="テーブル選択*", choices=[], visible=True)
+                                        syn_tables_search_input = _object_selector_textbox("テーブル検索", "テーブル名で検索")
+                                        syn_tables_input = gr.CheckboxGroup(
+                                            label="テーブル選択*",
+                                            choices=[],
+                                            value=[],
+                                            visible=True,
+                                            elem_classes=_OBJECT_SELECTOR_LIST_CLASS,
+                                        )
                             with gr.Column(scale=5):
                                 with gr.Row():
                                     with gr.Column(scale=1):
@@ -5954,6 +6343,9 @@ def build_selectai_tab(pool, vpd_pool=None):
                                         gr.Markdown("コメントを考慮(comments)", elem_classes="input-label")
                                     with gr.Column(scale=5):
                                         syn_comments = gr.Checkbox(label="", value=True, container=False)
+                        syn_tables_all_state = gr.State([])
+                        syn_tables_visible_state = gr.State([])
+                        syn_tables_selected_state = gr.State([])
 
                         with gr.Row():
                             syn_generate_btn = gr.Button("生成開始（時間がかかる場合があります）", variant="primary")
@@ -6006,7 +6398,15 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     def _syn_refresh_objects(profile_name):
                         try:
-                            yield gr.Markdown(visible=True, value="⏳ テーブル一覧を取得中..."), gr.CheckboxGroup(visible=False, choices=[], value=[]), gr.Dropdown(visible=False, choices=[], value=None)
+                            yield (
+                                gr.Markdown(visible=True, value="⏳ テーブル一覧を取得中..."),
+                                gr.update(visible=False, choices=[], value=[]),
+                                gr.Dropdown(visible=False, choices=[], value=None),
+                                [],
+                                [],
+                                [],
+                                gr.update(value=""),
+                            )
                             tables, _ = _get_profile_objects_from_json(profile_name)
                             if not tables:
                                 prof = _resolve_profile_name(pool, str(profile_name or ""))
@@ -6026,15 +6426,32 @@ def build_selectai_tab(pool, vpd_pool=None):
                                 except Exception as e:
                                     logger.error(f"_syn_refresh_objects filter by profile error: {e}")
                                 tables = table_names
+                            tables = _normalize_object_selector_choices(tables)
                             status_text = (
                                 "⚠️ ローカルJSONにテーブル情報がありません。一覧キャッシュ管理でJSON保存を実行してください。"
                                 if (not tables)
                                 else "✅ 取得完了"
                             )
                             # テーブル選択を空にリセット
-                            yield gr.Markdown(visible=True, value=status_text), gr.CheckboxGroup(choices=tables, visible=True, value=[]), gr.Dropdown(choices=tables, visible=True, value=None)
+                            yield (
+                                gr.Markdown(visible=True, value=status_text),
+                                gr.update(choices=tables, visible=True, value=[]),
+                                gr.Dropdown(choices=tables, visible=True, value=None),
+                                tables,
+                                tables,
+                                [],
+                                gr.update(value=""),
+                            )
                         except Exception as e:
-                            yield gr.Markdown(visible=True, value=f"❌ 失敗: {e}"), gr.CheckboxGroup(choices=[], value=[]), gr.Dropdown(choices=[], value=None)
+                            yield (
+                                gr.Markdown(visible=True, value=f"❌ 失敗: {e}"),
+                                gr.update(choices=[], value=[]),
+                                gr.Dropdown(choices=[], value=None),
+                                [],
+                                [],
+                                [],
+                                gr.update(value=""),
+                            )
 
                     def _syn_generate(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
                         """合成データ生成処理.
@@ -6277,18 +6694,53 @@ def build_selectai_tab(pool, vpd_pool=None):
                     syn_refresh_btn.click(
                         fn=_admin_only_event(_syn_refresh_objects),
                         inputs=[syn_profile_select],
-                        outputs=[syn_refresh_status, syn_tables_input, syn_result_table_select],
+                        outputs=[
+                            syn_refresh_status,
+                            syn_tables_input,
+                            syn_result_table_select,
+                            syn_tables_all_state,
+                            syn_tables_visible_state,
+                            syn_tables_selected_state,
+                            syn_tables_search_input,
+                        ],
+                    )
+                    syn_tables_search_input.input(
+                        fn=_admin_only_event(_object_selector_search_update),
+                        inputs=[syn_tables_search_input, syn_tables_all_state, syn_tables_selected_state],
+                        outputs=[syn_tables_input, syn_tables_visible_state],
+                    )
+                    syn_tables_input.change(
+                        fn=_admin_only_event(_merge_object_selector_selection),
+                        inputs=[syn_tables_selected_state, syn_tables_visible_state, syn_tables_input],
+                        outputs=[syn_tables_selected_state],
                     )
 
                     # プロファイル変更時にテーブル選択をリセット
+                    def _syn_reset_table_selection():
+                        return gr.update(value=[]), []
+
                     syn_profile_select.change(
-                        fn=_admin_only_event(lambda: gr.CheckboxGroup(value=[])),
+                        fn=_admin_only_event(_syn_reset_table_selection),
                         inputs=[],
-                        outputs=[syn_tables_input],
+                        outputs=[syn_tables_input, syn_tables_selected_state],
                     )
 
-                    def _syn_generate_stream(profile_name, tables_selected, rows_per_table, extra_text, sample_rows, comments):
+                    def _syn_generate_stream(
+                        profile_name,
+                        tables_visible_value,
+                        tables_visible_choices,
+                        tables_selected_state_value,
+                        rows_per_table,
+                        extra_text,
+                        sample_rows,
+                        comments,
+                    ):
                         try:
+                            tables_selected = _effective_object_selector_selection(
+                                tables_visible_value,
+                                tables_visible_choices,
+                                tables_selected_state_value,
+                            )
                             missing = []
                             if not profile_name or not str(profile_name).strip():
                                 missing.append("Profile")
@@ -6349,7 +6801,16 @@ def build_selectai_tab(pool, vpd_pool=None):
 
                     syn_generate_btn.click(
                         fn=_admin_only_event(_syn_generate_stream),
-                        inputs=[syn_profile_select, syn_tables_input, syn_rows_per_table, syn_prompt_input, syn_sample_rows, syn_comments],
+                        inputs=[
+                            syn_profile_select,
+                            syn_tables_input,
+                            syn_tables_visible_state,
+                            syn_tables_selected_state,
+                            syn_rows_per_table,
+                            syn_prompt_input,
+                            syn_sample_rows,
+                            syn_comments,
+                        ],
                         outputs=[syn_generate_status_md, syn_operation_id_text],
                     ).then(
                         fn=_admin_only_event(_syn_update_status_stream),
