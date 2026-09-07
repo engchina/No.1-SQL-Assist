@@ -163,6 +163,9 @@ class SelectAiReportUtilTest(unittest.TestCase):
                     "画面名": "ユーザー機能: 基本機能",
                     "実行ID": "user-run",
                     "自然言語の質問": "大阪の顧客数を教えて",
+                    "SQL実行開始時間": "2026-09-07T12:00:00+09:00",
+                    "SQL実行終了時間": "2026-09-07T12:00:01+09:00",
+                    "SQL実行経過時間（秒）": "0.250",
                 },
                 history_path=history_path,
             )
@@ -183,6 +186,21 @@ class SelectAiReportUtilTest(unittest.TestCase):
             user_excel_df = pd.read_excel(user_output_path)
             self.assertEqual(len(user_excel_df), 1)
             self.assertEqual(user_excel_df.iloc[0]["実行ID"], "user-run")
+            self.assertIn("SQL実行開始時間", user_excel_df.columns)
+            self.assertIn("SQL実行終了時間", user_excel_df.columns)
+            self.assertIn("SQL実行経過時間（秒）", user_excel_df.columns)
+            self.assertNotIn("SELECT開始時間", user_excel_df.columns)
+            self.assertNotIn("SELECT終了時間", user_excel_df.columns)
+            self.assertNotIn("SELECT経過時間（秒）", user_excel_df.columns)
+            self.assertEqual(
+                user_excel_df.iloc[0]["SQL実行開始時間"],
+                "2026-09-07T12:00:00+09:00",
+            )
+            self.assertEqual(
+                user_excel_df.iloc[0]["SQL実行終了時間"],
+                "2026-09-07T12:00:01+09:00",
+            )
+            self.assertEqual(user_excel_df.iloc[0]["SQL実行経過時間（秒）"], 0.25)
             for column in ELAPSED_SECONDS_COLUMNS:
                 self.assertIn(column, user_excel_df.columns)
 
