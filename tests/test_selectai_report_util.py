@@ -42,7 +42,7 @@ class SelectAiReportUtilTest(unittest.TestCase):
                     "生成されたSQL": "SELECT COUNT(*) FROM CUSTOMERS",
                     "試行回数": 2,
                     "Select AI経過時間（秒）": "8.700",
-                    "SELECT経過時間（秒）": "0.062",
+                    "SQL実行経過時間（秒）": "0.062",
                     "全体経過時間（秒）": "8.800",
                 },
                 history_path=history_path,
@@ -59,7 +59,7 @@ class SelectAiReportUtilTest(unittest.TestCase):
             self.assertEqual(records[0]["自然言語の質問"], "大阪の顧客数を教えて")
             self.assertEqual(records[0]["試行回数"], "2")
             self.assertEqual(records[0]["Select AI経過時間（秒）"], "8.700")
-            self.assertEqual(records[0]["SELECT経過時間（秒）"], "0.062")
+            self.assertEqual(records[0]["SQL実行経過時間（秒）"], "0.062")
 
             raw_line = history_path.read_text(encoding="utf-8").splitlines()[0]
             self.assertIn("大阪", raw_line)
@@ -77,7 +77,7 @@ class SelectAiReportUtilTest(unittest.TestCase):
                     "ステータス": "✅ 取得完了",
                     "結果件数": 3,
                     "Select AI経過時間（秒）": "8.700",
-                    "SELECT経過時間（秒）": "0.062",
+                    "SQL実行経過時間（秒）": "0.062",
                     "全体経過時間（秒）": "8.800",
                 },
                 history_path=history_path,
@@ -100,12 +100,12 @@ class SelectAiReportUtilTest(unittest.TestCase):
                 excel_df.iloc[0]["画面名"],
                 "開発者機能: チャット・分析",
             )
-            self.assertEqual(excel_df.iloc[0]["SELECT経過時間（秒）"], 0.062)
+            self.assertEqual(excel_df.iloc[0]["SQL実行経過時間（秒）"], 0.062)
 
             workbook = load_workbook(output_path)
             worksheet = workbook["SelectAI Report"]
             headers = [cell.value for cell in worksheet[1]]
-            elapsed_column_index = headers.index("SELECT経過時間（秒）") + 1
+            elapsed_column_index = headers.index("SQL実行経過時間（秒）") + 1
             elapsed_cell = worksheet.cell(row=2, column=elapsed_column_index)
             self.assertEqual(elapsed_cell.value, 0.062)
             self.assertEqual(elapsed_cell.number_format, "0.000")
@@ -116,16 +116,32 @@ class SelectAiReportUtilTest(unittest.TestCase):
                 {
                     "画面名": "開発者機能: チャット・分析",
                     "Select AI経過時間": "8.7秒",
+                    "SELECT開始時間": "2026-09-07T10:00:00+09:00",
+                    "SELECT終了時間": "2026-09-07T10:00:01+09:00",
                     "SELECT経過時間": "62ms",
                     "全体経過時間": "00:09",
+                },
+                {
+                    "画面名": "ユーザー機能: 基本機能",
+                    "SELECT開始時間": "2026-09-07T11:00:00+09:00",
+                    "SELECT終了時間": "2026-09-07T11:00:02+09:00",
+                    "SELECT経過時間（秒）": "0.125",
                 }
             ]
         )
         self.assertEqual(df.columns.tolist(), REPORT_COLUMNS)
         self.assertNotIn("Select AI経過時間", df.columns)
+        self.assertNotIn("SELECT開始時間", df.columns)
+        self.assertNotIn("SELECT終了時間", df.columns)
+        self.assertNotIn("SELECT経過時間", df.columns)
         self.assertEqual(df.iloc[0]["Select AI経過時間（秒）"], "8.700")
-        self.assertEqual(df.iloc[0]["SELECT経過時間（秒）"], "0.062")
+        self.assertEqual(df.iloc[0]["SQL実行開始時間"], "2026-09-07T10:00:00+09:00")
+        self.assertEqual(df.iloc[0]["SQL実行終了時間"], "2026-09-07T10:00:01+09:00")
+        self.assertEqual(df.iloc[0]["SQL実行経過時間（秒）"], "0.062")
         self.assertEqual(df.iloc[0]["全体経過時間（秒）"], "9.000")
+        self.assertEqual(df.iloc[1]["SQL実行開始時間"], "2026-09-07T11:00:00+09:00")
+        self.assertEqual(df.iloc[1]["SQL実行終了時間"], "2026-09-07T11:00:02+09:00")
+        self.assertEqual(df.iloc[1]["SQL実行経過時間（秒）"], "0.125")
 
     def test_execution_report_excel_filters_by_screen(self):
         with tempfile.TemporaryDirectory() as temp_dir:
