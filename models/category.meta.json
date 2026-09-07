@@ -1,0 +1,15 @@
+{
+  "model_name": "category",
+  "labels": [
+    "プロジェクトと部門の組み合わせ",
+    "プロジェクト関連",
+    "社員と部門の組み合わせ",
+    "社員関連",
+    "部門関連"
+  ],
+  "samples": 50,
+  "embed_model": "cohere.embed-v4.0",
+  "iterations": 1000,
+  "created_at": "2026-01-22T17:44:20",
+  "algorithm": "LogisticRegression"
+}
