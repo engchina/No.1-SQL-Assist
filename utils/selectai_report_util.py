@@ -29,9 +29,9 @@ REPORT_COLUMNS = [
     "Select AI開始時間",
     "Select AI終了時間",
     "Select AI経過時間（秒）",
-    "SELECT開始時間",
-    "SELECT終了時間",
-    "SELECT経過時間（秒）",
+    "SQL実行開始時間",
+    "SQL実行終了時間",
+    "SQL実行経過時間（秒）",
     "全体経過時間（秒）",
     "結果件数",
     "エラー内容",
@@ -46,13 +46,15 @@ REPORT_SCREEN_FILENAME_PARTS = {
 }
 ELAPSED_SECONDS_COLUMNS = [
     "Select AI経過時間（秒）",
-    "SELECT経過時間（秒）",
+    "SQL実行経過時間（秒）",
     "全体経過時間（秒）",
 ]
-LEGACY_ELAPSED_COLUMNS = {
-    "Select AI経過時間（秒）": "Select AI経過時間",
-    "SELECT経過時間（秒）": "SELECT経過時間",
-    "全体経過時間（秒）": "全体経過時間",
+LEGACY_COLUMN_ALIASES = {
+    "Select AI経過時間（秒）": ("Select AI経過時間",),
+    "SQL実行開始時間": ("SELECT開始時間",),
+    "SQL実行終了時間": ("SELECT終了時間",),
+    "SQL実行経過時間（秒）": ("SELECT経過時間（秒）", "SELECT経過時間"),
+    "全体経過時間（秒）": ("全体経過時間",),
 }
 _REPORT_LOCK = threading.Lock()
 
@@ -137,10 +139,12 @@ def normalize_execution_report_record(record: dict[str, Any]) -> dict[str, str]:
     normalized = {}
     for column in REPORT_COLUMNS:
         value = source.get(column, "")
-        if column in ELAPSED_SECONDS_COLUMNS:
-            legacy_column = LEGACY_ELAPSED_COLUMNS.get(column, "")
-            if value in (None, "") and legacy_column:
+        if value in (None, ""):
+            for legacy_column in LEGACY_COLUMN_ALIASES.get(column, ()):
                 value = source.get(legacy_column, "")
+                if value not in (None, ""):
+                    break
+        if column in ELAPSED_SECONDS_COLUMNS:
             normalized[column] = _elapsed_seconds_from_value(value)
         else:
             normalized[column] = _stringify_report_value(value)

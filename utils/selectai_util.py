@@ -1028,7 +1028,7 @@ def _format_selectai_execution_status(status: str, timing: dict | None) -> str:
             f"{overall_text} |"
         ),
         _timing_table_row(timing, "Select AI", "select_ai"),
-        _timing_table_row(timing, "SELECT", "select"),
+        _timing_table_row(timing, "SQL実行", "select"),
     ]
     return "\n".join(lines)
 
@@ -1084,9 +1084,9 @@ def _append_selectai_execution_report(
         "Select AI経過時間（秒）": format_elapsed_seconds(
             _phase_elapsed_ms(timing, "select_ai")
         ),
-        "SELECT開始時間": timing.get("select_started_at", ""),
-        "SELECT終了時間": timing.get("select_finished_at", ""),
-        "SELECT経過時間（秒）": format_elapsed_seconds(_phase_elapsed_ms(timing, "select")),
+        "SQL実行開始時間": timing.get("select_started_at", ""),
+        "SQL実行終了時間": timing.get("select_finished_at", ""),
+        "SQL実行経過時間（秒）": format_elapsed_seconds(_phase_elapsed_ms(timing, "select")),
         "全体経過時間（秒）": format_elapsed_seconds(_execution_elapsed_ms(timing)),
         "結果件数": timing.get("result_count", ""),
         "エラー内容": report_error,
