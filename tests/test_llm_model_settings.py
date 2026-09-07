@@ -10,8 +10,10 @@ import gradio as gr
 
 from utils.common_util import (
     BASE_DEFAULT_MODEL,
+    BASE_PROFILE_DEFAULT_REGION,
     CHAT_MODEL_CATALOG,
     CHICAGO_DEFAULT_MODEL,
+    CHICAGO_PROFILE_DEFAULT_REGION,
     LLM_DEFAULT_MODEL_ENV,
     LLM_SHOW_OPENAI_MODELS_ENV,
     LLM_SHOW_US_CHICAGO_1_MODELS_ENV,
@@ -19,6 +21,7 @@ from utils.common_util import (
     get_chat_model_choices,
     get_effective_default_model,
     get_llm_model_settings,
+    get_profile_default_region,
     validate_explicit_default_model,
 )
 from utils.llm_model_util import (
@@ -27,6 +30,8 @@ from utils.llm_model_util import (
     create_chat_model_dropdown,
     create_model_dropdown_updates,
     create_persisted_llm_ui_updates,
+    create_profile_region_dropdown,
+    create_profile_region_dropdown_updates,
     load_persisted_llm_model_settings,
     persist_llm_model_settings,
     reset_model_dropdown_registry,
@@ -92,6 +97,18 @@ class LlmModelSettingsTest(unittest.TestCase):
 
         self.assertEqual(get_effective_default_model(settings), BASE_DEFAULT_MODEL)
         self.assertIn(BASE_DEFAULT_MODEL, get_chat_model_choices(settings))
+
+    def test_profile_default_region_follows_chicago_visibility(self):
+        hidden = LlmModelSettings(show_us_chicago_1_models=False)
+        visible = LlmModelSettings(show_us_chicago_1_models=True)
+
+        self.assertEqual(
+            get_profile_default_region(hidden), BASE_PROFILE_DEFAULT_REGION
+        )
+        self.assertEqual(
+            get_profile_default_region(visible),
+            CHICAGO_PROFILE_DEFAULT_REGION,
+        )
 
     def test_model_groups_cover_all_switch_combinations(self):
         expected_catalog = [model for model, _group in CHAT_MODEL_CATALOG]
@@ -218,6 +235,20 @@ class LlmModelSettingsTest(unittest.TestCase):
             all(update.value == BASE_DEFAULT_MODEL for update in updates)
         )
 
+    def test_profile_region_updates_share_effective_default(self):
+        settings = LlmModelSettings(show_us_chicago_1_models=False)
+
+        updates = create_profile_region_dropdown_updates(settings, 2)
+
+        self.assertEqual(len(updates), 2)
+        for update in updates:
+            choices = [value for _label, value in update.choices]
+            self.assertEqual(
+                choices,
+                [BASE_PROFILE_DEFAULT_REGION, CHICAGO_PROFILE_DEFAULT_REGION],
+            )
+            self.assertEqual(update.value, BASE_PROFILE_DEFAULT_REGION)
+
     def test_page_load_updates_use_latest_persisted_settings(self):
         cases = (
             (False, False, "", BASE_DEFAULT_MODEL),
@@ -258,13 +289,15 @@ class LlmModelSettingsTest(unittest.TestCase):
                     with patch.dict(
                         os.environ, stale_process_values, clear=False
                     ):
-                        updates = create_persisted_llm_ui_updates(2, env_path)
+                        updates = create_persisted_llm_ui_updates(
+                            2, env_path, profile_region_count=1
+                        )
 
                     self.assertEqual(
                         updates[:3],
                         [show_chicago, show_openai, explicit_default],
                     )
-                    dropdown_updates = updates[3:]
+                    dropdown_updates = updates[3:5]
                     self.assertEqual(len(dropdown_updates), 2)
                     for dropdown_update in dropdown_updates:
                         choices = [
@@ -282,6 +315,13 @@ class LlmModelSettingsTest(unittest.TestCase):
                         self.assertEqual("gpt-5.1" in choices, show_openai)
                         self.assertIn(BASE_DEFAULT_MODEL, choices)
                         self.assertEqual(dropdown_update.value, expected)
+                    region_update = updates[5]
+                    self.assertEqual(
+                        region_update.value,
+                        CHICAGO_PROFILE_DEFAULT_REGION
+                        if show_chicago
+                        else BASE_PROFILE_DEFAULT_REGION,
+                    )
 
     def test_page_load_event_refreshes_controls_and_registered_dropdowns(self):
         reset_model_dropdown_registry()
@@ -291,6 +331,7 @@ class LlmModelSettingsTest(unittest.TestCase):
                 controls = build_llm_model_settings_tab(settings_tab)
             first_dropdown = create_chat_model_dropdown(label="Model 1")
             second_dropdown = create_chat_model_dropdown(label="Model 2")
+            profile_region = create_profile_region_dropdown(label="Region")
             bind_llm_model_settings_events(demo, controls)
 
         load_dependencies = [
@@ -308,10 +349,32 @@ class LlmModelSettingsTest(unittest.TestCase):
                 controls.default_model_input._id,
                 first_dropdown._id,
                 second_dropdown._id,
+                profile_region._id,
             ],
         )
         self.assertFalse(load_dependency["queue"])
         self.assertEqual(load_dependency["show_progress"], "hidden")
+
+        click_dependencies = [
+            dependency
+            for dependency in demo.config["dependencies"]
+            if any(target[1] == "click" for target in dependency["targets"])
+        ]
+        save_dependency = next(
+            dependency
+            for dependency in click_dependencies
+            if dependency["outputs"]
+            and dependency["outputs"][0] == controls.status_markdown._id
+        )
+        self.assertEqual(
+            save_dependency["outputs"],
+            [
+                controls.status_markdown._id,
+                first_dropdown._id,
+                second_dropdown._id,
+                profile_region._id,
+            ],
+        )
 
 
 if __name__ == "__main__":
