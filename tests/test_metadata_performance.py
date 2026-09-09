@@ -369,6 +369,39 @@ class MetadataPerformanceTest(unittest.TestCase):
         self.assertEqual(len(pool.executed), 2)
         self.assertEqual(executed_sql(pool).upper().count("USER_CLOUD_AI_PROFILE_ATTRIBUTES"), 1)
 
+    def test_profile_refresh_preserves_existing_non_empty_category(self):
+        replace_profile_cache([
+            {
+                "profile": "PROFILE_A",
+                "category": "移行済みカテゴリ",
+                "tables": [],
+                "views": [],
+            },
+            {
+                "profile": "PROFILE_B",
+                "category": "",
+                "tables": [],
+                "views": [],
+            },
+        ])
+        pool = FakePool([
+            [
+                ("profile_a", "DB側カテゴリ", "ENABLED"),
+                ("PROFILE_B", "新規カテゴリ", "ENABLED"),
+            ],
+            [],
+        ])
+
+        with patch("utils.selectai_util._get_table_names", return_value=["CUSTOMERS"]):
+            with patch("utils.selectai_util._get_view_names", return_value=[]):
+                messages = list(_save_profiles_to_json_stream(pool))
+        df = get_db_profiles(FakePool([]))
+
+        self.assertTrue(messages[-1].startswith("✅ 2件のProfileを保存"))
+        categories = dict(zip(df["Profile Name"], df["Category"]))
+        self.assertEqual(categories["profile_a"], "移行済みカテゴリ")
+        self.assertEqual(categories["PROFILE_B"], "新規カテゴリ")
+
 
 if __name__ == "__main__":
     unittest.main()
