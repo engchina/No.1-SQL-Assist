@@ -567,12 +567,25 @@ def _split_profile_objects(attrs: dict, table_names: set, view_names: set) -> tu
     return sorted(set(tables)), sorted(set(views))
 
 
+def _preserved_profile_categories() -> dict:
+    """既存キャッシュに保存済みの空でないカテゴリをProfile名ごとに返す。"""
+    categories = {}
+    for profile in get_profile_cache_entries():
+        name = str((profile or {}).get("profile") or "").strip()
+        category = str((profile or {}).get("category") or "").strip()
+        if name and category:
+            categories[name.casefold()] = category
+    return categories
+
+
 def _build_profile_outputs(
     profile_rows: list,
     attrs_by_profile: dict,
     table_names: set,
     view_names: set,
+    preserved_categories: dict = None,
 ) -> tuple:
+    preserved_categories = preserved_categories or {}
     rows = []
     profiles_data = []
     for profile in profile_rows:
@@ -580,7 +593,10 @@ def _build_profile_outputs(
             name = str((profile or {}).get("name") or "").strip()
             if not name or name.upper() == "OCI_CRED$PROF":
                 continue
-            category = str((profile or {}).get("category") or "")
+            category = preserved_categories.get(
+                name.casefold(),
+                str((profile or {}).get("category") or ""),
+            )
             attrs = _profile_attrs_for(attrs_by_profile, name)
             tables, views = _split_profile_objects(attrs, table_names, view_names)
             rows.append([
@@ -631,6 +647,7 @@ def _build_profile_snapshot(pool, refresh_object_cache_if_empty: bool = False) -
         attrs_by_profile,
         table_names,
         view_names,
+        preserved_categories=_preserved_profile_categories(),
     )
     return df, profiles_data, len(table_names), len(view_names), len(profiles)
 
