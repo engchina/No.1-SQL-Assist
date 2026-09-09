@@ -1,4 +1,4 @@
-"""Tests for the legacy SelectAI category migration script."""
+"""旧SelectAIカテゴリ移行スクリプトのテスト。"""
 
 import json
 import subprocess
@@ -71,8 +71,11 @@ class MigrateSelectAiCategoriesTest(unittest.TestCase):
             result = self._run_script(legacy_path, metadata_path)
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("更新的 category: 2", result.stdout)
-            self.assertIn("目标缓存中未找到: LEGACY_ONLY", result.stdout)
+            self.assertIn("更新したカテゴリ数: 2", result.stdout)
+            self.assertIn(
+                "移行先キャッシュに存在しないProfile: LEGACY_ONLY",
+                result.stdout,
+            )
             migrated = json.loads(metadata_path.read_text(encoding="utf-8"))
             self.assertEqual(migrated["profiles"][0]["category"], "営業")
             self.assertEqual(migrated["profiles"][1]["category"], "人事")
@@ -109,7 +112,7 @@ class MigrateSelectAiCategoriesTest(unittest.TestCase):
             result = self._run_script(legacy_path, metadata_path)
 
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("重复 profile", result.stderr)
+            self.assertIn("重複Profile", result.stderr)
             self.assertEqual(
                 json.loads(metadata_path.read_text(encoding="utf-8")),
                 original_metadata,
@@ -136,7 +139,7 @@ class MigrateSelectAiCategoriesTest(unittest.TestCase):
             result = self._run_script(legacy_path, metadata_path)
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("没有需要写入的变更", result.stdout)
+            self.assertIn("書き込む変更はありません", result.stdout)
             self.assertEqual(
                 json.loads(metadata_path.read_text(encoding="utf-8")),
                 original_metadata,
