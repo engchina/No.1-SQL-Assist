@@ -1707,7 +1707,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                             rules = []
                             rules.append("#profile_list_df { width: 100% !important; }")
                             rules.append("#profile_list_df .wrap { overflow-x: auto !important; }")
-                            rules.append("#profile_list_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
+                            rules.append("#profile_list_df table { table-layout: fixed !important; width: 100% !important; }")
                             for idx, pct in enumerate(col_widths, start=1):
                                 rules.append(f"#profile_list_df table th:nth-child({idx}), #profile_list_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                             style_value = "<style>" + "\n".join(rules) + "</style>"
@@ -3497,7 +3497,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                                             rules = []
                                             rules.append(f"#{elem_id} {{ width: 100% !important; }}")
                                             rules.append(f"#{elem_id} .wrap {{ overflow-x: auto !important; }}")
-                                            rules.append(f"#{elem_id} table {{ table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }}")
+                                            rules.append(f"#{elem_id} table {{ table-layout: fixed !important; width: 100% !important; }}")
                                             for idx, pct in enumerate(col_widths, start=1):
                                                 rules.append(
                                                     f"#{elem_id} table th:nth-child({idx}), #{elem_id} table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}"
@@ -6663,7 +6663,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                                             rules = []
                                             rules.append("#synthetic_data_status_df { width: 100% !important; }")
                                             rules.append("#synthetic_data_status_df .wrap { overflow-x: auto !important; }")
-                                            rules.append("#synthetic_data_status_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
+                                            rules.append("#synthetic_data_status_df table { table-layout: fixed !important; width: 100% !important; }")
                                             for idx, pct in enumerate(col_widths, start=1):
                                                 rules.append(f"#synthetic_data_status_df table th:nth-child({idx}), #synthetic_data_status_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                                             style_value = "<style>" + "\n".join(rules) + "</style>"
@@ -6700,7 +6700,7 @@ def build_selectai_tab(pool, vpd_pool=None):
                                     rules = []
                                     rules.append("#synthetic_data_result_df { width: 100% !important; }")
                                     rules.append("#synthetic_data_result_df .wrap { overflow-x: auto !important; }")
-                                    rules.append("#synthetic_data_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
+                                    rules.append("#synthetic_data_result_df table { table-layout: fixed !important; width: 100% !important; }")
                                     for idx, pct in enumerate(col_widths, start=1):
                                         rules.append(f"#synthetic_data_result_df table th:nth-child({idx}), #synthetic_data_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                                     style_value = "<style>" + "\n".join(rules) + "</style>"
