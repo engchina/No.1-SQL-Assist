@@ -2802,7 +2802,7 @@ def build_management_tab(pool, vpd_pool=None):
                         rules = []
                         rules.append("#data_result_df { width: 100% !important; }")
                         rules.append("#data_result_df .wrap { overflow-x: auto !important; }")
-                        rules.append("#data_result_df table { table-layout: fixed !important; width: 100% !important; border-collapse: collapse !important; }")
+                        rules.append("#data_result_df table { table-layout: fixed !important; width: 100% !important; }")
                         for idx, pct in enumerate(col_widths, start=1):
                             rules.append(f"#data_result_df table th:nth-child({idx}), #data_result_df table td:nth-child({idx}) {{ width: {pct}% !important; overflow: hidden !important; text-overflow: ellipsis !important; }}")
                         _ = "<style>" + "\n".join(rules) + "</style>"
